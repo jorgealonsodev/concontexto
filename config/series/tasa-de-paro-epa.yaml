@@ -1,0 +1,25 @@
+# Tasa de paro (EPA) -- unemployment rate, Encuesta de Población Activa.
+# Verified live 2026-07-28 (Engram #4690): DATOS_SERIE/EPA453100 returns
+# 2026-Q2=9.87, 2026-Q1=10.83, 2025-Q4=9.93, independently confirming
+# PRD §11.3's sample response for this series. Table 65349 is the
+# discovery-only container (ADR-2); DATOS_SERIE/EPA453100 is the ingest
+# path (never DATOS_TABLA/65349).
+slug: tasa-de-paro-epa
+name: "Tasa de paro (EPA)"
+source: ine
+dataset: ine-epa
+unit: "% población activa"
+frequency: Q
+decimals: 2
+geo: ES
+harmonized: false
+source_refs:
+  - kind: ine-series-cod
+    ref: EPA453100
+    table_hint: "65349"
+    valid_from: 2026-07-28
+    valid_to: null
+validation:
+  plausibility: { min: 0, max: 40, max_delta_abs: 5 }
+  continuity: { documented_gaps: [] }
+  revision: { max_backward_periods: 4 }

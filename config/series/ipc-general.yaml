@@ -1,0 +1,25 @@
+# IPC general -- Índice de Precios de Consumo, national general index,
+# base 2021=100. Verified live 2026-07-28 (Engram #4690):
+# DATOS_SERIE/IPC290751 returns 2026-M06=103.598. Table 76125 is the
+# discovery-only container (ADR-2); the retired predecessor table 50902
+# (ECOICOP v1, frozen at 2025-12 on the old base, value 119.942) MUST NOT
+# be used -- see the config-scan guard.
+slug: ipc-general
+name: "IPC general"
+source: ine
+dataset: ine-ipc
+unit: índice
+frequency: M
+decimals: 3
+geo: ES
+harmonized: false
+source_refs:
+  - kind: ine-series-cod
+    ref: IPC290751
+    table_hint: "76125"
+    valid_from: 2026-07-28
+    valid_to: null
+validation:
+  plausibility: { min: 50, max: 200, max_delta_abs: 5 }
+  continuity: { documented_gaps: [] }
+  revision: { max_backward_periods: 4 }

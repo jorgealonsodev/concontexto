@@ -1,0 +1,29 @@
+# PIB (índice de volumen encadenado) -- GDP, chained volume index,
+# national accounts (CNTR), data NOT seasonally/calendar adjusted.
+# Verified live 2026-07-28: DATOS_SERIE/CNTR6721 returns 2026-Q1=121.9959,
+# 2025-Q4=128.3448, 2025-Q3=123.2859 (all "Provisional" -- national
+# accounts are the textbook case for legitimate deep revisions, hence the
+# widened revision window below, matching design.md's own worked example
+# for rule 4's per-series override). Table 67822 is the discovery-only
+# container (ADR-2). max_delta_abs is generous because this series is NOT
+# seasonally adjusted -- ordinary quarter-to-quarter seasonal swings must
+# not be mistaken for a methodology break.
+slug: pib-cvi
+name: "PIB (índice de volumen encadenado)"
+source: ine
+dataset: ine-cntr
+unit: "índice de volumen encadenado"
+frequency: Q
+decimals: 4
+geo: ES
+harmonized: false
+source_refs:
+  - kind: ine-series-cod
+    ref: CNTR6721
+    table_hint: "67822"
+    valid_from: 2026-07-28
+    valid_to: null
+validation:
+  plausibility: { min: 50, max: 200, max_delta_abs: 15 }
+  continuity: { documented_gaps: [] }
+  revision: { max_backward_periods: 12 }

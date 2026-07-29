@@ -1,0 +1,26 @@
+# Ocupados (EPA) -- employed persons, Encuesta de Población Activa.
+# Verified live 2026-07-28 (Engram #4690): DATOS_SERIE/EPA387796 returns
+# 2026-Q2=22779.0 (thousands), 2026-Q1=22293.0, 2025-Q4=22463.3. Table
+# 65109 is the discovery-only container (ADR-2) and shares its Nombre
+# with the ANNUAL tables 65962/72982 -- name alone cannot distinguish
+# them, which is exactly why periodicity is asserted on every fetch (see
+# app/internal/adapters/ine/periodicity.go).
+slug: ocupados-epa
+name: "Ocupados (EPA)"
+source: ine
+dataset: ine-epa
+unit: "miles de personas"
+frequency: Q
+decimals: 1
+geo: ES
+harmonized: false
+source_refs:
+  - kind: ine-series-cod
+    ref: EPA387796
+    table_hint: "65109"
+    valid_from: 2026-07-28
+    valid_to: null
+validation:
+  plausibility: { min: 0, max: 30000, max_delta_abs: 1000 }
+  continuity: { documented_gaps: [] }
+  revision: { max_backward_periods: 4 }

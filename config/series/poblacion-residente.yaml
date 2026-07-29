@@ -1,0 +1,34 @@
+# Población residente -- resident population, Estadística Continua de
+# Población (ECP), quarterly. Verified live 2026-07-28: DATOS_SERIE/ECP320
+# returns 2026-04-01=49,687,120. Table 59238 is the discovery-only
+# container (ADR-2); ECP320 resolves to the identical national-total
+# series in BOTH table 56934 (annual) and table 59238 (quarterly) --
+# periodicity is asserted on every fetch for exactly this reason. The
+# retired PRD row for operation 72/code CP (Cifras de Población, empty
+# table list) MUST NOT be used -- the live source is Estadística Continua
+# de Población (operation 450/ECP), which is this series.
+#
+# NOTE: this series' own T3_Periodo wire shape is NOT "T1".."T4" like
+# EPA/CNTR -- INE reports it as a Spanish quarter-start-date phrase ("1 de
+# enero de", ...), verified live 2026-07-28. The adapter recognises both
+# shapes (app/internal/adapters/ine/periodicity.go); nothing in this
+# config needs to know about that.
+slug: poblacion-residente
+name: "Población residente"
+source: ine
+dataset: ine-ecp
+unit: personas
+frequency: Q
+decimals: 0
+geo: ES
+harmonized: false
+source_refs:
+  - kind: ine-series-cod
+    ref: ECP320
+    table_hint: "59238"
+    valid_from: 2026-07-28
+    valid_to: null
+validation:
+  plausibility: { min: 30000000, max: 60000000, max_delta_abs: 500000 }
+  continuity: { documented_gaps: [] }
+  revision: { max_backward_periods: 4 }

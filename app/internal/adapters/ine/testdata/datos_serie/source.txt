@@ -1,0 +1,17 @@
+Fixture: EPA453100.json
+URL: https://servicios.ine.es/wstempus/js/ES/DATOS_SERIE/EPA453100?nult=3&tip=A
+Fetched: 2026-07-28
+
+Trimmed real response (nult=3 -- last three periods only). Verified live
+during exploration (Engram #4690, "Cross-check: PRD §11.3's sample
+response shows 2026-Q2=9.87 and 2026-Q1=10.83 for tasa-de-paro-epa. Live
+EPA453100 returns exactly those, independently confirming the
+identifier."). This is the "Tasa de paro (EPA)" series, quarterly
+(expected frequency Q), table 65349.
+
+The COD in this filename ("EPA453100") is the fixture's identity -- the
+test suite in ../*_test.go derives it from this filename rather than
+hard-coding it as a Go string literal, keeping the origin-identifier
+static-scan guard (app/internal/guard) honest: real identifiers stay
+confined to /config and testdata/, per the spec editorial-config
+requirement, never as a Go source literal.

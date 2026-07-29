@@ -1,0 +1,18 @@
+Fixture: refusal.json
+URL: https://servicios.ine.es/wstempus/js/ES/DATOS_TABLA/69792?nult=1&tip=A
+Fetched: 2026-07-28
+
+The volume-restriction envelope (Finding A, Engram #4690): HTTP 200 with
+a JSON OBJECT body, whereas a successful DATOS_TABLA/DATOS_SERIE response
+is a JSON ARRAY/object with "Nombre"/"Data" fields respectively. Note the
+spacing around the colon in the raw body -- preserved byte-for-byte as
+observed live, not reformatted.
+
+This client never calls DATOS_TABLA (ADR-2/D5 — ingestion uses
+DATOS_SERIE/{COD} exclusively; DATOS_TABLA/SERIES_TABLA are
+discovery-only). This fixture is checked in as a first-class test case
+anyway, per spec source-ingestion-ine's "the envelope MUST be a
+first-class fixture": the decoder that guards against it is generic
+(keyed on the "status" field's presence, not on which endpoint was
+called), so this is the fixture that proves the decoder is a real
+discriminating guard, not a coincidence of DATOS_SERIE's own shape.

@@ -1,0 +1,23 @@
+# IPC subyacente -- core inflation (general index excluding unprocessed
+# food and energy products), base 2021=100. Verified live 2026-07-28:
+# DATOS_SERIE/IPC292511 returns 2026-M06=103.339. Table 76130 is the
+# discovery-only container (ADR-2).
+slug: ipc-subyacente
+name: "IPC subyacente"
+source: ine
+dataset: ine-ipc
+unit: índice
+frequency: M
+decimals: 3
+geo: ES
+harmonized: false
+source_refs:
+  - kind: ine-series-cod
+    ref: IPC292511
+    table_hint: "76130"
+    valid_from: 2026-07-28
+    valid_to: null
+validation:
+  plausibility: { min: 50, max: 200, max_delta_abs: 5 }
+  continuity: { documented_gaps: [] }
+  revision: { max_backward_periods: 4 }

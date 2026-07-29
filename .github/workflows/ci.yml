@@ -1,0 +1,85 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  go:
+    name: Go test suite
+    runs-on: ubuntu-latest
+    # Remediation batch (verify-report WARNING W6): a job-level ceiling in
+    # case a source-adapter regression re-introduces an unbounded HTTP
+    # call in a test path (this suite runs OFFLINE, so 10 minutes is
+    # generous headroom over its normal ~7s wall time).
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # Full suite from the repository root (ADR-5: module and //go:embed
+      # config both live at root, not under /app).
+      - name: go test ./...
+        run: go test ./...
+
+      # Explicit step for the golden-rule import-graph guard (spec
+      # platform-runtime): httpserver must never transitively import
+      # adapters/postgres or pgx. Already covered by the step above; run
+      # again by name so a regression is visible on its own line in CI.
+      - name: Import-graph guard (httpserver never imports postgres/pgx)
+        run: go test ./app/internal/httpserver/... -run TestImportGraph -v
+
+      # Schema-validates the embedded /config tree (spec editorial-config,
+      # "validate-config subcommand") — blocking gate per PRD §9.4.
+      - name: validate-config
+        run: go run ./app/cmd/concontexto validate-config
+
+      # Deployment wiring has no unit-test coverage: during slice 2 the
+      # migrate subcommand began reading DATABASE_URL while docker-compose.yml
+      # exported only POSTGRES_ADDR, and every Go test still passed. This
+      # guard fails the build when a variable the Go source reads is missing
+      # from env.example, so the deployment reference cannot drift silently.
+      - name: env.example covers every os.Getenv
+        run: ./scripts/check-env-example.sh
+
+  web:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
+      - name: npm ci
+        working-directory: web
+        run: npm ci
+
+      - name: astro build
+        working-directory: web
+        run: npm run build
+
+  container-smoke-test:
+    name: Container smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      # Task 1.21: build the image, run the compose stack, exercise
+      # /healthz, /, and the shell-free healthcheck subcommand (both
+      # shallow and --deep) inside the running container. This is the
+      # primary verification for tasks 1.14-1.19 (Dockerfile,
+      # docker-compose.yml, CODEOWNERS, this workflow, the Astro
+      # hello-world, and the pg_dump backup script), none of which have a
+      # meaningful `go test` surface of their own.
+      - name: Run scripts/smoke-test.sh
+        run: ./scripts/smoke-test.sh

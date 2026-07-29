@@ -1,0 +1,73 @@
+name: deploy
+
+# Remediation batch (sdd-verify CRITICAL C5, 2026-07-29): task 1.17
+# originally claimed a "+ deploy step" that never existed. This workflow
+# is the honest replacement -- see docs/deploy.md for exactly which
+# secret must be configured and what infrastructure must exist before it
+# does anything beyond building and pushing an image. Until then, the
+# "check secret is configured" step below no-ops with a ::warning::
+# rather than reporting a fake green deploy.
+#
+# Triggered by ci.yml's own completion on main (never runs against an
+# untested commit), plus workflow_dispatch so an operator can redeploy
+# on demand once the target infrastructure exists.
+
+on:
+  workflow_run:
+    workflows: ["ci"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    name: Build, push and redeploy (gated on PORTAINER_WEBHOOK_URL)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # Gate: this repository has no VPS/Portainer target configured yet
+      # (docs/deploy.md). Every step below that would actually publish or
+      # trigger a redeploy is conditioned on this check, so an absent
+      # secret produces a visible, honest no-op instead of a silently
+      # skipped or falsely-green deploy.
+      - name: Check PORTAINER_WEBHOOK_URL is configured
+        id: gate
+        env:
+          WEBHOOK_CONFIGURED: ${{ secrets.PORTAINER_WEBHOOK_URL != '' }}
+        run: |
+          if [ "$WEBHOOK_CONFIGURED" = "true" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::PORTAINER_WEBHOOK_URL is not configured -- this run builds and pushes the image but performs no redeploy. See docs/deploy.md for exactly what infrastructure and secret are required to close PRD §17's milestone-0.1 deploy criterion."
+          fi
+
+      - name: Log in to ghcr.io
+        if: steps.gate.outputs.configured == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        if: steps.gate.outputs.configured == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ github.repository }}:${{ github.sha }}
+
+      # Portainer's own webhook decides how the running stack is
+      # replaced (re-pulling :latest) -- this workflow only notifies it.
+      - name: Trigger Portainer stack redeploy
+        if: steps.gate.outputs.configured == 'true'
+        run: curl -fsS -X POST "${{ secrets.PORTAINER_WEBHOOK_URL }}"

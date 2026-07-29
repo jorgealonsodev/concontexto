@@ -1,0 +1,17 @@
+# Code owners for ConContexto (PRD §9.6 / §15.2).
+#
+# `/config/**` holds the editorial YAML — ruptures, events, government
+# periods, source licensing, series definitions. These are editorial
+# decisions wearing technical clothing: a change here is data policy, not
+# routine code, so it requires four eyes (two independent approvals), not
+# one.
+#
+# NOTE: listing owners here makes them REQUIRED reviewers when "Require
+# review from Code Owners" is enabled in branch protection, but it does
+# NOT by itself force two approvals — see .github/BRANCH_PROTECTION.md
+# for the branch-protection settings that must also be applied on GitHub.
+#
+# TODO(maintainer): add the second reviewer's GitHub handle below before
+# enabling branch protection. A single-owner CODEOWNERS entry cannot
+# satisfy a two-approval requirement.
+/config/** @jorgealonsodev @TODO-second-config-reviewer

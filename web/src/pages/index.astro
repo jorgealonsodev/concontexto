@@ -1,0 +1,41 @@
+---
+// Hello-world deploy smoke target for milestone 0.1. No components, no
+// design system — Fase 1 replaces this page. Plain hand-written CSS only;
+// no utility/component CSS framework (PRD §12.1 / §14.2 — hard constraint).
+const title = "ConContexto";
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+  </head>
+  <body>
+    <main>
+      <h1>{title}</h1>
+      <p>Portal de Datos Económicos de España — deploy smoke target for milestone 0.1.</p>
+    </main>
+  </body>
+</html>
+
+<style>
+  :root {
+    color-scheme: light dark;
+    font-family: system-ui, sans-serif;
+  }
+
+  body {
+    margin: 0;
+    padding: 2rem;
+  }
+
+  main {
+    max-width: 40rem;
+    margin: 0 auto;
+  }
+
+  h1 {
+    font-size: 1.75rem;
+  }
+</style>

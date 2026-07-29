@@ -1,0 +1,114 @@
+# ConContexto production compose stack (PRD §14.3).
+#
+# - `app` and `postgres` publish NO ports to the host. `app` is reachable
+#   only through the external `proxy` network, where Nginx Proxy Manager
+#   terminates TLS and forwards to `app:8080`.
+# - Hard memory limits: app 256 MB, postgres 512 MB (PRD §14.3).
+# - `postgres` sits on the `internal` network only — unreachable from the
+#   `proxy` network, hence unreachable from Nginx Proxy Manager or the
+#   internet.
+# - Logging: json-file, rotated at 10 MB x 3 files, compressed.
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      PORT: "8080"
+      # POSTGRES_ADDR drives the shallow TCP reachability probe used by
+      # `healthcheck --deep`. DATABASE_URL is what the `migrate` subcommand
+      # and the ingestion adapters connect with. Both are needed: the probe
+      # must stay usable even when no credentials are configured.
+      POSTGRES_ADDR: "postgres:5432"
+      DATABASE_URL: "postgres://${POSTGRES_USER:-concontexto}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-concontexto}?sslmode=disable"
+    volumes:
+      - public_html:/web/dist
+      - app_data:/app_data
+    networks:
+      - proxy
+      - internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+        compress: "true"
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-concontexto}
+      POSTGRES_USER: ${POSTGRES_USER:-concontexto}
+      # No default: an empty password must never ship. Set POSTGRES_PASSWORD
+      # in the deployment environment (Portainer stack env / .env file, not
+      # committed to git).
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+    # Tuning per PRD §14.2 for a low-memory VPS: small shared_buffers, a
+    # capped connection count, compressed WAL, and a slow-query log at
+    # 500 ms to catch regressions early.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=128MB
+      - -c
+      - max_connections=20
+      - -c
+      - wal_compression=on
+      - -c
+      - work_mem=8MB
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - log_min_duration_statement=500
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-concontexto} -d ${POSTGRES_DB:-concontexto}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+        compress: "true"
+
+networks:
+  # Shared with Nginx Proxy Manager; created outside this stack
+  # (`docker network create proxy`).
+  proxy:
+    external: true
+  # Postgres-only network, not reachable from `proxy`.
+  internal:
+    internal: true
+
+volumes:
+  # Pre-seeded from the image's baked-in /web/dist on first start (standard
+  # Docker named-volume behavior), then persists independently of image
+  # rebuilds.
+  public_html:
+  # Raw source archive + raw_files.sha256 (filestore, PR 5a).
+  app_data:
+  pg_data:

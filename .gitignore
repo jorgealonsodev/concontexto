@@ -1,0 +1,11 @@
+.atl/
+prd_web_datos_economicos_v2 (1).md
+
+# Local secrets. `env.example` is the committed reference; `.env` holds the
+# real POSTGRES_PASSWORD and must never be committed.
+.env
+.env.*
+!env.example
+
+# Local backup output from scripts/backup/pg_dump.sh
+/backups/

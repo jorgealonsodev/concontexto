@@ -1,0 +1,68 @@
+# Afiliación media a la Seguridad Social (Total Sistema) -- milestone 0.6.
+# Task 8.1's resolution (Engram #4699, corrected during implementation --
+# see app/internal/adapters/xlsx/decode.go's package doc comment): the
+# Social Security publishes two artifacts side by side. This series
+# ingests ONLY the flat monthly series workbook (54 KB, one sheet, ZERO
+# formula cells) -- NEVER the 25-sheet annual workbook with its INDICE
+# selector sheet and 12,826 formula cells, which is the selector-dependent
+# hazard the spec anticipated and this choice avoids entirely.
+#
+# Verified live 2026-07-28 against the real workbook (sha256
+# 0741cb04a45aa40b35a09de92dd6ca07402271f999d9af2b6120dc972297d212):
+# sheet Hoja1, header row 3, data rows 4-309 (306 monthly observations,
+# Enero 2001 - Junio 2026), footnote rows from row 310 (terminator:
+# column A stops matching a period label and starts matching ^\(\d+\)).
+#
+# total_column/component_columns is the arithmetic-invariant guard (spec
+# source-ingestion-xlsx): row 3 labels column K "Discontínuos (7)", but
+# the real system total lives in column N -- the header row does NOT
+# align with the data columns (merged cells in rows 2-3 cause the
+# offset). Header text is never consulted for column mapping; N is pinned
+# by letter, and every row's B-M sum is cross-checked against it. This
+# also doubles as the schema-drift detector: if the publisher inserts,
+# removes or reorders a column, the sum stops matching.
+#
+# tolerance: 5.0. This correction batch ran the arithmetic invariant
+# exhaustively across all 306 real data rows (not a sampled row -- see
+# app/internal/adapters/xlsx/decode.go's package doc comment for the full
+# account, including a refuted claim that the total column moves across
+# eras). 305 of 306 rows are within 0.06; the single exception, Julio
+# 2013, differs by 3.03 (source rounding on a 16.4-million-unit figure).
+# 5.0 absorbs that verified maximum while still catching a genuinely
+# shifted or missing column, whose effect is orders of magnitude larger
+# (a whole régimen's worth of affiliates, hundreds of thousands to
+# millions).
+#
+# header_fingerprint was computed by decoding the checked-in real fixture
+# (testdata/afiliacion-ss/afiliacion-ss.xlsx, byte-identical header rows
+# to the original) over exactly the columns this series reads (period,
+# total, every component, in that order), each cell normalised (internal
+# whitespace collapsed, trimmed -- absorbing the verified trailing-newline
+# trap in "REGIMEN GENERAL\n"/"Régimen General (1) \n").
+slug: afiliacion-ss
+name: "Afiliación media a la Seguridad Social (Total Sistema)"
+source: seg-social
+dataset: seg-social-afiliacion
+unit: personas
+frequency: M
+decimals: 2
+geo: ES
+harmonized: false
+source_refs:
+  - kind: xlsx-url
+    ref: "https://www.seg-social.es/wps/wcm/connect/wss/5ccf558a-868f-48b3-b832-04fe9f524960/19_Serie+afiliaci%C3%B3n+media+por+reg%C3%ADmenes+%28Total+Sistema%29.xlsx?MOD=AJPERES&CONVERT_TO=linktext&CACHEID=ROOTWORKSPACE.Z18_81D21J401P5L40QTIT61G41000-5ccf558a-868f-48b3-b832-04fe9f524960-pYxAKE1"
+    valid_from: 2026-07-28
+    valid_to: null # WebSphere CACHEID URL, verified NOT stable (PRD §8.6's "URL estable" claim does not hold) -- close this and add a new ref when it rotates
+validation:
+  plausibility: { min: 0, max: 30000000, max_delta_abs: 1000000 } # verified historical range 15.19M-22.47M; largest verified month-over-month delta 548,092.79 (Abril 2020, COVID)
+  continuity: { documented_gaps: [] } # the real 306-period series is a continuous unbroken monthly run, Enero 2001 - Junio 2026
+  revision: { max_backward_periods: 4 }
+schema:
+  xlsx:
+    sheet_name: Hoja1
+    header_row: 3
+    column_anchors: { period: A, total: N }
+    header_fingerprint: 802c7df8f36f1c226a047d20f310f35b09a8b38f5e6f83d593c995d1cf8c633e
+    total_column: N
+    component_columns: [B, C, D, E, F, G, H, I, J, K, L, M]
+    tolerance: 5.0

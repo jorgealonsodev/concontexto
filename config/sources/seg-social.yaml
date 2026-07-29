@@ -1,0 +1,46 @@
+# Source identity and licensing for the Seguridad Social (Ministerio de
+# Inclusión, Seguridad Social y Migraciones). Verified live 2026-07-28
+# (task 8.1's resolution, Engram #4699): the affiliation series is
+# published as a plain XLSX download, not an API, so access_type is
+# "xlsx-download" rather than the "api-json" the other two sources use.
+#
+# The download URL is a WebSphere content-management URL embedding a
+# per-file UUID and a CACHEID token
+# (config/series/afiliacion-ss.yaml's source_refs), NOT the stable path
+# PRD §8.6 assumed. Its validity range (valid_from/valid_to) lives on the
+# series' own source_refs entry.
+#
+# Correction (milestone 0.7 closure, task 9.10): the §9.4 synthetic daily
+# probe (app/internal/probe, built in PR 9a) does NOT cover this URL --
+# probe.Targets deliberately excludes every xlsx-url ref, because there is
+# no "last period only" query parameter to probe an XLSX download with
+# (probing it would mean downloading the full 54 KB workbook daily, the
+# exact cost the probe exists to avoid; see that package's own doc
+# comment). The validity range above is today's ONLY early-warning
+# mechanism, and it is checked administratively (a human re-verifies
+# valid_to before it lapses), not by an automated live request. Extending
+# the probe to also HEAD-check this URL is future work, not built here.
+id: seg-social
+name: "Seguridad Social — Ministerio de Inclusión, Seguridad Social y Migraciones"
+url: https://www.seg-social.es
+access_type: xlsx-download
+api:
+  max_response_bytes: 8388608 # 8 MiB (design.md "Response ceiling" default); the real workbook is 54 KB
+licence:
+  name: "Reutilización de la información del sector público"
+  url: "https://www.seg-social.es/wps/portal/wss/internet/InformacionUtil/44539/28781"
+  attribution_text: "Fuente: Seguridad Social"
+  redistribution:
+    allowed: true
+    conditions_md: >-
+      Reutilización de la información publicada por la Seguridad Social
+      permitida citando la fuente, conforme a la normativa española de
+      reutilización de la información del sector público (Ley 37/2007 y
+      normativa de desarrollo).
+    commercial_restrictions_md: >-
+      No se han identificado restricciones comerciales adicionales sobre
+      esta serie estadística concreta más allá de la cita de la fuente;
+      verificar el aviso legal del portal ante cualquier duda antes de una
+      redistribución comercial.
+    acknowledgement_required: true
+    third_party_excluded: false

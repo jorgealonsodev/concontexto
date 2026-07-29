@@ -1,0 +1,50 @@
+Fixture: afiliacion-ss.xlsx
+Source: 19_Serie afiliación media por regímenes (Total Sistema).xlsx
+Original URL: https://www.seg-social.es/wps/wcm/connect/wss/5ccf558a-868f-48b3-b832-04fe9f524960/19_Serie+afiliaci%C3%B3n+media+por+reg%C3%ADmenes+%28Total+Sistema%29.xlsx?MOD=AJPERES&CONVERT_TO=linktext&CACHEID=ROOTWORKSPACE.Z18_81D21J401P5L40QTIT61G41000-5ccf558a-868f-48b3-b832-04fe9f524960-pYxAKE1
+Fetched: 2026-07-28
+sha256: 0741cb04a45aa40b35a09de92dd6ca07402271f999d9af2b6120dc972297d212
+
+CHANGED this correction batch: this fixture is now the FULL, untrimmed
+original workbook (54 KB, byte-identical to the sha256 above), not a
+7-row trim. Prior batches shipped a curated 7-row trim of the same
+source; this batch replaces it with the whole file because the
+correction batch's own regression test requirement is "ingest the FULL
+306-row history and assert every row's invariant holds — not a sampled
+row" (see decode_test.go's
+TestDecode_FullHistoryEveryRowSatisfiesArithmeticInvariant). A trimmed
+fixture cannot back that test: the whole point is that a spot check
+already produced two wrong conclusions about this workbook (Engram
+#4699, then a further incorrect "moving total column" claim in Engram
+#4709 — both refuted in decode.go's package doc comment) before an
+exhaustive, all-306-rows sweep against a file this size (54 KB) settled
+it. Checking in the real, unmodified file removes any risk that a
+hand-curated trim quietly drops the one row (Julio 2013, row 154) that
+carries the only rounding discrepancy over the tolerance the invariant
+must absorb.
+
+Structure (verified against this exact file):
+- Sheet Hoja1 (the only sheet). Row 1 title, row 2 régimen group header
+  (N2 = "TOTAL SISTEMA" — the workbook's own label for the total
+  column), row 3 column headers, data rows 4-309 (306 monthly
+  observations, Enero 2001 - Junio 2026), footnote rows from row 310
+  (terminator: column A stops matching a period label and starts
+  matching ^\(\d+\)).
+- Zero formula cells anywhere in the columns this package reads (period,
+  total, every component) — see
+  TestDecode_SelectorIndependenceRealFixtureHasNoFormulaCells.
+- Column N carries the system total in ALL 306 rows (not merely a
+  post-2017 subset). Columns B-M are the component columns; blank cells
+  are treated as zero and are populated in different, non-overlapping
+  date ranges as régimenes are created/retired (footnotes "(9)
+  Extinguido 1-enero-2008", "(2) Vigente desde 1-enero-2012") — this is a
+  component-set change, not a total-column change.
+- Row 3 mislabels column K "Discontínuos (7)" — a genuine, separate
+  régimen sub-category, not the total, despite the header/data-column
+  misalignment (merged cells in rows 2-3) that makes header text
+  untrustworthy for column mapping in general.
+- Column O ("Cuidadores (10)") is a memo item, added 2008, explicitly
+  excluded from both the total and the component set.
+- The verified double-space period-label trap ("Febrero  2001" through
+  "Febrero  2006") and the trailing-newline header trap ("REGIMEN
+  GENERAL\n", "Régimen General (1) \n") are both present in this file as
+  published.

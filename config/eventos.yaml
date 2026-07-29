@@ -1,0 +1,81 @@
+# Catálogo transversal de shocks exógenos e hitos normativos (PRD §9.6,
+# §4, §6.1.1(b)/(c)). Reconciliado por ingestion.ReconcileEditorialConfig
+# a la tabla event con event_group "exogenous" o "milestones" (leído por
+# entrada, no asignado por el cargador -- ver config/gobiernos.yaml para
+# el grupo "governments").
+#
+# Cambios en este fichero requieren revisión a cuatro ojos (PRD §9.6,
+# §15.2). Ver .github/CODEOWNERS y .github/BRANCH_PROTECTION.md.
+#
+# Nota de procedencia: las fechas de esta sesión provienen del
+# conocimiento general documentado del autor, no de una búsqueda web en
+# vivo (no había herramienta WebFetch/WebSearch disponible en esta
+# sesión) -- ver también config/gobiernos.yaml. Para los shocks exógenos
+# de rango amplio (crisis financiera, pandemia) el riesgo de una fecha
+# equivocada es mucho menor que para una ruptura estadística (no corrompe
+# comparaciones de series, sólo posiciona una anotación visual opcional,
+# PRD §6.1.1(b): desactivada por defecto), pero cada entrada de fecha
+# incierta se marca igualmente con date_status/todo.
+
+- id: crisis-financiera-2008-2013
+  group: exogenous
+  name: "Crisis financiera global y crisis de deuda soberana europea"
+  date_start: 2008-01-01
+  date_end: 2013-12-31
+  note_md: >-
+    Crisis financiera global iniciada con la quiebra de Lehman Brothers
+    (15 de septiembre de 2008) y su prolongación en la crisis de deuda
+    soberana europea; rango tomado literalmente de PRD §6.1.1(b)/§9.6
+    ("2008-2013").
+
+- id: pandemia-2020-2021
+  group: exogenous
+  name: "Pandemia de COVID-19"
+  date_start: 2020-03-14
+  date_end: 2021-05-09
+  note_md: >-
+    Estados de alarma decretados en España: 14 de marzo de 2020 a 21 de
+    junio de 2020, y 25 de octubre de 2020 a 9 de mayo de 2021 (fecha de
+    fin de esta entrada). Impacto económico y social generalizado sobre
+    la práctica totalidad de los indicadores del portal.
+
+- id: shock-energetico-2022
+  group: exogenous
+  name: "Shock energético 2022"
+  date_start: 2022-02-24
+  note_md: >-
+    Shock en los precios de la energía asociado a la invasión rusa de
+    Ucrania (iniciada el 24 de febrero de 2022). Sin fecha de fin fijada:
+    su repercusión sobre los precios se fue absorbiendo gradualmente, no
+    en una fecha puntual identificable.
+
+- id: ngeu-primer-desembolso
+  group: exogenous
+  name: "Inicio de los desembolsos del Mecanismo de Recuperación y Resiliencia (Next Generation EU)"
+  date_start: 2021-08-01
+  date_status: unconfirmed
+  todo: >-
+    Confirmar la fecha exacta del primer desembolso (prefinanciación) a
+    España consultando el calendario de desembolsos del Ministerio de
+    Hacienda / Comisión Europea para el Mecanismo de Recuperación y
+    Resiliencia; el mes (agosto de 2021) proviene de conocimiento general
+    no verificado en vivo esta sesión.
+  note_md: >-
+    Primer desembolso (prefinanciación) del Mecanismo de Recuperación y
+    Resiliencia (Next Generation EU) a España; fecha exacta pendiente de
+    confirmar contra el calendario oficial de desembolsos.
+
+- id: reforma-laboral-2021
+  group: milestones
+  name: "Reforma laboral 2021 (Real Decreto-ley 32/2021)"
+  date_status: unconfirmed
+  todo: >-
+    Confirmar en el BOE la fecha de entrada en vigor efectiva del Real
+    Decreto-ley 32/2021 relevante para las series de temporalidad y
+    contratación (aprobación, publicación y aplicación práctica a nuevos
+    contratos no coinciden necesariamente en una única fecha).
+  note_md: >-
+    Reforma laboral de 2021 (Real Decreto-ley 32/2021), citada como
+    ejemplo de hito normativo relevante para la serie de temporalidad en
+    PRD §6.1.1(c); fecha de efecto exacta pendiente de confirmar en el
+    BOE.

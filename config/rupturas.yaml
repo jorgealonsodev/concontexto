@@ -1,0 +1,263 @@
+# Registro de rupturas metodológicas (PRD §9.6). Reconciliado por
+# ingestion.ReconcileEditorialConfig a la tabla series_break -- este
+# fichero es la fuente de verdad; la base de datos es una proyección
+# (design.md "editorial YAML is reconciled -- never hand-edited").
+#
+# Cambios en este fichero requieren revisión a cuatro ojos (PRD §9.6,
+# §15.2): son decisiones editoriales con apariencia técnica, no cambios
+# de código rutinarios. Ver .github/CODEOWNERS y .github/BRANCH_PROTECTION.md.
+#
+# date_status/todo: una entrada cuya fecha efectiva NO está confirmada
+# contra la nota metodológica de la fuente omite `date` y declara
+# `date_status: unconfirmed` + `todo` (documento a consultar). El
+# reconcile NUNCA proyecta una fecha adivinada a series_break -- una
+# fecha de ruptura equivocada corrompe silenciosamente cualquier
+# comparación que la cruce (principio P4). Ver
+# app/internal/ingestion/reconcile.go.
+
+- id: epa-metodologia-2021
+  kind: methodology
+  scope: { kind: dataset, ref: ine-epa }
+  date: 2021-01-01
+  note_md: >-
+    Nuevo diseño metodológico de la Encuesta de Población Activa (EPA),
+    alineado con el Reglamento Marco IESS de la UE (2019/1700), aplicado
+    desde los datos del primer trimestre de 2021. Afecta a la
+    comparabilidad de las series de paro, ocupación y actividad con
+    periodos anteriores a 2021.
+  source_url: "https://www.ine.es/dyngs/INEbase/es/operacion.htm?c=Estadistica_C&cid=1254736176918"
+
+# EXISTENCIA VERIFICADA en vivo (2026-07-28): CLASIFICACIONES_OPERACION/293
+# devuelve simultáneamente Id 88 "Base 2021 (EPA)" e Id 123 "BASE 2021 CNAE
+# 2025 (EPA/EFPA)" -- doble codificación confirmada y activa. El PRIMER
+# PERIODO AFECTADO no está verificado: PRD §7.1 dice "CNAE 2025 (doble
+# codificación 2026)", que es una expectativa del PRD, no una fecha
+# confirmada por el INE. No se adivina la fecha (principio P4).
+- id: epa-cnae2025-doble-codificacion
+  kind: methodology
+  scope: { kind: dataset, ref: ine-epa }
+  date_status: unconfirmed
+  todo: >-
+    Confirmar el primer periodo (trimestre) afectado consultando la nota
+    metodológica del INE para la EPA que anuncia la doble codificación
+    CNAE 2025 (ver CLASIFICACIONES_OPERACION/293, Id 123 "BASE 2021 CNAE
+    2025 (EPA/EFPA)"), no inferir la fecha de PRD §7.1.
+  note_md: >-
+    Doble codificación CNAE 2025 en la EPA: existencia confirmada en
+    CLASIFICACIONES_OPERACION/293 (INE, verificado 2026-07-28); fecha de
+    efecto pendiente de confirmar contra la nota metodológica del INE.
+
+# "revisiones de base y de CN (incl. sept. 2025)" -- PRD §9.6 nombra el
+# mes pero no el día exacto de la revisión de base de Contabilidad
+# Nacional de septiembre de 2025; no se adivina el día.
+- id: cn-revision-base-sept-2025
+  kind: revision
+  scope: { kind: dataset, ref: ine-cntr }
+  date_status: unconfirmed
+  todo: >-
+    Confirmar la fecha exacta de publicación de la revisión de base de la
+    Contabilidad Nacional Trimestral de España consultando la nota
+    metodológica de revisión de base del INE (Contabilidad Nacional
+    Trimestral, septiembre de 2025); PRD §9.6 sólo da el mes.
+  note_md: >-
+    Revisión de base de la Contabilidad Nacional Trimestral (INE),
+    referida por PRD §9.6 como "sept. 2025"; día exacto pendiente de
+    confirmar.
+
+- id: ipc-cambio-base-2021
+  kind: methodology
+  scope: { kind: dataset, ref: ine-ipc }
+  date: 2022-01-01
+  note_md: >-
+    Cambio de base del Índice de Precios de Consumo (IPC) a base 2021,
+    aplicado a los datos publicados desde enero de 2022. Los índices
+    anteriores a este cambio de base no son directamente comparables sin
+    enlace.
+  source_url: "https://www.ine.es/dyngs/INEbase/es/operacion.htm?c=Estadistica_C&cid=1254736176802"
+
+- id: sii-2017-iva
+  kind: methodology
+  scope: { kind: source, ref: aeat, ref_status: pending }
+  date: 2017-07-01
+  todo: >-
+    AEAT (Agencia Tributaria) no es una fuente de ingesta de Fase 0 ni
+    tiene fecha prevista de configuración (a diferencia de las
+    desagregaciones ECOICOP v2 de arriba, que sí son Fase 1 planificada);
+    esta entrada documenta contexto metodológico del IVA/SII únicamente
+    y su scope.ref intencionalmente no resuelve a ninguna fuente
+    configurada (remediación 2026-07-29, sdd-verify W2).
+  note_md: >-
+    Entrada en vigor del Suministro Inmediato de Información (SII) del
+    IVA (Real Decreto 596/2016), obligatorio desde el 1 de julio de 2017
+    para grandes empresas y grupos de IVA. Cambia la cadencia y el
+    detalle de la información de IVA disponible desde esa fecha.
+  source_url: "https://sede.agenciatributaria.gob.es/Sede/iva/suministro-inmediato-informacion-sii.html"
+
+# "cambios SEC en deuda/déficit" (PRD §9.6) -- la transición SEC95 a
+# SEC2010/ESA2010 en la notificación de déficit y deuda es de existencia
+# bien conocida (Reglamento (UE) nº 549/2013), pero la fecha exacta de la
+# primera notificación afectada para España no está confirmada en esta
+# sesión (sin acceso a búsqueda web en vivo); no se adivina.
+- id: sec-cambios-deuda-deficit
+  kind: methodology
+  scope: { kind: source, ref: igae, ref_status: pending }
+  date_status: unconfirmed
+  todo: >-
+    Confirmar la fecha exacta de la primera notificación de déficit/deuda
+    de España bajo la nueva metodología SEC consultando la nota
+    metodológica de la IGAE / Banco de España sobre el cambio de sistema
+    europeo de cuentas (SEC95 a SEC2010/ESA2010, Reglamento (UE)
+    nº 549/2013 de Eurostat). IGAE tampoco es una fuente de ingesta
+    configurada en Fase 0; scope.ref intencionalmente no resuelve
+    (remediación 2026-07-29, sdd-verify W2).
+  note_md: >-
+    Cambio de metodología SEC (Sistema Europeo de Cuentas) en la
+    notificación de déficit y deuda pública; fecha exacta de la primera
+    notificación afectada para España pendiente de confirmar.
+
+# ECOICOP ver.2 / enero 2026 -- FECHA CONFIRMADA (orquestador, 2026-07-28,
+# a partir de la documentación propia de las fuentes): entra en vigor con
+# los datos del IPC de enero de 2026, bajo el Reglamento Delegado (UE)
+# 2024/3159 de la Comisión; el cambio de base del IPC a base 2025 se
+# adelantó un año expresamente para implementarlo. El IPC pasa de 12 a 13
+# grupos principales (el contenido de cuatro de ellos cambia); las
+# subclases pasan de 199 (base 2021) a 196.
+#
+# ALCANCE (revisado respecto a la versión anterior de esta entrada, que
+# lo fijaba en "toda la familia de series derivadas del IPC"): el INE
+# declara explícitamente que para los agregados que sobreviven a la
+# reclasificación "se realizaron los enlaces necesarios para tener series
+# históricas completas, sin modificar las tasas de variación previamente
+# publicadas". El IPC general y el IPC subyacente -- las series de este
+# dataset ya configuradas en Fase 0 (ipc-general, ipc-subyacente) -- son
+# agregados de ese tipo: ENLAZADOS, sin ruptura. Esta entrada se limita
+# por tanto a las desagregaciones a nivel de subclase COICOP que se
+# descontinúan o que son nuevas bajo ECOICOP ver.2 (scope: dataset
+# "ine-ipc-subclases", deliberadamente DISTINTO del dataset
+# "ine-ipc" que usan ipc-general/ipc-subyacente); ninguna de las seis
+# series de Fase 0 pertenece a ese dataset todavía, así que esta ruptura
+# no resuelve para ninguna serie actualmente configurada -- queda
+# documentada y reconciliada para cuando se añadan series a nivel de
+# subclase.
+#
+# Fuentes: https://www.ine.es/metodologia/t25/metodologia_IPC_base_2025.pdf
+# y https://www.ine.es/normativa/leyes/cse/2026_CambioBaseIPC.pdf
+- id: ecoicop-v2-2026-ine-ipc
+  kind: methodology
+  scope: { kind: dataset, ref: ine-ipc-subclases, ref_status: pending }
+  date: 2026-01-01
+  todo: >-
+    Configurar series a nivel de subclase COICOP bajo el dataset
+    "ine-ipc-subclases" cuando Fase 1 las añada (ver NOTA DE ESTADO en
+    note_md); hasta entonces scope.ref intencionalmente no resuelve
+    (remediación 2026-07-29, sdd-verify W2).
+  note_md: >-
+    Adopción de ECOICOP ver.2 en el IPC (INE), en vigor con los datos de
+    enero de 2026 (Reglamento Delegado (UE) 2024/3159 de la Comisión). El
+    IPC pasa de 12 a 13 grupos principales (contenido de cuatro
+    modificado) y de 199 a 196 subclases. El IPC general y el IPC
+    subyacente están ENLAZADOS: el INE declara que las tasas de variación
+    previamente publicadas de los agregados que sobreviven la
+    reclasificación no se modifican. Esta ruptura aplica únicamente a las
+    desagregaciones a nivel de subclase COICOP descontinuadas o nuevas
+    bajo ECOICOP ver.2, no al IPC general ni al IPC subyacente. Véase
+    también https://www.ine.es/normativa/leyes/cse/2026_CambioBaseIPC.pdf.
+    NOTA DE ESTADO (remediación 2026-07-29, sdd-verify W3): de las DIEZ
+    series configuradas hoy en Fase 0 -- no seis, cifra de milestone 0.2
+    citada más arriba, ya desactualizada tras las series de Eurostat y
+    Seguridad Social añadidas en fases 5b/6/8 -- NINGUNA pertenece al
+    dataset "ine-ipc-subclases"; esta ruptura no resuelve para ninguna
+    serie configurada hoy (ResolveActiveBreaksForSeries). El ámbito
+    coincidente más próximo, "ine-ipc", lo usan ipc-general/ipc-subyacente,
+    deliberadamente excluidas por diseño (enlazadas, sin ruptura), no por
+    omisión. Placeholder documentado a la espera de que Fase 1 configure
+    series a nivel de subclase COICOP.
+  source_url: "https://www.ine.es/metodologia/t25/metodologia_IPC_base_2025.pdf"
+
+# ECOICOP ver.2 en el HICP de Eurostat -- FECHA CONFIRMADA (misma
+# investigación, 2026-07-28): nuevos requisitos de transmisión del HICP a
+# partir del mes de referencia enero de 2026 (misma Regulación Delegada
+# (UE) 2024/3159); los índices de enero de 2026 se encadenan a ECOICOP
+# ver.2 bajo el Reglamento de Ejecución (UE) 2024/1720 y se rebasan al
+# periodo de referencia del índice 2025; Eurostat facilita series
+# históricas recalculadas bajo ECOICOP ver.2.
+#
+# ALCANCE -- NOTA DE PRUDENCIA (distinta de la entrada equivalente del
+# INE de arriba): a diferencia del INE, la propia documentación de
+# Eurostat consultada NO afirma explícitamente que las tasas de variación
+# previamente publicadas del HICP agregado queden sin modificar; su
+# propia redacción es una advertencia, no una garantía: "Potential breaks
+# in the HICP data for January 2026 are possible as a result of the
+# classification changes and the applied methodological change." Ante
+# esa asimetría de evidencia, esta entrada adopta el mismo alcance
+# prudente que la entrada del INE (desagregaciones a nivel de subclase
+# COICOP, scope: dataset "eurostat-hicp-subclases", distinto del
+# dataset "eurostat-hicp" que usa ipc-armonizado-eurostat) en lugar de
+# asumir sin confirmación que la serie armonizada agregada ya configurada
+# en Fase 0 (ipc-armonizado-eurostat) está enlazada como su equivalente
+# del INE: el riesgo de un falso positivo de ruptura sobre una serie
+# cabecera pesa más que el de una desagregación aún sin configurar en
+# Fase 0. Si en el futuro se confirma el tratamiento real que Eurostat
+# aplica a la serie armonizada agregada, esta entrada debe revisarse.
+#
+# Fuente: https://ec.europa.eu/eurostat/documents/272892/11336726/HICP+improvements+-+Questions+and+Answers-2026-EN.pdf
+- id: ecoicop-v2-2026-eurostat-hicp
+  kind: methodology
+  scope: { kind: dataset, ref: eurostat-hicp-subclases, ref_status: pending }
+  date: 2026-01-01
+  todo: >-
+    Configurar series a nivel de subclase COICOP bajo el dataset
+    "eurostat-hicp-subclases" cuando Fase 1 las añada (ver NOTA DE ESTADO
+    en note_md); hasta entonces scope.ref intencionalmente no resuelve
+    (remediación 2026-07-29, sdd-verify W2).
+  note_md: >-
+    Nuevos requisitos de transmisión del HICP de Eurostat a partir del
+    mes de referencia enero de 2026 (Reglamento Delegado (UE)
+    2024/3159); los índices de enero de 2026 se encadenan a ECOICOP
+    ver.2 (Reglamento de Ejecución (UE) 2024/1720) y se rebasan al
+    periodo de referencia del índice 2025; Eurostat facilita series
+    históricas recalculadas bajo ECOICOP ver.2. Cita textual de
+    Eurostat: "Potential breaks in the HICP data for January 2026 are
+    possible as a result of the classification changes and the applied
+    methodological change." A diferencia del IPC del INE, Eurostat no
+    garantiza explícitamente que la serie armonizada agregada quede sin
+    modificar; por prudencia, esta ruptura se limita a las
+    desagregaciones a nivel de subclase COICOP y no se aplica a la serie
+    armonizada agregada ya configurada en Fase 0 (ipc-armonizado-eurostat)
+    hasta que se confirme el tratamiento real de Eurostat para esa serie.
+    NOTA DE ESTADO (remediación 2026-07-29, sdd-verify W3): de las DIEZ
+    series configuradas hoy en Fase 0, ninguna pertenece al dataset
+    "eurostat-hicp-subclases"; esta ruptura no resuelve para ninguna
+    serie configurada hoy (ResolveActiveBreaksForSeries). El ámbito
+    coincidente más próximo, "eurostat-hicp", lo usa
+    ipc-armonizado-eurostat, deliberadamente excluida por la nota de
+    prudencia de arriba, no por omisión. Placeholder documentado a la
+    espera de que Fase 1 configure series a nivel de subclase COICOP.
+  source_url: "https://ec.europa.eu/eurostat/documents/272892/11336726/HICP+improvements+-+Questions+and+Answers-2026-EN.pdf"
+
+# CNAE 2025 en afiliación a la Seguridad Social -- EXISTENCIA VERIFICADA
+# indirectamente: el nombre del fichero XLSX 2026 de afiliación media
+# mensual incluye el sufijo "_CNAE25" (p. ej. "..._2026_CNAE25.xlsx"),
+# indicando adopción de la CNAE 2025 en esa serie. PRD §9.6 NO lista esta
+# entrada explícitamente; se añade porque el mismo cambio de
+# clasificación que afecta a la EPA también afecta a Seguridad Social.
+# Alcance: fuente completa (seg-social), no un dataset/serie concretos,
+# porque el parser XLSX de afiliación (Fase 0.6, aún no construido) es
+# la única serie de esta fuente prevista en Fase 0.
+- id: ss-cnae2025-afiliacion
+  kind: methodology
+  scope: { kind: source, ref: seg-social }
+  date_status: unconfirmed
+  todo: >-
+    Confirmar el primer periodo (mes) afectado consultando la nota
+    metodológica de la Seguridad Social / Ministerio de Inclusión sobre
+    la adopción de la CNAE 2025 en las series de afiliación media
+    mensual (el sufijo "_CNAE25" del fichero 2026 confirma la existencia
+    del cambio, no su fecha de efecto exacta).
+  note_md: >-
+    Adopción de la CNAE 2025 en las series de afiliación a la Seguridad
+    Social: existencia indicada por el sufijo "_CNAE25" del fichero XLSX
+    2026 de afiliación media mensual; fecha exacta del primer periodo
+    afectado pendiente de confirmar. No listada explícitamente en PRD
+    §9.6; añadida porque el mismo cambio de clasificación (CNAE 2025)
+    documentado para la EPA también afecta a esta fuente.

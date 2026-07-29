@@ -1,0 +1,63 @@
+# Cambios de gobierno con fecha de toma de posesión (PRD §9.6,
+# §6.1.1(a)). Reconciliado por ingestion.ReconcileEditorialConfig a la
+# tabla event con event_group "governments" (asignado por el cargador,
+# no repetido en cada entrada -- app/internal/adapters/config/loader.go).
+#
+# SIN COLORES DE PARTIDO en ningún campo de este fichero ni en su tipo Go
+# (PRD §12.1: prohibido cualquier color que pueda leerse como color de
+# partido) -- sólo id / nombre / fechas / nota.
+#
+# Cambios en este fichero requieren revisión a cuatro ojos (PRD §9.6,
+# §15.2). Ver .github/CODEOWNERS y .github/BRANCH_PROTECTION.md.
+#
+# PROCEDENCIA DE LAS FECHAS -- léase antes de fusionar: estas fechas
+# provienen del conocimiento general documentado del autor, NO de una
+# búsqueda web en vivo ni de una fuente citada y verificada en esta
+# sesión (no había herramienta WebFetch/WebSearch disponible). Se marcan
+# como "confirmadas" únicamente las fechas de alta certeza histórica
+# (investiduras posteriores a 1982, ampliamente documentadas); la de
+# Adolfo Suárez en 1976 se marca explícitamente unconfirmed por
+# incertidumbre genuina sobre el día exacto de toma de posesión frente a
+# la fecha de nombramiento. Esta es exactamente la clase de contenido que
+# la revisión a cuatro ojos (PRD §9.6) debe verificar contra fuente
+# oficial (La Moncloa / BOE) antes de fusionar -- no se ha fabricado una
+# verificación que no se ha realizado.
+
+- id: gobierno-suarez-1976
+  name: "Adolfo Suárez"
+  date_status: unconfirmed
+  todo: >-
+    Confirmar la fecha exacta de toma de posesión (distinta de la fecha
+    de nombramiento, 3 de julio de 1976) contra la fuente histórica
+    oficial de La Moncloa (listado de presidentes del Gobierno) o el BOE.
+  note_md: "Primer presidente del Gobierno tras el nombramiento real de julio de 1976."
+
+- id: gobierno-calvo-sotelo-1981
+  name: "Leopoldo Calvo-Sotelo"
+  date_start: 1981-02-25
+  note_md: "Investido tras la dimisión de Adolfo Suárez, días después del intento de golpe de Estado del 23 de febrero de 1981."
+
+- id: gobierno-gonzalez-1982
+  name: "Felipe González"
+  date_start: 1982-12-02
+  note_md: "Investido tras las elecciones generales de octubre de 1982."
+
+- id: gobierno-aznar-1996
+  name: "José María Aznar"
+  date_start: 1996-05-05
+  note_md: "Investido tras las elecciones generales de marzo de 1996."
+
+- id: gobierno-zapatero-2004
+  name: "José Luis Rodríguez Zapatero"
+  date_start: 2004-04-17
+  note_md: "Investido tras las elecciones generales de marzo de 2004."
+
+- id: gobierno-rajoy-2011
+  name: "Mariano Rajoy"
+  date_start: 2011-12-21
+  note_md: "Investido tras las elecciones generales de noviembre de 2011."
+
+- id: gobierno-sanchez-2018
+  name: "Pedro Sánchez"
+  date_start: 2018-06-02
+  note_md: "Investido tras la moción de censura contra Mariano Rajoy del 1 de junio de 2018."

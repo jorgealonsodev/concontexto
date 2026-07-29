@@ -1,0 +1,5 @@
+{"COD":"ECP320", "Nombre":"Total Nacional. Todas las edades. Total. Población. Número. ", "T3_Unidad":"Personas", "T3_Escala":" ", "Data":[{"Fecha":"2025-10-01T00:00:00.000+02:00", "T3_TipoDato":"Provisional", "T3_Periodo":"1 de octubre de", "Anyo":2025, "Valor":4.9496923E7}
+,{"Fecha":"2026-01-01T00:00:00.000+01:00", "T3_TipoDato":"Provisional", "T3_Periodo":"1 de enero de", "Anyo":2026, "Valor":4.9590099E7}
+,{"Fecha":"2026-04-01T00:00:00.000+02:00", "T3_TipoDato":"Provisional", "T3_Periodo":"1 de abril de", "Anyo":2026, "Valor":4.968712E7}
+]
+}

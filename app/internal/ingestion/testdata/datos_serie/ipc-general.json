@@ -1,0 +1,5 @@
+{"COD":"IPC290751", "Nombre":"Nacional. Índice general. Índice. ", "T3_Unidad":"Índice", "T3_Escala":" ", "Data":[{"Fecha":"2026-04-01T00:00:00.000+02:00", "T3_TipoDato":"Definitivo", "T3_Periodo":"M04", "Anyo":2026, "Valor":102.883}
+,{"Fecha":"2026-05-01T00:00:00.000+02:00", "T3_TipoDato":"Definitivo", "T3_Periodo":"M05", "Anyo":2026, "Valor":102.951}
+,{"Fecha":"2026-06-01T00:00:00.000+02:00", "T3_TipoDato":"Definitivo", "T3_Periodo":"M06", "Anyo":2026, "Valor":103.598}
+]
+}

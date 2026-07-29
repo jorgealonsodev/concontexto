@@ -1,0 +1,5 @@
+{"COD":"EPA387796", "Nombre":"Total Nacional. Ambos sexos. Total. Ocupados. Valor absoluto. ", "T3_Unidad":"Personas", "T3_Escala":"Miles", "Data":[{"Fecha":"2025-10-01T00:00:00.000+02:00", "T3_TipoDato":"Definitivo", "T3_Periodo":"T4", "Anyo":2025, "Valor":22463.3}
+,{"Fecha":"2026-01-01T00:00:00.000+01:00", "T3_TipoDato":"Definitivo", "T3_Periodo":"T1", "Anyo":2026, "Valor":22293.0}
+,{"Fecha":"2026-04-01T00:00:00.000+02:00", "T3_TipoDato":"Definitivo", "T3_Periodo":"T2", "Anyo":2026, "Valor":22779.0}
+]
+}

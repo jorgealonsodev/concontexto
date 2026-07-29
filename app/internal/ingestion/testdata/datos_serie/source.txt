@@ -1,0 +1,41 @@
+Fixtures: tasa-de-paro-epa.json, ocupados-epa.json, ipc-general.json,
+ipc-subyacente.json, pib-cvi.json, poblacion-residente.json (the six
+milestone-0.2 pinned series, spec source-ingestion-ine). Each file is
+named by SERIES SLUG, not by INE series COD -- the COD is instead read
+from the fixture's own top-level "COD" field at test time (real DATA
+inside a testdata/ file, never a Go string literal), so the origin-
+identifier static-scan guard (app/internal/guard) stays satisfied without
+any index- or order-dependent pairing between six slugs and six CODs.
+
+Fetched: 2026-07-28
+
+Trimmed real responses (last 3 periods only, `nult=3&tip=A` -- the
+IngestSeries orchestrator's real production request uses a generous
+`nult=9999` for full history instead; these fixtures represent a
+trimmed, review-friendly slice of that same real data, not a byte-for-
+byte capture of the full-history call):
+
+  https://servicios.ine.es/wstempus/js/ES/DATOS_SERIE/EPA453100?nult=3&tip=A
+  https://servicios.ine.es/wstempus/js/ES/DATOS_SERIE/EPA387796?nult=3&tip=A
+  https://servicios.ine.es/wstempus/js/ES/DATOS_SERIE/IPC290751?nult=3&tip=A
+  https://servicios.ine.es/wstempus/js/ES/DATOS_SERIE/IPC292511?nult=3&tip=A
+  https://servicios.ine.es/wstempus/js/ES/DATOS_SERIE/CNTR6721?nult=3&tip=A
+  https://servicios.ine.es/wstempus/js/ES/DATOS_SERIE/ECP320?nult=3&tip=A
+
+Values cross-checked against Engram #4690 and PRD §11.3 where available
+(EPA453100 2026-Q2=9.87, 2026-Q1=10.83; IPC290751 2026-M06=103.598;
+ECP320 2026-04-01=49,687,120).
+
+ECP320.json is also the fixture that proves task 5b.6's periodicity
+discovery: its T3_Periodo carries the Spanish quarter-start-date phrase
+("1 de octubre de", "1 de enero de", "1 de abril de") instead of
+EPA/CNTR's "T1"/"T4"/"T1", even though it is configured (and verified via
+SERIE/ECP320's own metadata) as quarterly like them -- see
+app/internal/adapters/ine/periodicity.go's quarterStartLabels.
+
+The COD in each filename is the fixture's identity -- IngestSeries's test
+suite derives it from the filename rather than hard-coding it as a Go
+string literal, keeping the origin-identifier static-scan guard
+(app/internal/guard) honest, exactly like
+app/internal/adapters/ine/testdata/datos_serie/source.txt's identical
+convention for the single 5a.9 fixture.

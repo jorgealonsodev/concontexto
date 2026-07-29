@@ -1,0 +1,49 @@
+name: probe
+
+# Task 9.4: the synthetic daily probe (spec pipeline-operations,
+# "Synthetic daily probe against every endpoint"). Scheduled and separate
+# from ci.yml on purpose -- this workflow makes REAL network calls
+# against INE and Eurostat's live endpoints (PRD §9.4's early-warning
+# job), which ci.yml's own "runs OFFLINE, no network access" contract
+# (app/internal/guard's own tests, validate-config) must never depend on.
+# workflow_dispatch lets an operator run it on demand after a config
+# change, without waiting for the next scheduled tick.
+
+on:
+  schedule:
+    # Once daily, before the ingestion window (PRD §9.4: "catches source-
+    # identifier churn BEFORE the ingestion window"). Exact production
+    # ingestion cadence is deployment configuration, not fixed here; an
+    # early-morning UTC run gives comfortable lead time ahead of any
+    # reasonable ingestion schedule.
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+
+jobs:
+  probe:
+    name: Synthetic daily probe (live)
+    runs-on: ubuntu-latest
+    # Remediation batch (verify-report WARNING W6): before this batch,
+    # adapters/{ine,eurostat}.NewClient(baseURL, nil) fell back to
+    # http.DefaultClient (Timeout: 0), and this suite passes
+    # context.Background() (no deadline) -- an unresponsive source could
+    # hang the job for the runner's full default 360-minute budget rather
+    # than failing (a real attempt this session hung until killed at
+    # 180s). Each adapter now carries its own bounded default Timeout
+    # (30s per request, adapters/{ine,eurostat}/client.go), but this
+    # job-level ceiling is a second, independent bound in case a future
+    # adapter change regresses that default.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # -tags live compiles and runs ONLY the probe suite
+      # (app/internal/probe/live_test.go) -- every other package's tests
+      # are unaffected by the tag and are not this workflow's job (ci.yml
+      # already covers them on every push/PR).
+      - name: Synthetic probe against every configured endpoint
+        run: go test -tags live ./app/internal/probe/... -v

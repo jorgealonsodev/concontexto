@@ -1,0 +1,93 @@
+schema: spec-driven
+
+context: |
+  Portal de Datos Económicos de España — Spanish economic/employment data portal.
+  Greenfield repo (no commits, no code yet), decided architecture per PRD §14.
+  Stack: Go backend/pipeline/server + PostgreSQL 17 + Astro/Svelte (build-only,
+  no Node in prod) + hand-written CSS (utility CSS frameworks forbidden).
+  Monorepo: /app (Go), /web (Astro), /config (editorial YAML), /data-derived.
+  Deployment: Docker Compose via Portainer, behind Nginx Proxy Manager/Cloudflare.
+
+strict_tdd: true
+
+testing:
+  go:
+    command: "go test ./... (run from the repository root)"
+    status: "not yet runnable — Go module does not exist yet"
+  web:
+    command: "TBD — to be established when /web is scaffolded (Astro + Svelte)"
+
+# ADR-5 — Go module is rooted at the repository root, not at /app.
+# Reason: //go:embed patterns are resolved relative to the directory of the file
+# that declares them and MAY NOT traverse upward ("../config" is rejected by the
+# compiler). ADR-1 compiles the editorial YAML into the binary, and PRD §14.2
+# fixes /config at the repository root, so a module rooted at /app could never
+# reach it. Rooting the module at the repository root satisfies both without
+# moving /config or abandoning go:embed.
+# Consequences:
+#   - go.mod lives at the repository root; module github.com/jorgealonsodev/concontexto.
+#   - Go sources still live under /app/... exactly as PRD §14.2 requires.
+#   - One root-level file (embed.go) declares //go:embed config and exposes the
+#     embedded fs.FS; /app packages import it rather than reading from disk.
+#   - `go test ./...` runs from the repository root, not from /app.
+go_module:
+  path: "github.com/jorgealonsodev/concontexto"
+  root: "repository root (see ADR-5 above)"
+  sources: "/app/..."
+
+stack:
+  backend: "Go, single static binary, pgx driver (pure Go, no CGo), excelize for XLSX, distroless image"
+  database: "PostgreSQL 17 (postgres:17-alpine), tuned for low memory"
+  frontend: "Astro with Svelte islands, build-time only, no Node in production; Markdown/MDX content; SVG charts built at build time"
+  # CHANGED by ADR-6 (2026-07-28, docs/adr/0006-tailwind-for-styling.md).
+  # The PRD v2.1 Tailwind prohibition was lifted by the product owner.
+  styling: "Tailwind CSS with a hand-written theme. The Tailwind `theme` config IS the design-token file and is authored from scratch. Tailwind is build-time only, so PRD §14.2's no-Node-in-production rule is unaffected. Astro and Svelte scope <style> natively, so no CSS Modules and no vanilla-extract."
+  styling_forbidden: "Component KITS remain forbidden: Flowbite, shadcn/ui, Bootstrap, DaisyUI, Material UI, Chakra and equivalents (PRD §12.1, ADR-6). Reasons are technical: their interactive components add runtime JS against §12.3's 300 KB budget and §14.2's one-island rule, and 7 of this product's 8 components are static presentation."
+  styling_constraints_that_survive: >-
+    Tailwind's DEFAULT design values are forbidden — stock palette, type scale,
+    radii and shadows. The colour rule outranks every Tailwind default: PRD §12.1
+    forbids red/blue/green/purple wherever readable as party colours (in Spain:
+    PSOE, PP, Vox, Podemos — the whole default semantic palette). That is a
+    political-neutrality requirement, load-bearing for principle P3, not a matter
+    of taste. Visual identity remains a product requirement because §12.4 makes
+    the shared chart image the distribution channel. Page budget §12.3 and
+    accessibility §12.5 (WCAG 2.1 AA, audited) are unchanged.
+  deployment: "Docker Compose stack via Portainer (Repository method), behind Nginx Proxy Manager and Cloudflare"
+  ci: "GitHub Actions — pipeline tests with real fixtures, data validation tests, Astro build, Lighthouse CI (blocking perf budget), visual tests of chart component"
+  layout:
+    - "/app — Go backend + pipeline + server"
+    - "/web — Astro frontend"
+    - "/config — editorial YAML (rupturas.yaml, eventos.yaml, gobiernos.yaml)"
+    - "/data-derived — published CSV"
+    - "docker-compose.yml at repo root"
+
+rules:
+  proposal:
+    - Include rollback plan for risky changes
+    - Respect the decided architecture in PRD §14; do not re-propose alternative stacks
+  specs:
+    - Use Given/When/Then for scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+  design:
+    - Include sequence diagrams for complex flows (data pipeline, API)
+    - Document architecture decisions with rationale
+  tasks:
+    - Group by phase, use hierarchical numbering
+    - Keep tasks completable in one session
+    - Forecast 400-line PR review budget risk (see review workload guard)
+  apply:
+    guidelines:
+      - Follow Clean/Hexagonal architecture conventions for Go
+      # ADR-6 lifted the Tailwind ban. Component KITS are still forbidden.
+      - Tailwind CSS is allowed, with a hand-written theme; never use Tailwind's default palette, type scale, radii or shadows
+      - Never introduce a prefabricated component kit (Flowbite, shadcn/ui, Bootstrap, DaisyUI, Material UI, Chakra)
+      - Never use red, blue, green or purple where they could read as party colours (PRD §12.1, political neutrality)
+      - Keep production frontend Node-free (Astro build-time only)
+    tdd: true
+    test_command: "go test ./... (from the repository root); web test command TBD"
+  verify:
+    test_command: "go test ./... (from the repository root)"
+    build_command: "TBD (Go build + Astro build once scaffolded)"
+    coverage_threshold: 0
+  archive:
+    - Warn before merging destructive deltas

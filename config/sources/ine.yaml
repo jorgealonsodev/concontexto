@@ -1,0 +1,32 @@
+# Source identity and licensing for INE (Instituto Nacional de
+# Estadística), Spain's national statistics office. Verified live
+# 2026-07-28 (Engram #4690). Ingestion goes exclusively through
+# DATOS_SERIE/{COD} (ADR-2) — DATOS_TABLA/SERIES_TABLA are discovery
+# tools only, never in the config below.
+id: ine
+name: "INE — Instituto Nacional de Estadística"
+url: https://www.ine.es
+access_type: api-json
+api:
+  base_url: "https://servicios.ine.es/wstempus/js/ES"
+  max_response_bytes: 8388608 # 8 MiB (design.md "Response ceiling" default)
+licence:
+  name: "Reutilización con atribución (condiciones INE)"
+  url: "https://www.ine.es/aviso_legal"
+  attribution_text: "Fuente: Instituto Nacional de Estadística (INE)"
+  redistribution:
+    allowed: true
+    conditions_md: >-
+      Reutilización libre de la información estadística sujeta a la cita
+      de la fuente, conforme al aviso legal del INE
+      (https://www.ine.es/aviso_legal), que a su vez aplica la normativa
+      española de reutilización de la información del sector público
+      (Ley 37/2007 y normativa de desarrollo). No se requiere
+      autorización previa.
+    commercial_restrictions_md: >-
+      No se han identificado restricciones comerciales adicionales sobre
+      los datos publicados por el INE, a fecha 2026-07-28; revisar el
+      aviso legal citado ante cualquier duda antes de una redifusión
+      comercial.
+    acknowledgement_required: true
+    third_party_excluded: false

@@ -1,0 +1,45 @@
+# LICENSE-DATA
+
+This file governs ConContexto's DERIVED DATA and EDITORIAL TEXT. It does
+NOT cover the Go/Astro source code, which is MIT-licensed — see
+`LICENSE`.
+
+## No single licence covers all derived data
+
+There is deliberately no blanket statement here claiming one licence over
+every series this project publishes. Each upstream source has its own
+terms, and Eurostat's terms are a concrete reason a blanket claim would
+be false: Commission Decision 2011/833/EU authorises reuse of Eurostat's
+own material with acknowledgement, but that permission does NOT extend
+to third-party material Eurostat republishes, and some commercial
+redissemination of Eurostat data is separately restricted. Asserting "CC
+BY 4.0, no exceptions" over Eurostat-derived series would overclaim.
+
+## What IS authoritative
+
+`config/sources/{source}.yaml` is the authoritative licence record for
+every value ConContexto derives from that source: licence name and URL,
+required attribution text, access type, and any redistribution
+restriction (`licence.redistribution.allowed`,
+`licence.redistribution.conditions_md`,
+`licence.redistribution.commercial_restrictions_md`). `validate-config`
+enforces that every source referenced by a configured series has all of
+these fields — see spec `source-attribution-licensing`.
+
+## Default for ConContexto's own editorial text
+
+Where a source's `config/sources/{source}.yaml` permits redistribution
+with attribution, ConContexto's own value-added editorial text —
+indicator descriptions, and the `rupturas.yaml` / `eventos.yaml` /
+`gobiernos.yaml` entries this project authors itself, as distinct from
+the underlying source values — is offered under CC BY 4.0
+(https://creativecommons.org/licenses/by/4.0/), attributed to
+"ConContexto". This default applies to ConContexto's own authored text
+only; it does not override any individual source's stricter terms for
+the underlying values themselves.
+
+## Before you reuse anything
+
+Read the `config/sources/{source}.yaml` file for the specific source
+behind the series you want to reuse. This file explains the mechanism;
+it is not a substitute for those per-source terms.

@@ -1,0 +1,30 @@
+# Tasa de paro armonizada (Eurostat, seasonally adjusted, ages 15-74,
+# both sexes). Verified live 2026-07-28 (dataset une_rt_q): 2026-Q1=10.3
+# (updated 2026-06-11), quarterly cadence. Distinct from INE's own
+# tasa-de-paro-epa (EPA453100, Spain's own national labour-force survey
+# figure) -- this is Eurostat's HARMONIZED cross-country measure, whose
+# own live-verified filter set requires MORE than geo alone: s_adj, age,
+# unit and sex must all be pinned too, or the request returns the full
+# cartesian product across every age band / sex / adjustment combination
+# (spec source-ingestion-eurostat's own verified-filters table,
+# "une_rt_q | geo=ES, plus s_adj, age, unit, sex").
+slug: paro-armonizado-eurostat
+name: "Tasa de paro armonizada (Eurostat, ajustada estacionalmente)"
+source: eurostat
+dataset: eurostat-une
+unit: "% población activa 15-74 años"
+frequency: Q
+decimals: 1
+geo: ES
+harmonized: true
+source_refs:
+  - kind: eurostat-dataset
+    ref: une_rt_q
+    dimensions: [freq, s_adj, age, unit, sex, geo, time]
+    filters: { freq: Q, s_adj: SA, age: Y15-74, unit: PC_ACT, sex: T, geo: ES }
+    valid_from: 2026-07-28
+    valid_to: null
+validation:
+  plausibility: { min: 0, max: 30, max_delta_abs: 3 }
+  continuity: { documented_gaps: [] }
+  revision: { max_backward_periods: 4 }

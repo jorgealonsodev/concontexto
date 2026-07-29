@@ -1,0 +1,36 @@
+# PIB -- volumen encadenado (referencia 2010), ESA 2010 national
+# accounts, gross domestic product at market prices. Verified live
+# 2026-07-28 (dataset nama_10_gdp): 2025=1,318,439.0 million EUR (updated
+# 2026-07-27), ANNUAL cadence -- unlike every other series in this
+# change, which are quarterly or monthly. Distinct from INE's own pib-cvi
+# (CNTR6721, quarterly, indexed rather than an absolute EUR level) -- this
+# is Eurostat's own annual national-accounts series, in absolute
+# chain-linked-volume million-euro terms, harmonised across the EU under
+# ESA 2010. Both unit and na_item must be pinned alongside geo (spec
+# source-ingestion-eurostat's own verified-filters table, "nama_10_gdp |
+# geo=ES, plus unit, na_item").
+#
+# Annual cadence required adding indicators.FrequencyAnnual to the domain
+# (app/internal/indicators/period.go) -- Eurostat's own bare-year label
+# ("2025") is already the canonical shape, so no adapter-side join step
+# was needed the way INE's Anyo/Periodo pair requires one.
+slug: pib-eurostat
+name: "PIB — volumen encadenado, referencia 2010 (Eurostat)"
+source: eurostat
+dataset: eurostat-nama
+unit: "millones EUR (volumen encadenado, referencia 2010)"
+frequency: A
+decimals: 1
+geo: ES
+harmonized: true
+source_refs:
+  - kind: eurostat-dataset
+    ref: nama_10_gdp
+    dimensions: [freq, unit, na_item, geo, time]
+    filters: { freq: A, unit: CLV10_MEUR, na_item: B1GQ, geo: ES }
+    valid_from: 2026-07-28
+    valid_to: null
+validation:
+  plausibility: { min: 500000, max: 2000000, max_delta_abs: 150000 }
+  continuity: { documented_gaps: [] }
+  revision: { max_backward_periods: 12 }

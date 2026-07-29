@@ -1,0 +1,54 @@
+Real, trimmed (3-period) JSON-stat 2.0 responses fetched live 2026-07-28.
+Each file is named by its Eurostat dataset code (the same code
+config/series/*.yaml's source_refs[].ref carries) so tests can derive the
+dataset dynamically from the fixture filename/path, never as a Go string
+literal (app/internal/guard's origin-identifier deny-list already forbids
+"prc_hicp_minr", "une_rt_q", "nama_10_gdp", "coicop", "coicop18" as Go
+literals outside /config and testdata/).
+
+Trimming: each file keeps every field the decoder actually reads
+(version, class, label, source, updated, value, id, size, dimension) and
+drops Eurostat's large "extension"/"status" metadata blocks (dataset
+description, DOI/annotation history, footnote links) that the adapter
+does not parse — the kept fields are byte-real, not fabricated.
+
+prc_hicp_minr.json
+  URL: https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/prc_hicp_minr?format=JSON&lang=EN&freq=M&geo=ES&unit=RCH_A&coicop18=TOTAL&lastTimePeriod=3
+  Fetched: 2026-07-28. HTTP 200. 3 periods: 2026-04=3.5, 2026-05=3.6, 2026-06=3.6.
+  2026-06=3.6 independently matches the prompt's separately stated verified
+  fact for this series/period.
+
+une_rt_q.json
+  URL: https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/une_rt_q?format=JSON&lang=EN&freq=Q&geo=ES&s_adj=SA&age=Y15-74&unit=PC_ACT&sex=T&lastTimePeriod=3
+  Fetched: 2026-07-28. HTTP 200. 3 periods: 2025-Q3=10.5, 2025-Q4=10.2, 2026-Q1=10.3.
+
+nama_10_gdp.json
+  URL: https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/nama_10_gdp?format=JSON&lang=EN&freq=A&geo=ES&unit=CLV10_MEUR&na_item=B1GQ&lastTimePeriod=3
+  Fetched: 2026-07-28. HTTP 200. 3 periods: 2023=1239392.8, 2024=1282216.9, 2025=1318439.0.
+
+deadcode/prc_hicp_minr-coicop18-cp00.json
+  URL: https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/prc_hicp_minr?format=JSON&lang=EN&freq=M&geo=ES&unit=RCH_A&coicop18=CP00&lastTimePeriod=3
+  Fetched: 2026-07-28. HTTP 200, 4481 bytes. Task 6.10/6.11's dead-code
+  fixture: "CP00" is the ECOICOP v1 all-items code, discontinued since
+  ECOICOP ver.2 (the live all-items code is "TOTAL" — see
+  config/series/ipc-armonizado-eurostat.yaml's own doc comment and spec
+  source-ingestion-eurostat, "In ECOICOP ver.2 the all-items code is
+  TOTAL; CP00 is the dead v1 code"). Requesting it returns HTTP 200 (not
+  an HTTP error — this is the whole point: a dead identifier is not a
+  transport failure) with "size":[1,1,0,1,3] (the coicop18 dimension has
+  ZERO categories) and "value":{} (structurally empty). Kept in its own
+  subdirectory (testdata/deadcode/, not testdata/) so it is never picked
+  up by loadEurostatFixtures's "exactly 3 real datasets" glob in
+  client_test.go.
+
+Also verified live (not checked in as a fixture, reported in the apply-progress
+transcript instead): the SAME three base URLs without lastTimePeriod each
+return HTTP 200 with every non-time dimension fully pinned (freq/unit/
+coicop18/geo for prc_hicp_minr; freq/s_adj/age/unit/sex/geo for une_rt_q;
+freq/unit/na_item/geo for nama_10_gdp) and reasonable sizes (20259 / 7442 /
+4689 bytes respectively) — confirming the URL shape works against the real
+endpoint, not only against these trimmed httptest fixtures (the PR 5b
+lesson: a fixture server answers whatever URL it is asked, so URL
+correctness — including that `freq` must be pinned like every other
+non-time dimension — was checked against the live service before relying
+on it here).

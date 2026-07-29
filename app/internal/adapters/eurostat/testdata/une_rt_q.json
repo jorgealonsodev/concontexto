@@ -1,0 +1,113 @@
+{
+  "version": "2.0",
+  "class": "dataset",
+  "label": "Unemployment by sex and age - quarterly data",
+  "source": "ESTAT",
+  "updated": "2026-06-11T23:00:00+0200",
+  "value": {
+    "0": 10.5,
+    "1": 10.2,
+    "2": 10.3
+  },
+  "id": [
+    "freq",
+    "s_adj",
+    "age",
+    "unit",
+    "sex",
+    "geo",
+    "time"
+  ],
+  "size": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    3
+  ],
+  "dimension": {
+    "freq": {
+      "label": "Time frequency",
+      "category": {
+        "index": {
+          "Q": 0
+        },
+        "label": {
+          "Q": "Quarterly"
+        }
+      }
+    },
+    "s_adj": {
+      "label": "Seasonal adjustment",
+      "category": {
+        "index": {
+          "SA": 0
+        },
+        "label": {
+          "SA": "Seasonally adjusted data, not calendar adjusted data"
+        }
+      }
+    },
+    "age": {
+      "label": "Age class",
+      "category": {
+        "index": {
+          "Y15-74": 0
+        },
+        "label": {
+          "Y15-74": "From 15 to 74 years"
+        }
+      }
+    },
+    "unit": {
+      "label": "Unit of measure",
+      "category": {
+        "index": {
+          "PC_ACT": 0
+        },
+        "label": {
+          "PC_ACT": "Percentage of population in the labour force"
+        }
+      }
+    },
+    "sex": {
+      "label": "Sex",
+      "category": {
+        "index": {
+          "T": 0
+        },
+        "label": {
+          "T": "Total"
+        }
+      }
+    },
+    "geo": {
+      "label": "Geopolitical entity (reporting)",
+      "category": {
+        "index": {
+          "ES": 0
+        },
+        "label": {
+          "ES": "Spain"
+        }
+      }
+    },
+    "time": {
+      "label": "Time",
+      "category": {
+        "index": {
+          "2025-Q3": 0,
+          "2025-Q4": 1,
+          "2026-Q1": 2
+        },
+        "label": {
+          "2025-Q3": "2025-Q3",
+          "2025-Q4": "2025-Q4",
+          "2026-Q1": "2026-Q1"
+        }
+      }
+    }
+  }
+}

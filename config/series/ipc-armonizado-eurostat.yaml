@@ -1,0 +1,35 @@
+# Índice armonizado de precios de consumo (IPCA/HICP) -- annual rate of
+# change, ECOICOP ver.2, all-items total. Verified live 2026-07-28
+# (dataset prc_hicp_minr): 2026-06=3.6 (updated 2026-07-17), monthly
+# cadence. Distinct from INE's own ipc-general/ipc-subyacente (national,
+# non-harmonized CPI, unit index not rate of change) -- this series is
+# Eurostat's HARMONIZED measure, used across the EU for cross-country
+# comparison.
+#
+# In ECOICOP ver.2 the all-items code is "TOTAL", not the discontinued
+# v1 code "CP00" (spec source-ingestion-eurostat, "In ECOICOP ver.2 the
+# all-items code is TOTAL; CP00 is the dead v1 code"). Every dimension
+# except time is pinned below (freq/unit/coicop18/geo), matching the
+# dataset's own live-verified "id" list -- an unfiltered request served
+# HTTP 200 and 157,513,570 bytes against a 256 MB container limit, so
+# pinning is not optional (design.md "Eurostat served 157 MB unfiltered").
+slug: ipc-armonizado-eurostat
+name: "Índice armonizado de precios de consumo (IPCA) — tasa de variación anual"
+source: eurostat
+dataset: eurostat-hicp
+unit: "% variación interanual"
+frequency: M
+decimals: 1
+geo: ES
+harmonized: true
+source_refs:
+  - kind: eurostat-dataset
+    ref: prc_hicp_minr
+    dimensions: [freq, unit, coicop18, geo, time]
+    filters: { freq: M, unit: RCH_A, coicop18: TOTAL, geo: ES }
+    valid_from: 2026-07-28
+    valid_to: null
+validation:
+  plausibility: { min: -5, max: 15, max_delta_abs: 4 }
+  continuity: { documented_gaps: [] }
+  revision: { max_backward_periods: 4 }

@@ -1,0 +1,17 @@
+-- 0002_observation_rollback_reason.up.sql
+--
+-- Additive column only — the ten-table Fase 0 set (settled D3) is
+-- unchanged; this touches an existing table's shape, not the table
+-- count asserted by TestMigrationUp_CreatesExactlyTheFase0TableSet.
+--
+-- Deviation note (flagged explicitly, not silently applied): design.md's
+-- settled DDL for `observation` has no field for recording WHY a version
+-- was demoted outside normal supersession by a newer revision. Spec
+-- data-model-vintages, requirement "Bad-run rollback never deletes",
+-- scenario "Rollback restores the prior current version", requires "a
+-- recorded rollback reason" to be queryable against the demoted row.
+-- This column is the minimal way to satisfy that scenario without
+-- touching the settled 0001 migration file or the ten-table set. Report
+-- this to the design owner for a design.md follow-up; do not treat this
+-- comment as a substitute for that follow-up.
+ALTER TABLE observation ADD COLUMN rollback_reason text;

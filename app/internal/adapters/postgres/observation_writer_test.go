@@ -280,6 +280,108 @@ func TestObservationWriter_FailedPromotionLeavesThePriorRowCurrent(t *testing.T)
 	}
 }
 
+// TestObservationWriter_SourceStatusRoundTrips proves migration 0003's
+// column round-trips through WriteRevision and currentObservation
+// unchanged (spec data-model-vintages, "The verbatim token round-trips").
+func TestObservationWriter_SourceStatusRoundTrips(t *testing.T) {
+	ctx := context.Background()
+	tx := newTx(t)
+	if err := postgres.NewRunner(tx).Up(ctx); err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+	seedSeries(t, ctx, tx)
+
+	run1 := seedIngestionRun(t, ctx, tx, "hash-run1", time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	writer := postgres.NewObservationWriter(tx)
+
+	provisional := "Provisional"
+	first, _, err := writer.WriteRevision(ctx, postgres.ObservationInput{
+		SeriesID: "tasa-de-paro-epa", Period: "2026-Q1", Value: ptr(0.6),
+		Status: postgres.StatusProvisional, SourceStatus: &provisional,
+		ExtractedAt: time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC), IngestionRunID: run1,
+	})
+	if err != nil {
+		t.Fatalf("WriteRevision: %v", err)
+	}
+	if first.SourceStatus == nil || *first.SourceStatus != "Provisional" {
+		t.Errorf("expected SourceStatus to round-trip as %q, got %v", "Provisional", first.SourceStatus)
+	}
+
+	// A nil SourceStatus (Eurostat's absent-flag case, spec "A null token
+	// is valid and means definitive") must also round-trip as nil, not as
+	// an empty string.
+	run2 := seedIngestionRun(t, ctx, tx, "hash-run2", time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
+	second, _, err := writer.WriteRevision(ctx, postgres.ObservationInput{
+		SeriesID: "tasa-de-paro-epa", Period: "2026-Q2", Value: ptr(0.7),
+		Status: postgres.StatusDefinitive, SourceStatus: nil,
+		ExtractedAt: time.Date(2026, 4, 2, 0, 0, 0, 0, time.UTC), IngestionRunID: run2,
+	})
+	if err != nil {
+		t.Fatalf("WriteRevision (nil source_status): %v", err)
+	}
+	if second.SourceStatus != nil {
+		t.Errorf("expected a nil SourceStatus to round-trip as nil, got %v", *second.SourceStatus)
+	}
+}
+
+// TestObservationWriter_StatusOnlyTransitionAppendsNewVersion proves the
+// third write-path precondition: WriteRevision's no-op check already
+// compares "value OR status" (source-ingestion-ine slice 2a's own
+// prompt), so a same-value/different-status resubmission is never
+// silently swallowed as a no-op -- it appends version 2 (spec
+// data-model-vintages, "A provisional-to-definitive transition appends a
+// version").
+func TestObservationWriter_StatusOnlyTransitionAppendsNewVersion(t *testing.T) {
+	ctx := context.Background()
+	tx := newTx(t)
+	if err := postgres.NewRunner(tx).Up(ctx); err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+	seedSeries(t, ctx, tx)
+
+	run1 := seedIngestionRun(t, ctx, tx, "hash-run1", time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC))
+	writer := postgres.NewObservationWriter(tx)
+	provisional := "Provisional"
+	if _, _, err := writer.WriteRevision(ctx, postgres.ObservationInput{
+		SeriesID: "tasa-de-paro-epa", Period: "2020-Q1", Value: ptr(0.6),
+		Status: postgres.StatusProvisional, SourceStatus: &provisional,
+		ExtractedAt: time.Date(2020, 1, 2, 0, 0, 0, 0, time.UTC), IngestionRunID: run1,
+	}); err != nil {
+		t.Fatalf("WriteRevision (v1 provisional): %v", err)
+	}
+
+	// Same value, only the status (and its verbatim token) changed.
+	run2 := seedIngestionRun(t, ctx, tx, "hash-run2", time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
+	definitivo := "Definitivo"
+	second, created, err := writer.WriteRevision(ctx, postgres.ObservationInput{
+		SeriesID: "tasa-de-paro-epa", Period: "2020-Q1", Value: ptr(0.6),
+		Status: postgres.StatusDefinitive, SourceStatus: &definitivo,
+		ExtractedAt: time.Date(2026, 4, 2, 0, 0, 0, 0, time.UTC), IngestionRunID: run2,
+	})
+	if err != nil {
+		t.Fatalf("WriteRevision (v2 status-only): %v", err)
+	}
+	if !created || second.Version != 2 {
+		t.Fatalf("expected a status-only change to append version 2, got created=%v version=%d", created, second.Version)
+	}
+	if second.Status != postgres.StatusDefinitive {
+		t.Errorf("expected v2 status D, got %s", second.Status)
+	}
+	if second.SourceStatus == nil || *second.SourceStatus != "Definitivo" {
+		t.Errorf("expected v2 source_status %q, got %v", "Definitivo", second.SourceStatus)
+	}
+
+	var count int
+	row := tx.QueryRow(ctx, `SELECT count(*) FROM observation WHERE series_id=$1 AND period=$2`,
+		"tasa-de-paro-epa", "2020-Q1")
+	if err := row.Scan(&count); err != nil {
+		t.Fatalf("counting observation rows: %v", err)
+	}
+	if count != 2 {
+		t.Errorf("expected exactly 2 observation rows after a status-only transition, got %d", count)
+	}
+}
+
 func TestObservationWriter_WithdrawalIsTombstonedNotDeleted(t *testing.T) {
 	ctx := context.Background()
 	tx := newTx(t)

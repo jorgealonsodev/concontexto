@@ -15,7 +15,7 @@ testing:
     command: "go test ./... (run from the repository root)"
     status: "not yet runnable — Go module does not exist yet"
   web:
-    command: "TBD — to be established when /web is scaffolded (Astro + Svelte)"
+    command: "npm --prefix web test (Vitest — design-token guards, contrast harness, export-schema anti-drift); npm --prefix web run test:e2e (Playwright + @axe-core/playwright)"
 
 # ADR-5 — Go module is rooted at the repository root, not at /app.
 # Reason: //go:embed patterns are resolved relative to the directory of the file
@@ -45,13 +45,16 @@ stack:
   styling_forbidden: "Component KITS remain forbidden: Flowbite, shadcn/ui, Bootstrap, DaisyUI, Material UI, Chakra and equivalents (PRD §12.1, ADR-6). Reasons are technical: their interactive components add runtime JS against §12.3's 300 KB budget and §14.2's one-island rule, and 7 of this product's 8 components are static presentation."
   styling_constraints_that_survive: >-
     Tailwind's DEFAULT design values are forbidden — stock palette, type scale,
-    radii and shadows. The colour rule outranks every Tailwind default: PRD §12.1
-    forbids red/blue/green/purple wherever readable as party colours (in Spain:
-    PSOE, PP, Vox, Podemos — the whole default semantic palette). That is a
-    political-neutrality requirement, load-bearing for principle P3, not a matter
-    of taste. Visual identity remains a product requirement because §12.4 makes
-    the shared chart image the distribution channel. Page budget §12.3 and
-    accessibility §12.5 (WCAG 2.1 AA, audited) are unchanged.
+    radii and shadows; the Tailwind `theme` block is this project's hand-written
+    design-token file. Visual identity remains a product requirement because
+    §12.4 makes the shared chart image the distribution channel. Page budget
+    §12.3 and accessibility §12.5 (WCAG 2.1 AA, audited) are unchanged.
+    COLOUR: the party-colour prohibition was LIFTED by ADR-8 (2026-07-29, product
+    owner). Palette choice is an ordinary design decision with no vetoed hues.
+    What survives is accessibility, not preference: AA contrast measured in BOTH
+    light and dark themes, and colour is never the sole channel distinguishing a
+    series — line pattern or marker shape always carries it too. Reserved
+    semantics stand: amber = pending data, dotted grey = provisional.
   deployment: "Docker Compose stack via Portainer (Repository method), behind Nginx Proxy Manager and Cloudflare"
   ci: "GitHub Actions — pipeline tests with real fixtures, data validation tests, Astro build, Lighthouse CI (blocking perf budget), visual tests of chart component"
   layout:
@@ -81,13 +84,24 @@ rules:
       # ADR-6 lifted the Tailwind ban. Component KITS are still forbidden.
       - Tailwind CSS is allowed, with a hand-written theme; never use Tailwind's default palette, type scale, radii or shadows
       - Never introduce a prefabricated component kit (Flowbite, shadcn/ui, Bootstrap, DaisyUI, Material UI, Chakra)
-      - Never use red, blue, green or purple where they could read as party colours (PRD §12.1, political neutrality)
+      # ADR-8 lifted the party-colour ban. What remains is accessibility, not preference.
+      - Never rely on colour alone to distinguish a series; always pair it with line pattern or marker shape (PRD §12.5)
+      - Verify AA contrast in both light and dark themes by measurement, never by deriving dark mode from light
       - Keep production frontend Node-free (Astro build-time only)
     tdd: true
-    test_command: "go test ./... (from the repository root); web test command TBD"
+    test_command: "go test ./... (from the repository root); npm --prefix web test; npm --prefix web run test:e2e"
   verify:
     test_command: "go test ./... (from the repository root)"
-    build_command: "TBD (Go build + Astro build once scaffolded)"
+    # Closed by slice 9b (task 9b.10, confirm-and-close pass): both stacks
+    # are now scaffolded and buildable — no longer TBD.
+    # `npm run build` (no suffix) now REQUIRES an explicit export-artifact
+    # source and exits non-zero without one — verify-report CRITICAL-15: the
+    # old silent fallback to the synthetic fixture was what let the production
+    # container publish invented numbers as INE statistics. `build:fixture` is
+    # the same production build with the fixture opt-in set, which is the
+    # correct choice for a verification run that has no artifact. See
+    # env.example's "WEB BUILD" block.
+    build_command: "go build ./... (from the repository root); npm --prefix web run build:fixture"
     coverage_threshold: 0
   archive:
     - Warn before merging destructive deltas

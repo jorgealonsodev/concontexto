@@ -1,0 +1,93 @@
+# Build-context exclusions for `docker build -f Dockerfile .`
+#
+# WHY THIS FILE EXISTS (verify-report CRITICAL-15). There was no
+# `.dockerignore`, so `COPY web/ .` in the web-builder stage carried
+# `web/test/fixtures/export` — the golden fixture whose own `source.txt` opens
+# with "MOST OF THE NUMBERS IN THIS DIRECTORY ARE SYNTHESISED. They were never
+# published by INE" — into the image build. The loader's fallback then read it,
+# and the shipped image rendered a straight-line invention as INE statistics.
+#
+# The primary fix is in `web/src/lib/export/loader.ts`: the build now REFUSES
+# to guess an artifact source. This file is defence in depth, and it is worth
+# having on its own terms: data that never enters the build context cannot be
+# published by any future mistake, however the code is rewritten. Both layers
+# are required — neither is a substitute for the other.
+#
+# ADR-5 fixes the context at the repository ROOT (the Go module and the
+# `//go:embed config` shim both live there and `//go:embed` cannot traverse
+# upwards), so this file, not a narrower context, is the only way to keep the
+# test trees out.
+#
+# Everything the Dockerfile actually reads is listed in its own COPY lines:
+# go.mod, go.sum, app/, config/, config_embed.go, and web/. Anything below is
+# either not one of those, or a subtree of one that the build does not need.
+
+# ---- Version control and CI ------------------------------------------------
+.git
+.gitignore
+.github
+.atl
+
+# ---- Documentation and specifications --------------------------------------
+# Never copied, and the largest source of context bloat in this repository.
+docs
+openspec
+*.md
+
+# ---- Host-side tooling and local state -------------------------------------
+scripts
+backups
+.playwright-mcp
+*.png
+docker-compose.yml
+.dockerignore
+
+# ---- Secrets ---------------------------------------------------------------
+# `.env` holds the real POSTGRES_PASSWORD. A build context is not a secret
+# store: anything here is readable in the image's own build layers.
+.env
+.env.*
+
+# ---- Go test material ------------------------------------------------------
+# `go build` ignores `_test.go` files, and the recorded INE/Eurostat payloads
+# under testdata/ are only ever read by tests. Excluded so the go-builder stage
+# copies production sources only.
+**/*_test.go
+**/testdata
+
+# ---- Web: everything the production `astro build` does not read -------------
+web/node_modules
+web/dist
+web/.astro
+web/test-results
+web/playwright-report
+web/blob-report
+web/playwright/.cache
+
+# THE POINT OF THIS FILE. `web/test/fixtures/export` lives under here, and so
+# does every other fixture. `astro build` reads `src/`, `public/` and the
+# config files at the web root; it never reads these, and after this exclusion
+# an image build CANNOT reach the synthetic fixture even if a future edit
+# reinstates a fallback that points at it.
+#
+# `web/src/styles/theme.css` declares `@source not "../../test/**"` and
+# `@source not "../../tests/**"` for Tailwind's candidate scanner; those
+# directives are harmless when the directories are absent (verified by a real
+# `docker build` against this ignore file).
+web/test
+web/tests
+web/playwright.config.ts
+web/vitest.config.ts
+web/scripts
+# Throwaway output directories from `test/export/unconfigured-build-fails.test.ts`.
+web/.build-guard-out-*
+
+# ---- Artifact staging ------------------------------------------------------
+# `web/data-derived/` is DELIBERATELY NOT EXCLUDED: it is the documented path
+# for staging a real exported artifact into the build context for
+# `--build-arg EXPORT_DIR=data-derived` (see Dockerfile's web-builder stage).
+#
+# The root-level `.e2e-export-artifact/` that
+# `.github/workflows/ingest-export-build.yml` writes IS excluded: no COPY line
+# reads it, so in the build context it would be dead weight that looks usable.
+.e2e-export-artifact

@@ -1,0 +1,49 @@
+/*
+ * Component CSS that CANNOT live in a component file.
+ *
+ * `theme.css` next to this file is the design-token file and stays that way
+ * (ADR-6/ADR-8; it is parsed as tokens by `src/lib/design-system/theme-tokens.ts`
+ * and policed by `test/design-system/token-guard.test.ts`). This file holds the
+ * opposite kind of thing: a handful of ordinary class rules whose markup is
+ * emitted by MORE THAN ONE renderer, so no single component can own them.
+ *
+ * Why that situation exists at all: `ChartIsland.svelte` re-renders the chart's
+ * break list rather than hydrating `IndicatorChart.astro`'s DOM — the
+ * Astro/Svelte boundary forces it (slice 8's declared risk, carried into slice
+ * 9a's composition decision). Two renderers therefore emit the same
+ * `.break-band__tooltip` markup. A component-scoped `<style>` in either one is
+ * invisible to the other BY DESIGN: Astro scopes to its component, Svelte
+ * scopes to its own. That is not a bug in either scoping mechanism — it is what
+ * scoping is for. The bug is putting shared markup's styles inside a scope.
+ *
+ * Rule of thumb for anything added here: if exactly one component emits the
+ * markup, its rules belong in that component's own scoped `<style>`, not here.
+ * This file is for the crossings only, and it should stay short.
+ */
+
+/* --- Break band ---------------------------------------------------------
+ * Emitted by `components/BreakBand.astro` AND `components/ChartIsland.svelte`.
+ *
+ * The tooltip carries SUPPLEMENTARY detail only. The band, its icon and its
+ * date label are unconditionally rendered and never dismissible
+ * (indicator-page spec, "Series breaks are always visible and never
+ * dismissible", PRD principle P4) — hiding the tooltip at rest takes nothing
+ * away from that guarantee.
+ *
+ * `opacity`, deliberately, rather than `display`/`visibility`: the tooltip
+ * stays in the accessibility tree at all times, so the trigger's
+ * `aria-describedby` keeps resolving for assistive technology regardless of
+ * visual state.
+ */
+.break-band__tooltip {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+/* Revealed by hover or keyboard focus — never by a dismissible toggle. */
+.break-band:hover .break-band__tooltip,
+.break-band:focus-within .break-band__tooltip {
+  opacity: 1;
+  pointer-events: auto;
+}

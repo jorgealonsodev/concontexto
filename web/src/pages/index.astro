@@ -1,41 +1,29 @@
 ---
-// Hello-world deploy smoke target for milestone 0.1. No components, no
-// design system — Fase 1 replaces this page. Plain hand-written CSS only;
-// no utility/component CSS framework (PRD §12.1 / §14.2 — hard constraint).
+// Deploy smoke target, now wired to the Fase 1 design-token file
+// (web/src/styles/theme.css, ADR-6/ADR-8). Real indicator pages replace this
+// one starting slice 9; until then this page also doubles as the e2e/axe
+// harness's first target (web/tests/e2e/home.spec.ts).
+import "../styles/theme.css";
+// Cross-renderer component rules; see that file's header. Every page that
+// imports the token file imports this one too — they are not separable.
+import "../styles/components.css";
+import { es } from "../i18n/es";
+
 const title = "ConContexto";
 ---
 <!doctype html>
-<html lang="en">
+<html lang="es" data-theme="light">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title}</title>
   </head>
-  <body>
-    <main>
-      <h1>{title}</h1>
-      <p>Portal de Datos Económicos de España — deploy smoke target for milestone 0.1.</p>
+  <body class="bg-bg text-ink font-sans">
+    <main class="mx-auto max-w-2xl p-8">
+      <h1 class="text-heading-lg">{title}</h1>
+      <p class="text-body text-ink-muted">
+        {es.home.tagline}
+      </p>
     </main>
   </body>
 </html>
-
-<style>
-  :root {
-    color-scheme: light dark;
-    font-family: system-ui, sans-serif;
-  }
-
-  body {
-    margin: 0;
-    padding: 2rem;
-  }
-
-  main {
-    max-width: 40rem;
-    margin: 0 auto;
-  }
-
-  h1 {
-    font-size: 1.75rem;
-  }
-</style>

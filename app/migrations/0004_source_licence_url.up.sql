@@ -1,0 +1,19 @@
+-- 0004_source_licence_url.up.sql
+--
+-- Additive column only. Closes a slice-3 disclosed gap (design.md's
+-- "Disclosed gaps" note, publishing-export Open Questions): the `source`
+-- table has always persisted `url` (the source's general website), but
+-- never the distinct licence URL config.LicenceConfig.URL already
+-- schema-validates. Before this migration, publishing.SourceRef.LicenceURL
+-- was populated from source.url as the closest available fact -- an honest
+-- disclosure, but one PRD §9.3 rule 5 and P2 (attribution must be
+-- traceable) both need closed properly: a licence page and a source's
+-- general homepage are not reliably the same URL (e.g. Eurostat's licence
+-- terms live at a Commission Decision page, not ec.europa.eu/eurostat
+-- itself).
+--
+-- Nullable: existing rows have no value until the next reconcile
+-- (postgres.ReconcileDimensions, already run on every ingest cycle) writes
+-- one -- the same "no bespoke backfill, self-heals on next ingest"
+-- convention slice 2a's D-3 backfill note already established.
+ALTER TABLE source ADD COLUMN licence_url text;

@@ -1,0 +1,73 @@
+---
+// design-system spec, "Eight components in a documented workbench" — the
+// `methodology sheet` entry. indicator-page spec, "The methodology sheet
+// carries full traceability" (every field below) and "The methodology sheet
+// is expanded on desktop and collapsed but visible on mobile" (first line
+// "Qué mide / qué no mide" visible without interaction). Ships zero runtime
+// JavaScript. Structurally separate from the chart (PRD principle P1,
+// indicator-page spec "Data and interpretation are structurally separate") —
+// its own landmark region, never nested inside the chart's.
+//
+// Responsive expand/collapse WITHOUT JavaScript: a static build cannot know
+// the reader's viewport, so this renders the SAME fields (via
+// MethodologySheetFields) TWICE — once inside a native `<details>` element
+// (mobile: closed by default, "Qué mide / qué no mide" as the always-visible
+// summary text, real disclosure triggered by the browser's own toggle, zero
+// script) and once as a plain always-visible block (desktop). Tailwind's
+// `md:hidden` / `hidden md:block` responsive utilities pick exactly one of the
+// two via `display: none` at the browser's own media-query evaluation, so only
+// one copy is ever in the accessibility tree for a given viewport — not a
+// half-hidden `<details>` whose native `open` state and CSS-forced visibility
+// could disagree.
+import MethodologySheetFields, { type MethodologySheetBreak } from "./MethodologySheetFields.astro";
+import { es } from "../i18n/es";
+
+export interface Props {
+  slug: string;
+  measures: string;
+  doesNotMeasure: string;
+  sourceName: string;
+  sourceUrl: string;
+  operation: string;
+  originLabel: string;
+  originHref: string;
+  periodicity: string;
+  nextPublicationLabel: string;
+  extractedAt: string;
+  unit: string;
+  base: string | null;
+  breaks: MethodologySheetBreak[];
+  vintageLabel: string;
+  revisionHistoryHref: string | null;
+  ingestionScriptHref: string;
+  perCapitaAttribution?: string | null;
+  /** Visually-hidden disambiguation appended to the landmark's accessible
+   * name only, never to the visible "Ficha metodológica" heading text. A
+   * real indicator page has exactly one MethodologySheet and never needs
+   * this; the workbench renders one per theme on the same page, which would
+   * otherwise give axe-core's `landmark-unique` rule two regions with an
+   * identical accessible name. */
+  landmarkSuffix?: string | null;
+}
+
+const props = Astro.props;
+const headingId = `methodology-heading-${props.slug}`;
+const teaser = es.methodologySheet.teaser;
+---
+
+<section aria-labelledby={headingId} class="rounded-card border border-ink/10 bg-surface p-4" data-testid="methodology-sheet">
+  <h2 id={headingId} class="text-heading-sm font-semibold text-ink">
+    {es.page.methodologyHeading}
+    {props.landmarkSuffix && <span class="sr-only"> ({props.landmarkSuffix})</span>}
+  </h2>
+
+  <details class="md:hidden" data-testid="methodology-sheet-details">
+    <summary class="min-h-11 cursor-pointer py-2 text-body font-medium text-ink">{teaser}</summary>
+    <MethodologySheetFields {...props} />
+  </details>
+
+  <div class="hidden md:block" data-testid="methodology-sheet-expanded">
+    <p class="pt-2 text-body font-medium text-ink">{teaser}</p>
+    <MethodologySheetFields {...props} />
+  </div>
+</section>

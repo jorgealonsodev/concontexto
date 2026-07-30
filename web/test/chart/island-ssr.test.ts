@@ -1,0 +1,129 @@
+// design.md D-5: "A Vitest golden test asserts the island's initial render
+// equals the build-time SVG" — task 8.12. `svelte/server`'s `render()`
+// server-renders `ChartIsland.svelte` to a plain string with NO DOM/browser
+// required (the same mechanism Astro itself uses to produce an island's
+// initial HTML before hydration), so this proves byte-identical parity by
+// construction: both `IndicatorChart.astro` (slice 7) and `ChartIsland.svelte`
+// call the exact same `renderChartSVG` function with the exact same
+// arguments in the default (raw/full) view — there is no second renderer to
+// drift from the first.
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, expect, it } from "vitest";
+import { render } from "svelte/server";
+import ChartIsland from "../../src/components/ChartIsland.svelte";
+import type { ChartPoint } from "../../src/lib/chart/geometry";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// Identical to svg.test.ts's own GOLDEN_POINTS/GOLDEN_BREAKS — the whole
+// point of this test is to feed the SAME input the committed golden fixture
+// was generated from.
+const GOLDEN_POINTS: ChartPoint[] = [
+  { period: "2019-Q1", value: 10.2, status: "D" },
+  { period: "2019-Q2", value: 10.5, status: "D" },
+  { period: "2019-Q3", value: 10.1, status: "D" },
+  { period: "2019-Q4", value: 9.8, status: "D" },
+  { period: "2020-Q1", value: 14.4, status: "D" },
+  { period: "2020-Q2", value: 15.3, status: "D" },
+  { period: "2020-Q3", value: 16.3, status: "P" },
+];
+const GOLDEN_BREAKS = [{ key: "covid-2020", date: "2020-04-01", kind: "metodológica", noteMd: "n/a", sourceUrl: null }];
+
+function extractSvg(html: string): string {
+  const match = /<svg[\s\S]*?<\/svg>/.exec(html);
+  if (!match) throw new Error("no <svg> found in rendered island HTML");
+  return match[0];
+}
+
+describe("ChartIsland — island-parity golden test (task 8.12)", () => {
+  it("the island's initial SSR render's <svg> is byte-identical to the build-time SVG golden", () => {
+    const { body } = render(ChartIsland, {
+      props: {
+        slug: "golden",
+        name: "Golden fixture",
+        unit: "% población activa",
+        frequency: "Q" as const,
+        decimals: 1,
+        points: GOLDEN_POINTS,
+        breaks: GOLDEN_BREAKS,
+        transforms: { yoy: false, qoq: false, perCapita: false },
+        titleId: "golden-title",
+        descriptionId: "golden-description",
+        tableId: "golden-table",
+      },
+    });
+
+    const golden = readFileSync(path.join(__dirname, "../fixtures/chart/golden-indicator-chart.svg"), "utf-8").trim();
+    expect(extractSvg(body)).toBe(golden);
+  });
+
+  it("the default (unhydrated) view is raw/full — no transform or range is pre-selected", () => {
+    const { body } = render(ChartIsland, {
+      props: {
+        slug: "tasa-de-paro-epa",
+        name: "Tasa de paro",
+        unit: "% población activa",
+        frequency: "Q" as const,
+        points: GOLDEN_POINTS,
+        transforms: { yoy: "optional", qoq: "optional", perCapita: false },
+      },
+    });
+    // Every raw point's own period is present -- the default view was never
+    // narrowed by a range preset or replaced by a derived transform series.
+    for (const p of GOLDEN_POINTS) {
+      expect(body).toContain(p.period);
+    }
+  });
+
+  // series-transformations spec, "Range presets" — the "personalizado" entry
+  // (verify-report WARNING-5). The custom range picker is the one control in
+  // this component that CANNOT function without JavaScript: these pages are
+  // statically built, so an arbitrary `[from, to]` pair has nothing to ask.
+  // Astro server-renders an island's markup regardless of `client:idle`, so
+  // rendering the picker unconditionally would hand a no-JavaScript reader
+  // two date inputs and a commit button indistinguishable from the working
+  // controls beside them. It is therefore gated on `onMount` — absent, not
+  // present-but-dead, matching the spec's own discipline for a preset that
+  // cannot apply.
+  //
+  // Asserted at BOTH levels on purpose: here, on the exact server-render
+  // Astro ships, and in `tests/e2e/workbench/chart-no-js.spec.ts` against a
+  // real `javaScriptEnabled: false` browser context. This one is the cheap,
+  // always-run guard; that one is the honest end-to-end proof.
+  it("server-renders no custom-range picker — it cannot work without JavaScript, so it must not appear to", () => {
+    const { body } = render(ChartIsland, {
+      props: {
+        slug: "tasa-de-paro-epa",
+        name: "Tasa de paro",
+        unit: "% población activa",
+        frequency: "Q" as const,
+        points: GOLDEN_POINTS,
+        transforms: { yoy: "optional", qoq: "optional", perCapita: false },
+      },
+    });
+    expect(body).not.toContain('data-testid="chart-custom-range"');
+    expect(body).not.toContain('data-testid="custom-range-from"');
+    expect(body).not.toContain('data-testid="custom-range-apply"');
+    expect(body).not.toContain('type="date"');
+    // The rest of the island IS server-rendered — this is a targeted
+    // omission, not the component failing to render at all.
+    expect(body).toContain('data-testid="accessible-data-table"');
+  });
+
+  it("renders zero fetch/XHR-issuing markup and the whole component composes only from delivered props (series-transformations spec, no network request)", () => {
+    const { body } = render(ChartIsland, {
+      props: {
+        slug: "tasa-de-paro-epa",
+        name: "Tasa de paro",
+        unit: "% población activa",
+        frequency: "Q" as const,
+        points: GOLDEN_POINTS,
+        transforms: { yoy: "optional", qoq: "optional", perCapita: false },
+      },
+    });
+    expect(body).not.toContain("fetch(");
+    expect(body).not.toContain("XMLHttpRequest");
+  });
+});

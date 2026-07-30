@@ -8,11 +8,69 @@
 # table list) MUST NOT be used -- the live source is Estadística Continua
 # de Población (operation 450/ECP), which is this series.
 #
+# THE `discontinued` BLOCK (Remediation B, verify-report CRITICAL-4;
+# spec indicator-page, "The three page states of PRD §6.1.3"). Cifras de
+# Población above is exactly the situation the block exists for: a source
+# stops publishing a series and continues the measurement under a new
+# one. Had CP been configured here before it was retired, the way to
+# record that -- and the ONLY way to make the reader-facing permanent
+# banner appear -- would have been an optional top-level block on the
+# retired series' own file:
+#
+#   discontinued:
+#     since: 2026-03-31          # ISO YYYY-MM-DD, required, a real calendar day
+#     successor: poblacion-residente  # optional; MUST name another configured series
+#
+# validate-config rejects a missing or non-ISO `since`, a `successor`
+# that names no configured series, and a series naming itself. Omitting
+# the whole block is the live case, which is what all six configured
+# series are today -- including this one. Nothing in this repository is
+# marked discontinued, and nothing should be until a source genuinely
+# retires a series.
+#
+# A discontinuation is NOT a retirement: `discontinued` keeps the series
+# in the export artifact with its full history and adds a banner, whereas
+# series.retired_at removes it from the artifact entirely. The spec is
+# explicit that "the chart MUST NOT be hidden in any state".
+#
 # NOTE: this series' own T3_Periodo wire shape is NOT "T1".."T4" like
 # EPA/CNTR -- INE reports it as a Spanish quarter-start-date phrase ("1 de
 # enero de", ...), verified live 2026-07-28. The adapter recognises both
 # shapes (app/internal/adapters/ine/periodicity.go); nothing in this
 # config needs to know about that.
+#
+# CADENCE CORRECTION (D3 adjudication, orchestrator settled; spec
+# source-ingestion-ine / data-validation / editorial-config; design D-4):
+# ECP320 is semiannual across its historical span and quarterly only
+# recently. A single uniform `frequency: Q` contradicts that real history
+# and is exactly the Fase 0 defect this correction fixes (Fase 0's guards
+# judged periodicity from Data[0] alone and never audited the historical
+# interior -- both are now fixed, app/internal/adapters/ine/periodicity.go
+# and app/internal/ingestion/validation/rule2_continuity.go).
+#
+# BOUNDARY VERIFIED LIVE 2026-07-29 against the full history
+# (DATOS_SERIE/ECP320?nult=9999&tip=A), superseding the provisional
+# 2023-Q3 value this file previously carried:
+#
+#   122 observations, 1971-Q1 through 2026-Q2.
+#   Interval steps: 100 x 2 quarters, then 21 x 1 quarter.
+#   Last two-quarter step lands on 2021-Q1; every step from there is 1.
+#
+# The arithmetic closes exactly: 100 semiannual intervals x 2 quarters =
+# 200 quarters = 50 years, and 1971 + 50 = 2021. So the series is
+# uniformly semiannual from 1971-Q1 to 2020-Q3 and uniformly quarterly
+# from 2021-Q1 onward, with no mixed stretch in between.
+#
+# The earlier 2023-Q3 value was not wrong about what it claimed -- it was
+# the earliest point verified offline -- but it was too late by nine
+# quarters. Left uncorrected it would have judged the five genuinely
+# quarterly observations between 2021-Q2 and 2023-Q2 against the
+# semiannual segment, which expects Q1/Q3 only, and rejected real data.
+# Editing this file is a documented-but-UNENFORCED four-eyes /config/**
+# change (branch protection returns HTTP 404 "Branch not protected",
+# second CODEOWNERS reviewer still `@TODO-second-config-reviewer`); see
+# design.md's Migration/Rollout governance disclosure. No workaround added
+# here -- the gap stays open until a second maintainer exists.
 slug: poblacion-residente
 name: "Población residente"
 source: ine
@@ -28,6 +86,12 @@ source_refs:
     table_hint: "59238"
     valid_from: 2026-07-28
     valid_to: null
+cadence_segments:
+  # Present [1, 3] = Q1/Q3 only -- ECP320's real "1 de enero de"/"1 de
+  # julio de" shape, joined onto the quarterly grid (period.go/
+  # periodicity.go), never a new domain frequency (D3 adjudication).
+  - { from: "1971-Q1", to: "2020-Q4", cadence: semiannual, present: [1, 3] }
+  - { from: "2021-Q1", cadence: quarterly }
 validation:
   plausibility: { min: 30000000, max: 60000000, max_delta_abs: 500000 }
   continuity: { documented_gaps: [] }

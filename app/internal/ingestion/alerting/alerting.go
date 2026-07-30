@@ -29,6 +29,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/jorgealonsodev/concontexto/app/internal/ingestion/freshness"
 )
@@ -39,6 +40,27 @@ type Kind string
 const (
 	KindValidationFailed Kind = "validation-failed"
 	KindSourceDown       Kind = "source-down"
+	// KindBreakSignalUncovered is raised when a source-reported break/
+	// definition-differs flag (Eurostat's b/d, design D-3) has no active
+	// series_break covering its period yet -- an operational disclosure,
+	// never a publish block (task 2b.6).
+	KindBreakSignalUncovered Kind = "break-signal-uncovered"
+
+	// KindDispatchFailed is raised when publishing.Publish's rebuild
+	// dispatch (adapters/github, design D-2) cannot be delivered -- never
+	// a retry loop, never a failed ingest: the ingested data is safe, only
+	// publication latency suffers (slice 4, spec pipeline-operations "A
+	// dispatch failure is itself an alert").
+	KindDispatchFailed Kind = "dispatch-failed"
+
+	// KindPublishLatencyBreach is raised by the scheduler watchdog when a
+	// successful ingestion's rebuild has not completed within the
+	// configured publish-latency budget (spec pipeline-operations "An
+	// ingestion not followed by a rebuild alerts operators" -- default 30
+	// minutes, slice 4). Ops-only: this condition never reaches any
+	// reader-facing page (that same requirement's "The condition never
+	// reaches a reader" scenario).
+	KindPublishLatencyBreach Kind = "publish-latency-breach"
 )
 
 // Alert is one operator-facing alert (spec "Alerts MUST name the source
@@ -168,5 +190,57 @@ func SourceDown(ctx context.Context, sink Sink, source string) error {
 		Kind:    KindSourceDown,
 		Source:  source,
 		Message: fmt.Sprintf("source %s has been down for over %s", source, freshness.Window),
+	})
+}
+
+// BreakSignalUncovered raises a KindBreakSignalUncovered alert (task
+// 2b.6, design D-3): a source-reported break ("b") or definition-differs
+// ("d") flag whose period has no already-active series_break covering it
+// yet. It is called from app/internal/ingestion.IngestSeries right after
+// breaks are resolved for the run. The observation itself still
+// publishes as definitive (b/d are metadata, never a status, spec
+// "Break and definition flags are metadata, not statuses") -- this alert
+// is purely operational, telling an editor the series_break metadata
+// linkage (rupturas.yaml, the only writer) is still missing, not that
+// anything failed to publish.
+func BreakSignalUncovered(ctx context.Context, sink Sink, source, series, period, flag string) error {
+	return resolve(sink).Alert(ctx, Alert{
+		Kind:    KindBreakSignalUncovered,
+		Source:  source,
+		Series:  series,
+		Message: fmt.Sprintf("%s/%s reported a %q flag at period %s with no covering series_break yet", source, series, flag, period),
+	})
+}
+
+// DispatchFailed raises a KindDispatchFailed alert (spec pipeline-
+// operations, "A dispatch failure is itself an alert" -- "naming the run
+// and the dispatch failure"). Called from publishing.Publish the moment
+// its Dispatcher returns an error -- best-effort, same convention as
+// every other alert in this package: a failed alert delivery must never
+// fail the publish cycle itself.
+//
+// Publish runs once per INGEST CYCLE (design D-2), which may cover
+// several series each with its own ingestion_run_id -- there is no
+// single canonical run id at that layer. generatedAt (the artifact's own
+// manifest.generated_at, always set) names the specific export/publish
+// cycle instead -- a reasoned, disclosed reading of "naming the run"
+// given this layer genuinely has no single run identifier to name.
+func DispatchFailed(ctx context.Context, sink Sink, generatedAt time.Time, dispatchErr error) error {
+	return resolve(sink).Alert(ctx, Alert{
+		Kind:    KindDispatchFailed,
+		Message: fmt.Sprintf("rebuild dispatch failed for the publish cycle generated at %s: %v", generatedAt.UTC().Format(time.RFC3339), dispatchErr),
+	})
+}
+
+// PublishLatencyBreach raises a KindPublishLatencyBreach alert (spec
+// pipeline-operations, "A stalled rebuild raises an alert" / "A within-
+// budget cycle raises nothing" -- callers only call this once a breach is
+// already decided, this function never re-derives the budget itself).
+func PublishLatencyBreach(ctx context.Context, sink Sink, source, series string, elapsed time.Duration) error {
+	return resolve(sink).Alert(ctx, Alert{
+		Kind:    KindPublishLatencyBreach,
+		Source:  source,
+		Series:  series,
+		Message: fmt.Sprintf("%s/%s: publish latency budget breached, %s elapsed since ingestion success", source, series, elapsed),
 	})
 }

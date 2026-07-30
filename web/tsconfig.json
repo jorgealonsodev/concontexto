@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+
+  // verify-report SUGGESTION-14: this project had NO tsconfig.json and no
+  // `@astrojs/check`, so every `.ts` and `.astro` file in `web/` shipped with
+  // zero static type verification — the type annotations were documentation
+  // that nothing enforced. `astro check` now runs as a blocking step in
+  // `.github/workflows/ci.yml`.
+  //
+  // Extends Astro's own recommended `strict` preset rather than a hand-rolled
+  // set of flags, so the project inherits the compiler options Astro's build
+  // and its language server already assume (`moduleResolution: Bundler`,
+  // `verbatimModuleSyntax`, `allowImportingTsExtensions`, `isolatedModules`,
+  // `jsx: preserve`, `noEmit`) instead of drifting from them. The stricter
+  // `strictest` preset was not chosen: it turns on `noUncheckedIndexedAccess`
+  // and `exactOptionalPropertyTypes`, which are real design decisions about how
+  // this codebase models optionality, not mechanical fixes — adopting them
+  // belongs in its own change with its own review, not smuggled in with the
+  // gate that first makes type-checking exist at all.
+  "extends": "astro/tsconfigs/strict",
+
+  "compilerOptions": {
+    // `scripts/check-lighthouse-budget.ts` runs under Node's own type
+    // stripping and therefore imports with explicit `.ts` extensions; the
+    // Astro preset already allows that. Nothing else is overridden here on
+    // purpose — a preset that is silently rewritten is not a preset.
+  },
+
+  // The Astro preset sets `exclude: ["dist"]`, which REPLACES TypeScript's
+  // default exclusion of `node_modules` (a tsconfig that names `exclude` loses
+  // the default entirely). Restated in full so the checker does not walk
+  // dependencies, plus the build/report directories Playwright and Astro
+  // generate.
+  "exclude": ["dist", "node_modules", ".astro", "test-results", "playwright-report", "blob-report"],
+
+  // Everything authored in this workspace is checked, not just `src/`: the
+  // Vitest suite (`test/`), the Playwright suite (`tests/e2e/`) and the CI gate
+  // script (`scripts/`) are the files most likely to drift from the modules
+  // they exercise, and they are exactly the files a source-only `include`
+  // would have left unverified.
+  "include": [".astro/types.d.ts", "src/**/*", "test/**/*", "tests/**/*", "scripts/**/*", "*.ts", "*.mjs", "*.js"]
+}

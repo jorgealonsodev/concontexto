@@ -92,7 +92,7 @@ func TestRunScheduler_TickDrivesARealCycleThatPublishesAnObservation(t *testing.
 	schedCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	tick := make(chan time.Time)
-	go runScheduler(schedCtx, runners, newOp, time.Hour, tick, nil)
+	go runScheduler(schedCtx, runners, newOp, time.Hour, tick, nil, nil)
 
 	tick <- time.Date(2026, 7, 29, 12, 0, 0, 0, time.UTC)
 

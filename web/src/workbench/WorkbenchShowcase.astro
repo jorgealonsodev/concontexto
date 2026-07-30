@@ -1,0 +1,121 @@
+---
+// Renders all seven static components with representative props and at least
+// one state variant each (design-system spec, "All eight components render in
+// the workbench" — the chart, the eighth, is slice 7/8's own workbench entry).
+// Used twice by `pages/index.astro`, once per theme, so contrast can be
+// measured against real rendered output in both themes rather than declared
+// token pairs alone (Playwright `tests/e2e/workbench/workbench.spec.ts`).
+//
+// Every landmark heading below is suffixed with the theme label: this
+// workbench renders the SAME seven component sections twice on one page (once
+// per theme) for reviewability, which would otherwise give axe-core's
+// `landmark-is-unique` rule two regions with the same accessible name — a
+// workbench-only artifact of showing both themes at once, not a real
+// indicator page's shape (a real page renders exactly one theme at a time).
+import IndicatorCard from "../components/IndicatorCard.astro";
+import MethodologySheet from "../components/MethodologySheet.astro";
+import BreakBand from "../components/BreakBand.astro";
+import AnnotationChip from "../components/AnnotationChip.astro";
+import ActionBar from "../components/ActionBar.astro";
+import FreshnessSemaphore from "../components/FreshnessSemaphore.astro";
+import AccessibleDataTable from "../components/AccessibleDataTable.astro";
+import IndicatorChart from "../components/IndicatorChart.astro";
+import ChartIsland from "../components/ChartIsland.svelte";
+import * as fx from "./fixtures";
+
+export interface Props {
+  theme: "light" | "dark";
+}
+
+const { theme } = Astro.props;
+const themeLabel = theme === "light" ? "claro" : "oscuro";
+---
+
+<div data-theme={theme} class="bg-bg p-6 text-ink" data-testid={`workbench-${theme}`}>
+  <h2 class="mb-4 text-heading-md font-semibold">Tema: {themeLabel}</h2>
+
+  <section class="mb-6" aria-labelledby={`${theme}-indicator-card`}>
+    <h3 id={`${theme}-indicator-card`} class="mb-2 text-heading-sm font-semibold">IndicatorCard ({themeLabel})</h3>
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <IndicatorCard {...fx.indicatorCardFresh} />
+      <IndicatorCard {...fx.indicatorCardPending} />
+    </div>
+  </section>
+
+  <section class="mb-6" aria-labelledby={`${theme}-freshness-semaphore`}>
+    <h3 id={`${theme}-freshness-semaphore`} class="mb-2 text-heading-sm font-semibold">FreshnessSemaphore ({themeLabel})</h3>
+    <div class="flex flex-wrap gap-3">
+      <FreshnessSemaphore {...fx.freshnessFresh} />
+      <FreshnessSemaphore {...fx.freshnessPending} />
+    </div>
+  </section>
+
+  <section class="mb-6" aria-labelledby={`${theme}-methodology-sheet`}>
+    <h3 id={`${theme}-methodology-sheet`} class="mb-2 text-heading-sm font-semibold">MethodologySheet ({themeLabel})</h3>
+    {/* `slug` feeds this component's own generated heading id — overridden
+        per theme so the light and dark sections never collide (both render
+        on the same workbench page). */}
+    <MethodologySheet {...fx.methodologySheet} slug={`${fx.methodologySheet.slug}-${theme}`} landmarkSuffix={themeLabel} />
+  </section>
+
+  <section class="mb-6" aria-labelledby={`${theme}-break-band`}>
+    <h3 id={`${theme}-break-band`} class="mb-2 text-heading-sm font-semibold">BreakBand ({themeLabel})</h3>
+    <BreakBand {...fx.breakBand} id={`break-band-tooltip-${theme}`} />
+  </section>
+
+  <section class="mb-6" aria-labelledby={`${theme}-annotation-chip`}>
+    <h3 id={`${theme}-annotation-chip`} class="mb-2 text-heading-sm font-semibold">AnnotationChip ({themeLabel})</h3>
+    <div class="flex flex-wrap gap-2">
+      <AnnotationChip {...fx.annotationChipWithLink} />
+      <AnnotationChip {...fx.annotationChipWithoutLink} />
+    </div>
+  </section>
+
+  <section class="mb-6" aria-labelledby={`${theme}-action-bar`}>
+    <h3 id={`${theme}-action-bar`} class="mb-2 text-heading-sm font-semibold">ActionBar ({themeLabel})</h3>
+    <div class="flex flex-col gap-3">
+      <ActionBar {...fx.actionBarFull} ariaLabel={`Acciones del indicador — variante completa (${themeLabel})`} />
+      <ActionBar {...fx.actionBarCsvOnly} ariaLabel={`Acciones del indicador — solo CSV (${themeLabel})`} />
+    </div>
+  </section>
+
+  <section class="mb-6" aria-labelledby={`${theme}-accessible-data-table`}>
+    <h3 id={`${theme}-accessible-data-table`} class="mb-2 text-heading-sm font-semibold">AccessibleDataTable ({themeLabel})</h3>
+    <AccessibleDataTable {...fx.accessibleDataTable} id={`${fx.accessibleDataTable.id}-${theme}`} />
+  </section>
+
+  <section class="mb-6" aria-labelledby={`${theme}-indicator-chart`} data-testid={`indicator-chart-section-${theme}`}>
+    <h3 id={`${theme}-indicator-chart`} class="mb-2 text-heading-sm font-semibold">IndicatorChart ({themeLabel})</h3>
+    {/* slice 7/8's own workbench entry (design-system spec, "All eight
+        components render in the workbench") — the static build-time chart
+        this slice ships: SVG, break bands, annotation groups, generated
+        description and accessible data table, zero runtime JavaScript. */}
+    <IndicatorChart {...fx.indicatorChart} idSuffix={theme} />
+  </section>
+
+  <section class="mb-6" aria-labelledby={`${theme}-chart-island`} data-testid={`chart-island-section-${theme}`}>
+    <h3 id={`${theme}-chart-island`} class="mb-2 text-heading-sm font-semibold">ChartIsland ({themeLabel})</h3>
+    {/* slice 8's own workbench entry — PRD §14.2's ONE interactive island:
+        tooltips, keyboard-navigable points, range presets and YoY/QoQ/
+        per-capita toggles, hydrated with `client:idle` (design.md D-5:
+        keeps main-thread work off first paint). Reuses the SAME fixture
+        points/breaks/annotations as the static `IndicatorChart` section
+        above, plus a `transforms` config with per-capita enabled and a
+        partial population series so every toggle kind has something real to
+        demonstrate. */}
+    <ChartIsland
+      client:idle
+      slug={fx.indicatorChart.slug}
+      name={fx.indicatorChart.name}
+      unit={fx.indicatorChart.unit}
+      frequency={fx.indicatorChart.frequency}
+      decimals={fx.indicatorChart.decimals}
+      points={fx.indicatorChart.points}
+      breaks={fx.chartIslandBreaks}
+      annotations={fx.indicatorChart.annotations}
+      transforms={fx.chartIslandTransforms}
+      population={fx.chartIslandPopulation}
+      idSuffix={`island-${theme}`}
+    />
+  </section>
+</div>

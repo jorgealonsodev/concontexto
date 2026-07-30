@@ -1,0 +1,80 @@
+---
+// design-system spec, "Eight components in a documented workbench" — the
+// `break band` entry, kept independently workbench-renderable per this slice's
+// D4 resolution (tasks.md reconciliation table): NOT fused with AnnotationChip
+// into a single chart-only partial, so its non-dismissibility can be exercised
+// and tested on its own.
+//
+// indicator-page spec, "Series breaks are always visible and never dismissible"
+// (PRD principle P4): this component has NO prop, variant or slot that could
+// hide, collapse or toggle the band — that guarantee is unrepresentable by
+// construction, not merely absent from the current prop list. The hover/focus
+// interaction below only reveals supplementary detail (the one-sentence
+// explanation); the band itself, its icon and its date label are unconditionally
+// rendered.
+//
+// The trigger is a real `<button>`, not a `<span tabindex="0">`
+// (verify-report WARNING-7). It is focusable on purpose and anchors the
+// tooltip's `aria-describedby`, so a noninteractive element misdescribed it to
+// assistive technology; `role="button"` would have obliged this
+// zero-JavaScript component to hand-write the Enter/Space handling the native
+// element already has. The button also fixes a real touch defect rather than
+// only a lint line: a focusable `<span>` does not reliably take focus when
+// tapped on iOS Safari, so a touch reader — who has no hover either — could
+// not reach this tooltip at all. `ChartIsland.svelte`'s copy of this markup
+// was converted in the SAME change, and `test/design-system/break-band-parity.test.ts`
+// now fails if either one is changed alone.
+//
+// This is the standalone, chart-independent representation the workbench and
+// this component's own test render. Slice 7's `IndicatorChart.astro` positions
+// the same information as a vertical shaded band across the chart's own SVG
+// plot area (design D-5) — a chart-geometry concern this component does not
+// own; this file focuses on the icon + non-dismissible disclosure contract the
+// spec actually tests at the component level.
+import { es } from "../i18n/es";
+
+export interface Props {
+  date: string;
+  kind: string;
+  summary: string;
+  noteHref: string;
+  /** Overrides the tooltip's generated `id` (default: derived from `date`).
+   * Needed whenever more than one BreakBand for the same period renders on
+   * one page (e.g. this component's own workbench section, light + dark) —
+   * two elements must never share an `id`. */
+  id?: string;
+}
+
+const { date, kind, summary, noteHref, id } = Astro.props;
+const tooltipId = id ?? `break-band-tooltip-${date.replace(/[^a-zA-Z0-9]/g, "")}`;
+---
+
+<div class="break-band relative inline-flex items-center gap-2 rounded-control border-l-4 border-ink bg-surface px-3 py-2 shadow-card">
+  <svg aria-hidden="true" class="h-5 w-5 shrink-0 text-ink" viewBox="0 0 16 16" fill="none">
+    <path d="M8 1v5.5L4 9l4 6 4-6-4-2.5V1" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
+  </svg>
+  <button
+    type="button"
+    aria-describedby={tooltipId}
+    class="break-band__trigger inline-flex min-h-11 min-w-11 items-center rounded-control px-1 text-body font-medium text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+  >
+    {es.breakBand.rupturaLabel} {date} <span class="ml-1 text-caption text-ink-muted">({kind})</span>
+  </button>
+  <span
+    id={tooltipId}
+    role="tooltip"
+    data-testid="break-band-tooltip"
+    class="break-band__tooltip absolute left-0 top-full z-10 mt-2 w-72 rounded-control bg-tooltip-bg p-3 text-caption text-tooltip-ink shadow-popover"
+  >
+    {summary}
+    {" "}
+    <a href={noteHref} class="inline-flex min-h-11 items-center underline">{es.breakBand.noteLinkLabel}</a>
+  </span>
+</div>
+
+{/* The tooltip's reveal rules are NOT here. They live in
+    `src/styles/components.css`, because `ChartIsland.svelte` emits this same
+    `.break-band__tooltip` markup and an Astro-scoped `<style>` is invisible to
+    it — which is exactly how this component's rule came to be missing from the
+    island's copy, leaving that tooltip painted at opacity 1 over the rest of
+    the page. See that file's header for the full rationale. */}

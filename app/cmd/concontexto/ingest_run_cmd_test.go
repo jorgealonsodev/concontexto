@@ -28,6 +28,7 @@ import (
 
 	"github.com/jorgealonsodev/concontexto/app/internal/adapters/config"
 	"github.com/jorgealonsodev/concontexto/app/internal/adapters/filestore"
+	"github.com/jorgealonsodev/concontexto/app/internal/publishing"
 )
 
 func TestCmdIngest_SeriesAndSourceFlagsRequireDatabaseURL(t *testing.T) {
@@ -57,7 +58,7 @@ func TestCmdIngest_NoTargetFlagPrintsUsageNamingSeriesAndSource(t *testing.T) {
 func TestRunIngest_UnknownSeriesSlugFails(t *testing.T) {
 	cfg := &config.Config{}
 	var stdout, stderr bytes.Buffer
-	code := runIngest(context.Background(), nil, cfg, nil, "", "", time.Now(), "does-not-exist", "", &stdout, &stderr)
+	code := runIngest(context.Background(), nil, cfg, nil, "", "", time.Now(), "does-not-exist", "", "", nil, &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("expected exit 1 for an unknown series slug, got %d", code)
 	}
@@ -69,7 +70,7 @@ func TestRunIngest_UnknownSeriesSlugFails(t *testing.T) {
 func TestRunIngest_UnknownSourceIDFails(t *testing.T) {
 	cfg := &config.Config{}
 	var stdout, stderr bytes.Buffer
-	code := runIngest(context.Background(), nil, cfg, nil, "", "", time.Now(), "", "does-not-exist", &stdout, &stderr)
+	code := runIngest(context.Background(), nil, cfg, nil, "", "", time.Now(), "", "does-not-exist", "", nil, &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("expected exit 1 for an unknown source id, got %d", code)
 	}
@@ -139,7 +140,7 @@ func TestRunIngest_SeriesFlagIngestsOneSeriesEndToEnd(t *testing.T) {
 	now := time.Date(2026, 7, 28, 12, 0, 0, 0, time.UTC)
 
 	var stdout, stderr bytes.Buffer
-	code := runIngest(ctx, pool, cfg, store, archiveHashPath, publicHashPath, now, "test-cmd-series", "", &stdout, &stderr)
+	code := runIngest(ctx, pool, cfg, store, archiveHashPath, publicHashPath, now, "test-cmd-series", "", "", nil, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("runIngest: exit %d, stderr=%q", code, stderr.String())
 	}
@@ -157,6 +158,93 @@ func TestRunIngest_SeriesFlagIngestsOneSeriesEndToEnd(t *testing.T) {
 
 	if _, err := os.Stat(publicHashPath); err != nil {
 		t.Errorf("expected the public hash listing to exist after a real ingest run: %v", err)
+	}
+}
+
+// TestRunIngest_APublishingCycleExportsAndDispatches is task 4.5's own
+// RED/GREEN proof at the cmd layer: "≥1 published series triggers Export
+// + dispatch" (design D-2). Reuses TestRunIngest_SeriesFlagIngestsOneSeriesEndToEnd's
+// own fixture shape, adding a real outDir and a spy Dispatcher.
+func TestRunIngest_APublishingCycleExportsAndDispatches(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping: requires Docker (testcontainers), disabled by -short")
+	}
+	ctx := context.Background()
+	container, err := tcpostgres.Run(ctx, "postgres:17-alpine",
+		tcpostgres.WithDatabase("concontexto_run_ingest_publish_test"),
+		tcpostgres.WithUsername("concontexto_run_ingest_publish_test"),
+		tcpostgres.WithPassword("concontexto_run_ingest_publish_test"),
+		tcpostgres.BasicWaitStrategies(),
+	)
+	if err != nil {
+		t.Fatalf("starting postgres container: %v", err)
+	}
+	t.Cleanup(func() { _ = container.Terminate(context.Background()) })
+	dsn, err := container.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		t.Fatalf("connection string: %v", err)
+	}
+
+	var migrateOut, migrateErr bytes.Buffer
+	t.Setenv("DATABASE_URL", dsn)
+	if code := cmdMigrate([]string{"up"}, &migrateOut, &migrateErr); code != 0 {
+		t.Fatalf("migrate up: exit %d, stderr=%q", code, migrateErr.String())
+	}
+
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("connecting pool: %v", err)
+	}
+	defer pool.Close()
+
+	fixture := []byte(`{"COD":"TESTCMDPUB01", "Nombre":"test", "T3_Unidad":"index", "T3_Escala":" ", "Data":[` +
+		`{"Fecha":"2026-06-01T00:00:00.000+02:00", "T3_TipoDato":"Definitivo", "T3_Periodo":"M06", "Anyo":2026, "Valor":100}]}`)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(fixture)
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		Sources: map[string]config.SourceConfig{
+			"test-src-pub": {ID: "test-src-pub", Name: "Test", URL: "https://example.test", AccessType: "api-json",
+				API:     &config.APIConfig{BaseURL: server.URL},
+				Licence: config.LicenceConfig{Name: "lic", AttributionText: "attr"}},
+		},
+		Series: []config.SeriesConfig{
+			{Slug: "test-cmd-series-pub", Name: "Test", Source: "test-src-pub", Dataset: "test-cmd-dataset-pub",
+				Unit: "index", Frequency: "M", Decimals: 1, Geo: "ES",
+				SourceRefs: []config.SourceRef{{Kind: "ine-series-cod", Ref: "TESTCMDPUB01", ValidFrom: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}}},
+		},
+	}
+
+	root := t.TempDir()
+	store := filestore.NewStore(filepath.Join(root, "raw"))
+	archiveHashPath := filepath.Join(root, "app_data", "raw_files.sha256")
+	publicHashPath := filepath.Join(root, "public", "transparencia", "raw-files.sha256")
+	outDir := filepath.Join(root, "data-derived")
+	now := time.Date(2026, 7, 28, 12, 0, 0, 0, time.UTC)
+
+	dispatched := false
+	dispatch := publishing.Dispatcher(func(context.Context, time.Time, string) error {
+		dispatched = true
+		return nil
+	})
+
+	var stdout, stderr bytes.Buffer
+	code := runIngest(ctx, pool, cfg, store, archiveHashPath, publicHashPath, now, "test-cmd-series-pub", "", outDir, dispatch, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("runIngest: exit %d, stderr=%q", code, stderr.String())
+	}
+	if !dispatched {
+		t.Error("expected the publishing cycle to dispatch a rebuild")
+	}
+	if _, err := os.Stat(filepath.Join(outDir, "series", "test-cmd-series-pub.json")); err != nil {
+		t.Errorf("expected the exported series doc to exist on disk: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "ingest: publish: exported and dispatched") {
+		t.Errorf("expected the publish confirmation on stdout, got %q", stdout.String())
 	}
 }
 
@@ -234,7 +322,7 @@ func TestRunIngest_SourceFlagIngestsEveryConfiguredSeriesOfThatSource(t *testing
 	now := time.Date(2026, 7, 28, 12, 0, 0, 0, time.UTC)
 
 	var stdout, stderr bytes.Buffer
-	code := runIngest(ctx, pool, cfg, store, archiveHashPath, publicHashPath, now, "", "test-src-multi", &stdout, &stderr)
+	code := runIngest(ctx, pool, cfg, store, archiveHashPath, publicHashPath, now, "", "test-src-multi", "", nil, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("runIngest: exit %d, stderr=%q", code, stderr.String())
 	}

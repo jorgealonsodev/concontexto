@@ -34,8 +34,18 @@ type SourceClient interface {
 
 	// Decode decodes and normalizes an already-fetched response body
 	// (see FetchRaw) into canonical observations, asserting the
-	// response's actual periodicity against expectedFrequency.
-	Decode(raw []byte, ref string, expectedFrequency Frequency) (SourceResult, error)
+	// response's actual periodicity against expectedFrequency over the
+	// WHOLE payload (spec source-ingestion-ine, "Periodicity MUST be
+	// detected over the whole payload, not from a single observation").
+	//
+	// segments is variadic, not a plain slice, purely so every existing
+	// three-argument call site across the adapters/probe/scheduler test
+	// suites keeps compiling unchanged (task 1.2's own instruction: this
+	// slice's job is the guard fix, not an unrelated call-site rewrite
+	// across a dozen files). It carries the series' declared cadence
+	// segments (design D-4); empty means the ordinary uniform-cadence
+	// case AssertCadence already treats as ordinary dense/uniform.
+	Decode(raw []byte, ref string, expectedFrequency Frequency, segments ...CadenceSegment) (SourceResult, error)
 }
 
 // SourceResult is a SourceClient's decoded outcome: the source's own
@@ -50,8 +60,27 @@ type SourceClient interface {
 // and Eurostat never set it (JSON-stat/Tempus3 payloads have no sheet/
 // column structure for rule 1 to compare), so it stays the zero value
 // for both -- a strictly additive field, not a behaviour change.
+//
+// BreakSignals is additive (slice 2b, design D-3): a source-reported
+// flag that is metadata rather than a status -- Eurostat's "b" (break in
+// time series) and "d" (definition differs) -- routed here instead of
+// into Observation.Status. IngestSeries logs and alerts when a signal's
+// Period has no already-active series_break covering it; it never
+// writes series_break itself (rupturas.yaml remains the only writer,
+// editorial follow-up). INE never populates it (T3_TipoDato carries no
+// such flag), so it stays nil for INE -- a strictly additive field.
 type SourceResult struct {
 	Name           string
 	Observations   []Observation
 	ObservedSchema ObservedSchema
+	BreakSignals   []BreakSignal
+}
+
+// BreakSignal is one source-reported break/definition-differs flag at a
+// given Period (design D-3's routing decision: "b"/"d" MUST NOT be
+// mapped into the observation status enum"). Flag carries the source's
+// own verbatim character ("b" or "d" for Eurostat today).
+type BreakSignal struct {
+	Period Period
+	Flag   string
 }

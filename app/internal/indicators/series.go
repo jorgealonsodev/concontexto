@@ -22,4 +22,10 @@ type Series struct {
 	// for populating them; empty means "not resolved / missing".
 	Source  string
 	Licence string
+
+	// CadenceSegments is the series' declared cadence, when it changes
+	// over the series' life (design D-4, task 1.2/1.6). Empty means the
+	// ordinary case: one uniform cadence at Frequency, the common shape
+	// for five of the six milestone-0.2 series.
+	CadenceSegments []CadenceSegment
 }

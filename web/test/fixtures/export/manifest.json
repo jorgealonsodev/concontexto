@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-07-29T12:00:00Z",
+  "series": [
+    "ipc-general",
+    "ipc-subyacente",
+    "ocupados-epa",
+    "pib-cvi",
+    "poblacion-residente",
+    "tasa-de-paro-epa"
+  ],
+  "digests": {
+    "series/ipc-general.json": "a6397b6139b5b7f4e5c9548efef4fc8c87497eac2e43d5bf610397c50470b247",
+    "series/ipc-subyacente.json": "4609f14f040cf88a31ba0032fac6a1d18a302bd988424ac5357f59a350bf9f0f",
+    "series/ocupados-epa.json": "12f9f6052f0654b99cfc5c52e00433640a63db43649c181a6a3c510b6a1cc054",
+    "series/pib-cvi.json": "2c24d3f0d1575e231cb82f9e7282e5de45862ee8bd802d18d7fbdc9ffe12aa0f",
+    "series/poblacion-residente.json": "fd2c564f3b443747a289e81fcd1c7dc8d4147827b88783124beffcf8567cbdca",
+    "series/tasa-de-paro-epa.json": "5172b833346ce3daace9b310de587bb42a3408ee602ee92649ec14ac7a41a876"
+  }
+}

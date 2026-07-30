@@ -29,15 +29,16 @@ import (
 
 // wireJSONStat is the subset of a JSON-stat 2.0 dataset response this
 // adapter reads. Eurostat's own descriptive/provenance metadata
-// ("extension", per-observation "status" flags) is not modelled here —
-// the same disclosed simplification adapters/ine.Observation already
-// makes for INE's TipoDato flag (none of the six validation rules
-// inspects it).
+// ("extension") is not modelled here -- only "status" (task 2b.1/2b.2,
+// spec source-ingestion-eurostat "JSON-stat status is read at the
+// computed position"), keyed by the exact same linear position "value"
+// already uses.
 type wireJSONStat struct {
 	Label     string                   `json:"label"`
 	ID        []string                 `json:"id"`
 	Size      []int                    `json:"size"`
 	Value     map[string]float64       `json:"value"`
+	Status    map[string]string        `json:"status"`
 	Dimension map[string]wireDimension `json:"dimension"`
 }
 
@@ -59,7 +60,7 @@ type wireCategory struct {
 // observation's own normalised Period, since Eurostat's time labels are
 // already canonical) against expectedFrequency. ref is the dataset code,
 // used only for diagnostic messages.
-func Decode(raw []byte, ref string, expectedFrequency indicators.Frequency) (indicators.SourceResult, error) {
+func Decode(raw []byte, ref string, expectedFrequency indicators.Frequency, segments ...indicators.CadenceSegment) (indicators.SourceResult, error) {
 	var ws wireJSONStat
 	if err := json.Unmarshal(raw, &ws); err != nil {
 		return indicators.SourceResult{}, fmt.Errorf("eurostat: decoding %s response: %w", ref, err)
@@ -124,6 +125,7 @@ func Decode(raw []byte, ref string, expectedFrequency indicators.Frequency) (ind
 	}
 
 	observations := make([]indicators.Observation, 0, len(slots))
+	var breakSignals []indicators.BreakSignal
 	for _, slot := range slots {
 		period, err := indicators.NormalizePeriodLabel(slot.label)
 		if err != nil {
@@ -138,21 +140,94 @@ func Decode(raw []byte, ref string, expectedFrequency indicators.Frequency) (ind
 			}
 			pos = pos*sizeByDim[dim] + idx
 		}
+		posKey := fmt.Sprintf("%d", pos)
 
 		var value *float64
-		if v, ok := ws.Value[fmt.Sprintf("%d", pos)]; ok {
+		if v, ok := ws.Value[posKey]; ok {
 			vv := v
 			value = &vv
 		}
-		observations = append(observations, indicators.Observation{Period: period, Value: value})
+
+		// Task 2b.1-2b.5 (GREEN): status is read at the SAME posKey
+		// "value" already uses (spec "JSON-stat status is read at the
+		// computed position") and classified per design D-3's mapping
+		// table. Eurostat publishes no definitive flag -- an absent entry
+		// (the ordinary case; also true when ws.Status is nil, an empty
+		// map, or simply carries no key for this pos) means definitive,
+		// never a schema-drift rejection (spec "Absence of a flag means
+		// definitive"). classifyEurostatFlag only runs when an entry
+		// exists.
+		status := indicators.ObservationStatusDefinitive
+		sourceStatus := ""
+		if flag, ok := ws.Status[posKey]; ok {
+			classified, breakOrDefinition, classifyErr := classifyEurostatFlag(flag)
+			if classifyErr != nil {
+				return indicators.SourceResult{}, sourceerr.New(sourceerr.SchemaDrift, fmt.Sprintf(
+					"%s: %v at period %s", ref, classifyErr, period))
+			}
+			status = classified
+			sourceStatus = flag
+			if breakOrDefinition {
+				breakSignals = append(breakSignals, indicators.BreakSignal{Period: period, Flag: flag})
+			}
+		}
+
+		observations = append(observations, indicators.Observation{
+			Period: period, Value: value, Status: status, SourceStatus: sourceStatus,
+		})
 	}
 
-	if len(observations) > 0 {
-		if actual := observations[0].Period.Frequency; actual != expectedFrequency {
+	// Task 1.2 (GREEN, "same principle in eurostat" -- design D-4):
+	// periodicity is classified over the WHOLE payload, then audited
+	// against the declared cadence segments (empty means the ordinary
+	// uniform case). No eurostat-sourced series declares cadence_segments
+	// today -- this generalises the same shared mechanism envelope.go's
+	// INE adapter uses, rather than leaving eurostat on the single-
+	// observation check the population defect showed was insufficient.
+	for _, o := range observations {
+		if actual := o.Period.Frequency; actual != expectedFrequency {
 			return indicators.SourceResult{}, sourceerr.New(sourceerr.SchemaDrift, fmt.Sprintf(
 				"%s periodicity mismatch: expected %s, got %s", ref, expectedFrequency, actual))
 		}
 	}
+	periods := make([]indicators.Period, 0, len(observations))
+	for _, o := range observations {
+		periods = append(periods, o.Period)
+	}
+	if err := indicators.AssertCadence(periods, expectedFrequency, segments); err != nil {
+		return indicators.SourceResult{}, sourceerr.New(sourceerr.SchemaDrift, fmt.Sprintf("%s: %v", ref, err))
+	}
 
-	return indicators.SourceResult{Name: ws.Label, Observations: observations}, nil
+	return indicators.SourceResult{Name: ws.Label, Observations: observations, BreakSignals: breakSignals}, nil
+}
+
+// classifyEurostatFlag maps one Eurostat JSON-stat status flag to the
+// shared domain status (design D-3's mapping table), and reports whether
+// the flag is break/definition metadata rather than a status ("b"/"d",
+// spec "Break and definition flags are metadata, not statuses"). It is
+// only called for a flag that IS present -- absence is the caller's own,
+// separate "definitive, no entry needed" branch, never routed through
+// here (unlike INE's classifyTipoDato, which fails closed on a MISSING
+// token too: Eurostat's own vocabulary has no "definitive" flag at all,
+// so a missing entry is not an unknown case to classify, it is the
+// documented default).
+//
+// The flag vocabulary is "p e b d f u c n :" (spec's own list); only "p"
+// (provisional) and "b"/"d" (break/definition metadata) have a decided
+// projection today. Every other flag -- "e", "f", "u", "c", "n", ":", or
+// anything undocumented -- fails closed as sourceerr.SchemaDrift by the
+// caller (spec "An unrecognised flag fails closed"), mirroring
+// adapters/ine.classifyTipoDato's own unrecognised-token handling: two
+// adapters satisfying the same indicators.SourceClient contract answer
+// "is this status token known?" the same fail-closed way, never one
+// coercing silently while the other rejects.
+func classifyEurostatFlag(flag string) (status indicators.ObservationStatus, isBreakOrDefinition bool, err error) {
+	switch flag {
+	case "p":
+		return indicators.ObservationStatusProvisional, false, nil
+	case "b", "d":
+		return indicators.ObservationStatusDefinitive, true, nil
+	default:
+		return "", false, fmt.Errorf("unrecognised status flag %q", flag)
+	}
 }

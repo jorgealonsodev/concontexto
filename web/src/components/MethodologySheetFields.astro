@@ -1,0 +1,140 @@
+---
+// Internal partial reused by MethodologySheet.astro (mobile `<details>` body
+// and desktop always-visible body render the SAME fields once, DRY, without
+// JS) — NOT one of the design-system spec's eight catalog components and not
+// independently workbench-instantiated.
+import { es } from "../i18n/es";
+
+export interface MethodologySheetBreak {
+  date: string;
+  note: string;
+}
+
+export interface Props {
+  measures: string;
+  doesNotMeasure: string;
+  sourceName: string;
+  sourceUrl: string;
+  operation: string;
+  originLabel: string;
+  originHref: string;
+  periodicity: string;
+  nextPublicationLabel: string;
+  extractedAt: string;
+  unit: string;
+  base: string | null;
+  breaks: MethodologySheetBreak[];
+  vintageLabel: string;
+  revisionHistoryHref: string | null;
+  ingestionScriptHref: string;
+  perCapitaAttribution?: string | null;
+}
+
+const {
+  measures,
+  doesNotMeasure,
+  sourceName,
+  sourceUrl,
+  operation,
+  originLabel,
+  originHref,
+  periodicity,
+  nextPublicationLabel,
+  extractedAt,
+  unit,
+  base,
+  breaks,
+  vintageLabel,
+  revisionHistoryHref,
+  ingestionScriptHref,
+  perCapitaAttribution = null,
+} = Astro.props;
+---
+
+<div class="flex flex-col gap-4 pt-3 text-body text-ink">
+  <div>
+    <h3 class="text-caption font-semibold uppercase tracking-wide text-ink-muted">{es.methodologySheet.measuresHeading}</h3>
+    <p data-testid="methodology-measures">{measures}</p>
+  </div>
+  <div>
+    <h3 class="text-caption font-semibold uppercase tracking-wide text-ink-muted">{es.methodologySheet.doesNotMeasureHeading}</h3>
+    <p>{doesNotMeasure}</p>
+  </div>
+  <dl class="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-2">
+    <div>
+      <dt class="text-caption text-ink-muted">{es.methodologySheet.sourceLabel}</dt>
+      <dd><a href={sourceUrl} class="underline">{sourceName}</a></dd>
+    </div>
+    <div>
+      <dt class="text-caption text-ink-muted">{es.methodologySheet.operationLabel}</dt>
+      <dd>{operation}</dd>
+    </div>
+    <div>
+      <dt class="text-caption text-ink-muted">{es.methodologySheet.originLabel}</dt>
+      <dd><a href={originHref} class="underline">{originLabel}</a></dd>
+    </div>
+    <div>
+      <dt class="text-caption text-ink-muted">{es.methodologySheet.periodicityLabel}</dt>
+      <dd>{periodicity}</dd>
+    </div>
+    <div>
+      <dt class="text-caption text-ink-muted">{es.methodologySheet.nextPublicationLabel}</dt>
+      <dd>{nextPublicationLabel}</dd>
+    </div>
+    <div>
+      <dt class="text-caption text-ink-muted">{es.methodologySheet.extractedAtLabel}</dt>
+      <dd class="font-numeric tabular-nums">{extractedAt}</dd>
+    </div>
+    <div>
+      <dt class="text-caption text-ink-muted">{es.methodologySheet.unitLabel}</dt>
+      <dd>{unit}</dd>
+    </div>
+    {
+      base && (
+        <div>
+          <dt class="text-caption text-ink-muted">{es.methodologySheet.baseLabel}</dt>
+          <dd>{base}</dd>
+        </div>
+      )
+    }
+    <div>
+      <dt class="text-caption text-ink-muted">{es.methodologySheet.vintageLabel}</dt>
+      <dd>
+        {vintageLabel}
+        {
+          revisionHistoryHref && (
+            <>
+              {" "}
+              — <a href={revisionHistoryHref} class="underline">{es.methodologySheet.revisionHistoryLinkLabel}</a>
+            </>
+          )
+        }
+      </dd>
+    </div>
+  </dl>
+  {
+    breaks.length > 0 && (
+      <div>
+        <h3 class="text-caption font-semibold uppercase tracking-wide text-ink-muted">{es.chart.breaksHeading}</h3>
+        <ul class="list-disc pl-5">
+          {breaks.map((b) => (
+            <li>
+              <span class="font-numeric tabular-nums">{b.date}</span>: {b.note}
+            </li>
+          ))}
+        </ul>
+      </div>
+    )
+  }
+  {
+    perCapitaAttribution && (
+      <div>
+        <h3 class="text-caption font-semibold uppercase tracking-wide text-ink-muted">{es.methodologySheet.perCapitaAttributionHeading}</h3>
+        <p>{perCapitaAttribution}</p>
+      </div>
+    )
+  }
+  <p>
+    <a href={ingestionScriptHref} class="underline">{es.page.ingestionScriptLinkLabel}</a>
+  </p>
+</div>

@@ -15,3 +15,13 @@ hard-coding it as a Go string literal, keeping the origin-identifier
 static-scan guard (app/internal/guard) honest: real identifiers stay
 confined to /config and testdata/, per the spec editorial-config
 requirement, never as a Go source literal.
+
+Amended 2026-07-29 (slice 2a, not a re-fetch): the original trim omitted
+T3_TipoDato even though the request already carried tip=A (so the field
+was present in the real response). Added "T3_TipoDato": "Definitivo" to
+all three rows -- verified against the byte-identical values already
+carried by app/internal/ingestion/testdata/datos_serie/tasa-de-paro-epa.json
+(same COD, same three periods/values, already recorded Definitivo for
+this series) -- and removed the phantom "Secreto" field, which does not
+exist in the tip=A response either (spec source-ingestion-ine, "No
+phantom field survives").

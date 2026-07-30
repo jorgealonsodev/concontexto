@@ -9,3 +9,22 @@ prd_web_datos_economicos_v2 (1).md
 
 # Local backup output from scripts/backup/pg_dump.sh
 /backups/
+
+# The export artifact the ingest-export-build job hands from its Go half to
+# its astro-build half (.github/workflows/ingest-export-build.yml's
+# EXPORT_ARTIFACT_DIR). Machine-generated, regenerated on every run, and
+# reproduced at this same path when the job is run locally.
+/.e2e-export-artifact/
+
+# Page snapshots and traces written by the Playwright MCP server
+/.playwright-mcp/
+
+# Screenshots dropped at the repo root by a relative-path MCP capture. The
+# server's own output directory above is the intended destination; this is the
+# safety net for the times a bare filename is passed instead.
+/*.png
+# Test residue: schedule_integration_test.go exercises the scheduler's publish
+# step, which resolves its static root through serve.go's RELATIVE "web/dist"
+# default — so the artifact lands inside the package directory rather than in a
+# t.TempDir(). Ignored rather than committed; the test recreates it on every run.
+/app/cmd/concontexto/web/

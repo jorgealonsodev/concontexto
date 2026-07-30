@@ -79,13 +79,17 @@ func TestDispatch_NoArgsExitsNonZeroWithUsage(t *testing.T) {
 	}
 }
 
-// TestRealCommands_ExposesExactlyTheFiveRequiredSubcommands proves the
+// TestRealCommands_ExposesExactlySixRequiredSubcommands proves the
 // production wiring (not just the dispatch mechanism) exposes exactly
-// the five subcommands required by spec platform-runtime.
-func TestRealCommands_ExposesExactlyTheFiveRequiredSubcommands(t *testing.T) {
+// the five subcommands spec platform-runtime requires PLUS `export`
+// (phase-1-indicator-page D-2, task 3.11 -- see main.go's own package
+// doc comment: the merged platform-runtime spec has not yet been given
+// a delta spec documenting this sixth subcommand, a disclosed
+// spec-maintenance gap, not an oversight in this test).
+func TestRealCommands_ExposesExactlySixRequiredSubcommands(t *testing.T) {
 	want := map[string]bool{
 		"serve": true, "ingest": true, "migrate": true,
-		"validate-config": true, "healthcheck": true,
+		"validate-config": true, "healthcheck": true, "export": true,
 	}
 
 	cmds := realCommands()

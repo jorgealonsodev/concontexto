@@ -73,7 +73,7 @@ func TestRunScheduler_FirstTickRunsEveryConfiguredSource(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	tick := make(chan time.Time)
-	go runScheduler(ctx, runners, newOp, time.Hour, tick, nil)
+	go runScheduler(ctx, runners, newOp, time.Hour, tick, nil, nil)
 
 	tick <- time.Date(2026, 7, 29, 0, 0, 0, 0, time.UTC)
 	counter.waitForCalls(t, 2)
@@ -100,7 +100,7 @@ func TestRunScheduler_SuccessfulSourceWaitsTheFullIntervalBeforeItsNextCycle(t *
 	defer cancel()
 	tick := make(chan time.Time)
 	interval := time.Hour
-	go runScheduler(ctx, runners, newOp, interval, tick, nil)
+	go runScheduler(ctx, runners, newOp, interval, tick, nil, nil)
 
 	base := time.Date(2026, 7, 29, 0, 0, 0, 0, time.UTC)
 	tick <- base
@@ -142,7 +142,7 @@ func TestRunScheduler_FailedSourceIsRetriedAtItsRunnerBackoffNotTheFullInterval(
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	tick := make(chan time.Time)
-	go runScheduler(ctx, runners, newOp, 24*time.Hour, tick, nil)
+	go runScheduler(ctx, runners, newOp, 24*time.Hour, tick, nil, nil)
 
 	base := time.Date(2026, 7, 29, 0, 0, 0, 0, time.UTC)
 	tick <- base
@@ -183,6 +183,91 @@ func TestScheduleInterval_FallsBackToDefaultWhenUnsetOrInvalid(t *testing.T) {
 	}
 }
 
+// TestRunScheduler_InvokesWatchdogEveryTickOnceASuccessIsKnown covers task
+// 4.11/4.12's own wiring point: the publish-latency watchdog
+// (app/internal/scheduler.PublishLatencyBreached) must be evaluated on
+// EVERY tick for every source that already has a known success,
+// independent of whether that source's own ingest cycle is due this tick
+// -- a stalled rebuild can only be caught by checking regularly, not only
+// when the 24h ingest interval happens to come back around. The watchdog
+// cannot fire on the very FIRST tick a source is seen (there is nothing
+// known yet to compare against, by construction -- lastSuccess is only
+// populated AFTER that tick's own op returns).
+func TestRunScheduler_InvokesWatchdogEveryTickOnceASuccessIsKnown(t *testing.T) {
+	counter := newCallCounter()
+	newOp := func(sourceID string) func(context.Context) error {
+		return func(context.Context) error {
+			counter.record(sourceID)
+			return nil
+		}
+	}
+	runners := map[string]*scheduler.Runner{"ine": scheduler.NewRunner("ine")}
+
+	type watchdogCall struct {
+		sourceID    string
+		now         time.Time
+		lastSuccess time.Time
+	}
+	var mu sync.Mutex
+	var calls []watchdogCall
+	watchdogCalled := make(chan struct{}, 64)
+	watchdog := func(sourceID string, now, lastSuccess time.Time) {
+		mu.Lock()
+		calls = append(calls, watchdogCall{sourceID, now, lastSuccess})
+		mu.Unlock()
+		watchdogCalled <- struct{}{}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	tick := make(chan time.Time)
+	// A 24h interval means the source will NOT be due again on the second
+	// or third tick below -- the watchdog must still fire for it.
+	go runScheduler(ctx, runners, newOp, 24*time.Hour, tick, nil, watchdog)
+
+	base := time.Date(2026, 7, 29, 0, 0, 0, 0, time.UTC)
+	tick <- base
+	counter.waitForCalls(t, 1)
+
+	// Second tick: lastSuccess is now known (seeded by the first tick's
+	// own successful op) -- the watchdog MUST fire, even though the
+	// source's own ingest is not due again for another 24h.
+	secondTick := base.Add(2 * time.Hour)
+	tick <- secondTick
+	select {
+	case <-watchdogCalled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected the watchdog to fire on the second tick, once a success is known, even though the source's ingest was not due")
+	}
+
+	// Third tick, still well before the 24h re-ingest interval: the
+	// watchdog must fire again, proving it runs on a REGULAR cadence, not
+	// only once.
+	thirdTick := base.Add(4 * time.Hour)
+	tick <- thirdTick
+	select {
+	case <-watchdogCalled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected the watchdog to fire on the third tick too")
+	}
+
+	if got := counter.count("ine"); got != 1 {
+		t.Fatalf("expected the source's own op to run exactly once (not due again on ticks 2/3), got %d", got)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(calls) != 2 {
+		t.Fatalf("expected exactly 2 watchdog invocations (none on the first tick, one each on the second and third), got %d: %+v", len(calls), calls)
+	}
+	if calls[0].sourceID != "ine" || !calls[0].now.Equal(secondTick) || !calls[0].lastSuccess.Equal(base) {
+		t.Errorf("expected the first watchdog call to report (ine, %v, %v), got %+v", secondTick, base, calls[0])
+	}
+	if calls[1].sourceID != "ine" || !calls[1].now.Equal(thirdTick) || !calls[1].lastSuccess.Equal(base) {
+		t.Errorf("expected the second watchdog call to report (ine, %v, %v), got %+v", thirdTick, base, calls[1])
+	}
+}
+
 func TestRunScheduler_StopsWhenContextIsCancelled(t *testing.T) {
 	counter := newCallCounter()
 	newOp := func(sourceID string) func(context.Context) error {
@@ -197,7 +282,7 @@ func TestRunScheduler_StopsWhenContextIsCancelled(t *testing.T) {
 	tick := make(chan time.Time)
 	done := make(chan struct{})
 	go func() {
-		runScheduler(ctx, runners, newOp, time.Hour, tick, nil)
+		runScheduler(ctx, runners, newOp, time.Hour, tick, nil, nil)
 		close(done)
 	}()
 

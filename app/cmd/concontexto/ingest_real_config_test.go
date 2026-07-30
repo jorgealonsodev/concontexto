@@ -138,7 +138,7 @@ func TestRunIngest_RealEmbeddedConfigReconcilesAndIngestsARealConfiguredSeriesOf
 	// one) before ingesting -- this is the exact prerequisite step the
 	// previous batch's own apply-progress flagged as never proven
 	// against reality.
-	code := runIngest(ctx, pool, cfg, store, archiveHashPath, publicHashPath, now, slug, "", &stdout, &stderr)
+	code := runIngest(ctx, pool, cfg, store, archiveHashPath, publicHashPath, now, slug, "", "", nil, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("runIngest against the real embedded config: exit %d, stderr=%q", code, stderr.String())
 	}

@@ -1,0 +1,12 @@
+-- 0003_observation_source_status.up.sql
+--
+-- Additive column only (design D-3; spec data-model-vintages, "The
+-- source's verbatim status token is preserved"): observation.status
+-- stays the binary-plus-withdrawn domain enum ('P'|'D'|'W'); this column
+-- preserves the SOURCE's own token verbatim alongside it (INE's
+-- T3_TipoDato, "Definitivo"/"Provisional"; Eurostat's JSON-stat flag
+-- character, slice 2b). Nullable because Eurostat expresses "definitive"
+-- by the ABSENCE of a flag (spec, "A null token is valid and means
+-- definitive for Eurostat") -- there is no source token to record for
+-- that case, so NULL means "none recorded", never "unknown/invalid".
+ALTER TABLE observation ADD COLUMN source_status text;

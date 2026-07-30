@@ -12,7 +12,10 @@ package alerting_test
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/jorgealonsodev/concontexto/app/internal/ingestion/alerting"
 )
@@ -94,5 +97,47 @@ func TestSetDefaultSink_NilResetsToNoopNotPanic(t *testing.T) {
 func TestNoopSink_DiscardsSilently(t *testing.T) {
 	if err := (alerting.NoopSink{}).Alert(context.Background(), alerting.Alert{Kind: alerting.KindSourceDown, Source: "ine"}); err != nil {
 		t.Fatalf("expected NoopSink.Alert to never fail, got: %v", err)
+	}
+}
+
+// Task 4.7/4.11 (RED)/(GREEN): DispatchFailed and PublishLatencyBreach are
+// slice 4's two new alert kinds (spec pipeline-operations' MODIFIED
+// "Operational alerts" requirement).
+func TestDispatchFailed_NamesTheCycleAndTheUnderlyingError(t *testing.T) {
+	spy := &spySink{}
+	underlying := errors.New("github: dispatch returned status 403")
+	generatedAt := time.Date(2026, 7, 29, 6, 0, 0, 0, time.UTC)
+	if err := alerting.DispatchFailed(context.Background(), spy, generatedAt, underlying); err != nil {
+		t.Fatalf("DispatchFailed: %v", err)
+	}
+	if len(spy.alerts) != 1 {
+		t.Fatalf("expected exactly 1 alert, got %d", len(spy.alerts))
+	}
+	a := spy.alerts[0]
+	if a.Kind != alerting.KindDispatchFailed {
+		t.Errorf("expected KindDispatchFailed, got %v", a.Kind)
+	}
+	if !strings.Contains(a.Message, "2026-07-29T06:00:00Z") || !strings.Contains(a.Message, "403") {
+		t.Errorf("expected the message to name the cycle's generated_at and the underlying error, got %q", a.Message)
+	}
+}
+
+func TestPublishLatencyBreach_NamesSourceSeriesAndElapsed(t *testing.T) {
+	spy := &spySink{}
+	if err := alerting.PublishLatencyBreach(context.Background(), spy, "ine", "tasa-de-paro-epa", 45*time.Minute); err != nil {
+		t.Fatalf("PublishLatencyBreach: %v", err)
+	}
+	if len(spy.alerts) != 1 {
+		t.Fatalf("expected exactly 1 alert, got %d", len(spy.alerts))
+	}
+	a := spy.alerts[0]
+	if a.Kind != alerting.KindPublishLatencyBreach {
+		t.Errorf("expected KindPublishLatencyBreach, got %v", a.Kind)
+	}
+	if a.Source != "ine" || a.Series != "tasa-de-paro-epa" {
+		t.Errorf("expected the alert to name source+series, got source=%q series=%q", a.Source, a.Series)
+	}
+	if !strings.Contains(a.Message, "45m0s") {
+		t.Errorf("expected the message to name the elapsed duration, got %q", a.Message)
 	}
 }

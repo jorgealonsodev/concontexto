@@ -202,7 +202,38 @@ func Decode(raw []byte, schema config.XLSXSchemaConfig, expectedFrequency indica
 		}
 
 		value := total
-		observations = append(observations, indicators.Observation{Period: period, Value: &value})
+		observations = append(observations, indicators.Observation{
+			Period: period,
+			Value:  &value,
+			// Status/SourceStatus (slice 2c, corrective, disclosed by
+			// slice 2b): the Social Security "Afiliación media mensual"
+			// workbook publishes NO provisional/definitive marker of any
+			// kind -- verified against the real fixture (task 8.1): a
+			// single flat sheet, zero formula cells, no status column,
+			// no status concept anywhere in the workbook. This is a
+			// POSITIVE statement about the source, not a fallback: every
+			// observation this adapter decodes is Definitive because the
+			// source has no other category to report, and SourceStatus
+			// stays the empty string (ingest.go's sourceStatusPtr maps
+			// that to a NULL source_status column, migration 0003's own
+			// documented meaning: "none recorded" -- true here, since
+			// there is no token to record, never "unknown/invalid").
+			//
+			// Contrast with the other two governed sources (design D-3):
+			//   - INE: T3_TipoDato is present and MUST be recognised; a
+			//     missing or unrecognised token fails the whole decode
+			//     closed (classifyTipoDato, adapters/ine/envelope.go).
+			//   - Eurostat: a defined status-flag vocabulary where
+			//     ABSENCE of a flag means definitive; a null source_status
+			//     is a valid, spec-required case (classifyEurostatFlag,
+			//     adapters/eurostat/envelope.go).
+			//   - XLSX / Social Security (here): the source has no status
+			//     concept at all -- always Definitive, source_status
+			//     always NULL. Unlike INE/Eurostat, there is no token to
+			//     classify or reject; the classification is a fact about
+			//     this source, decided once, not a per-observation read.
+			Status: indicators.ObservationStatusDefinitive,
+		})
 	}
 
 	if len(observations) == 0 {

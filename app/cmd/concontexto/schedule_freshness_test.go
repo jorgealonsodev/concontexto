@@ -72,7 +72,7 @@ func TestRunScheduler_ColdStartWithARecentPersistedSuccessRaisesNoIncidentOnFail
 	// A FRESH invocation: runScheduler's own lastSuccess map starts
 	// empty here, exactly as it does after every process restart --
 	// this is the cold-start path production always takes.
-	go runScheduler(ctx, runners, newOp, 24*time.Hour, tick, seedLastSuccess)
+	go runScheduler(ctx, runners, newOp, 24*time.Hour, tick, seedLastSuccess, nil)
 
 	tick <- base
 	select {
@@ -128,7 +128,7 @@ func TestRunScheduler_ColdStartWithAPersistedSuccessOlderThan24hRaisesAnIncident
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	tick := make(chan time.Time)
-	go runScheduler(ctx, runners, newOp, 24*time.Hour, tick, seedLastSuccess)
+	go runScheduler(ctx, runners, newOp, 24*time.Hour, tick, seedLastSuccess, nil)
 
 	tick <- base
 	select {

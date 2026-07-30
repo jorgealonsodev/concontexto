@@ -22,6 +22,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -31,11 +32,14 @@ import (
 	"github.com/jorgealonsodev/concontexto/app/internal/adapters/config"
 	"github.com/jorgealonsodev/concontexto/app/internal/adapters/eurostat"
 	"github.com/jorgealonsodev/concontexto/app/internal/adapters/filestore"
+	"github.com/jorgealonsodev/concontexto/app/internal/adapters/github"
 	"github.com/jorgealonsodev/concontexto/app/internal/adapters/ine"
 	"github.com/jorgealonsodev/concontexto/app/internal/adapters/postgres"
 	"github.com/jorgealonsodev/concontexto/app/internal/adapters/xlsx"
 	"github.com/jorgealonsodev/concontexto/app/internal/indicators"
 	"github.com/jorgealonsodev/concontexto/app/internal/ingestion"
+	"github.com/jorgealonsodev/concontexto/app/internal/ingestion/validation"
+	"github.com/jorgealonsodev/concontexto/app/internal/publishing"
 )
 
 // runIngestReconcile reconciles cfg's editorial YAML into
@@ -155,7 +159,63 @@ func cmdIngestRun(ctx context.Context, db postgres.TxBeginner, cfg *config.Confi
 	root := appDataRoot()
 	store := filestore.NewStore(filepath.Join(root, "raw"))
 	archiveHashPath, publicHashPath := resolveIngestPaths(root, staticAssetRoot())
-	return runIngest(ctx, db, cfg, store, archiveHashPath, publicHashPath, time.Now().UTC(), seriesFlag, sourceFlag, stdout, stderr)
+	return runIngest(ctx, db, cfg, store, archiveHashPath, publicHashPath, time.Now().UTC(), seriesFlag, sourceFlag,
+		exportOutputDir(false), buildDispatcher(), stdout, stderr)
+}
+
+// buildDispatcher resolves the rebuild-trigger adapter (design D-2:
+// "adapter adapters/github/ POSTs a repository_dispatch ... with a
+// fine-grained token from env") from GITHUB_DISPATCH_REPO ("owner/repo")
+// and GITHUB_DISPATCH_TOKEN. Deliberately named apart from the
+// GitHub-Actions-reserved GITHUB_* variable family (e.g. GITHUB_REPOSITORY,
+// auto-set inside every Actions runner) so this production-side config
+// can never be shadowed by a value Actions itself injects. Either unset
+// returns nil -- publishing.Publish already treats a nil Dispatcher as
+// "not configured, skip dispatch" (trigger.go), matching this codebase's
+// established "not configured, not attempted" convention (buildSourceClient's
+// own nil-checked src.API, for instance) rather than failing the ingest.
+// retentionHistoryDir resolves where publishing.Publish archives each
+// export snapshot for rollback (task 4.9/4.10, design's own
+// Migration/Rollout note: "last N artifacts retained"). Deliberately a
+// sibling of APP_DATA_ROOT's own raw-download archive -- never under
+// STATIC_ROOT -- so a retained (possibly since-corrected) snapshot is
+// never itself publicly served the way the live outDir is: the whole
+// point of "rollback" is recovering from a bad publish, which would be
+// defeated if the bad snapshot stayed reachable at its own URL the entire
+// time it was retained.
+func retentionHistoryDir() string {
+	return filepath.Join(appDataRoot(), "data-derived-history")
+}
+
+// retainedArtifacts resolves APP_PUBLISH_RETAIN_ARTIFACTS, falling back to
+// (and flooring at) publishing.DefaultRetainedArtifacts when unset,
+// unparsable or below the floor -- mirrors scheduleInterval's own
+// resilience convention (spec/design: "last N artifacts retained, N
+// configurable >= 5"). An invalid or sub-floor override is logged, never
+// fatal -- the same resilience choice this package already makes for
+// APP_SCHEDULE_INTERVAL.
+func retainedArtifacts(logs io.Writer) int {
+	raw := os.Getenv("APP_PUBLISH_RETAIN_ARTIFACTS")
+	if raw == "" {
+		return publishing.DefaultRetainedArtifacts
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < publishing.DefaultRetainedArtifacts {
+		fmt.Fprintf(logs, "ingest: publish: APP_PUBLISH_RETAIN_ARTIFACTS=%q is invalid or below the %d-artifact floor, using default %d\n",
+			raw, publishing.DefaultRetainedArtifacts, publishing.DefaultRetainedArtifacts)
+		return publishing.DefaultRetainedArtifacts
+	}
+	return n
+}
+
+func buildDispatcher() publishing.Dispatcher {
+	repo := os.Getenv("GITHUB_DISPATCH_REPO")
+	token := os.Getenv("GITHUB_DISPATCH_TOKEN")
+	if repo == "" || token == "" {
+		return nil
+	}
+	client := github.NewClient(repo, token, nil)
+	return client.Dispatch
 }
 
 // buildSourceClient resolves the indicators.SourceClient ref's kind
@@ -214,6 +274,44 @@ func buildSourceClient(src config.SourceConfig, s config.SeriesConfig, ref confi
 	}
 }
 
+// seriesCadenceSegments converts s.CadenceSegments (config's plain-string
+// YAML shape) into the domain indicators.CadenceSegment values IngestSeries'
+// SourceClient.Decode and validation.Rule2Continuity both consume (design
+// D-4, task 1.2/1.6). An empty s.CadenceSegments returns nil, the ordinary
+// uniform-cadence case for five of the six milestone-0.2 series.
+func seriesCadenceSegments(s config.SeriesConfig) ([]indicators.CadenceSegment, error) {
+	if len(s.CadenceSegments) == 0 {
+		return nil, nil
+	}
+	out := make([]indicators.CadenceSegment, 0, len(s.CadenceSegments))
+	for _, seg := range s.CadenceSegments {
+		parsed, err := indicators.ParseCadenceSegment(seg.From, seg.To, seg.Cadence, seg.Present)
+		if err != nil {
+			return nil, fmt.Errorf("series %q: cadence_segments: %w", s.Slug, err)
+		}
+		out = append(out, parsed)
+	}
+	return out, nil
+}
+
+// exportReason names, on stdout, WHY a cycle exported -- an operator
+// reading a log needs to tell "we published new data" from "we published
+// the fact that a source's latest datum was rejected", because the second
+// is an editorial follow-up waiting to happen and the first is not. Both
+// legitimately export (see the export gate in runIngest); silently
+// conflating them in the log would hide a validation failure behind a line
+// that reads like an ordinary successful publication.
+func exportReason(published, failedValidation bool) string {
+	switch {
+	case published && failedValidation:
+		return "some series published, another failed validation"
+	case failedValidation:
+		return "no series published; exporting the recorded validation failure so the page state reaches readers"
+	default:
+		return "at least one series published"
+	}
+}
+
 // runIngest resolves seriesFlag/sourceFlag (exactly one non-empty,
 // enforced by cmdIngest) against cfg, reconciles the dimension rows every
 // target needs to exist first (postgres.ReconcileDimensions -- see that
@@ -223,8 +321,20 @@ func buildSourceClient(src config.SourceConfig, s config.SeriesConfig, ref confi
 // series in the same "--source" run (spec pipeline-operations, "one
 // scheduled job per source" implies one series' failure is that series'
 // own, not the whole batch's).
+// outDir/dispatch are new in slice 4 (design D-2: "the command layer
+// ... calls Publish once after an ingest cycle in which at least one
+// series published"). Every existing test call site passes ""/nil,
+// preserving prior behaviour exactly -- Publish/Export are simply never
+// reached when outDir is empty (see the trailing block below), matching
+// this codebase's established "not configured, not attempted" pattern.
+//
+// D-2's "at least one series published" condition was WIDENED by the
+// CRITICAL-16 remediation to "at least one series recorded a terminal run
+// outcome the artifact must now reflect" -- see exportWorthy below and
+// design.md's D-2 resolution for the full reasoning.
 func runIngest(ctx context.Context, db postgres.TxBeginner, cfg *config.Config, store *filestore.Store,
-	archiveHashPath, publicHashPath string, now time.Time, seriesFlag, sourceFlag string, stdout, stderr io.Writer) int {
+	archiveHashPath, publicHashPath string, now time.Time, seriesFlag, sourceFlag string,
+	outDir string, dispatch publishing.Dispatcher, stdout, stderr io.Writer) int {
 
 	var targets []config.SeriesConfig
 	switch {
@@ -263,6 +373,8 @@ func runIngest(ctx context.Context, db postgres.TxBeginner, cfg *config.Config, 
 	}
 
 	failed := 0
+	published := false
+	failedValidation := false
 	for _, s := range targets {
 		src, ok := cfg.Sources[s.Source]
 		if !ok {
@@ -283,11 +395,18 @@ func runIngest(ctx context.Context, db postgres.TxBeginner, cfg *config.Config, 
 			continue
 		}
 
+		cadenceSegments, err := seriesCadenceSegments(s)
+		if err != nil {
+			fmt.Fprintf(stderr, "ingest: series %s: %v\n", s.Slug, err)
+			failed++
+			continue
+		}
+
 		icfg := ingestion.SeriesIngestConfig{
 			SourceID: s.Source, DatasetID: s.Dataset, SeriesID: s.Slug, COD: ref.Ref,
 			Series: indicators.Series{
 				Slug: s.Slug, Unit: s.Unit, Frequency: indicators.Frequency(s.Frequency), Decimals: s.Decimals,
-				Source: s.Source, Licence: src.Licence.Name,
+				Source: s.Source, Licence: src.Licence.Name, CadenceSegments: cadenceSegments,
 			},
 			Validation:             s.Validation,
 			Schema:                 s.Schema,
@@ -296,12 +415,101 @@ func runIngest(ctx context.Context, db postgres.TxBeginner, cfg *config.Config, 
 		}
 
 		result, err := ingestion.IngestSeries(ctx, db, store, client, icfg, now)
+
+		// The result is read BEFORE the error is handled, and that ordering
+		// is load-bearing (verify-report CRITICAL-16). A returned error does
+		// NOT mean nothing was recorded: IngestSeries's decode-failure and
+		// unclassified-status paths return a real Block result AND an error,
+		// because both already went through the publish gate and left an
+		// ingestion_run row reading 'validation-failed' (see that function's
+		// own doc comment: "decode and validation failures converge on one
+		// 'record failed, write nothing' effect instead of two"). A FETCH
+		// failure, by contrast, returns the ZERO Result -- no run row exists
+		// to reflect, because there were never any bytes to validate -- and
+		// so does every infrastructure failure below the gate. Reading
+		// result.Outcome is therefore the exact discriminator between "a
+		// verdict was recorded" and "nothing happened", and it works without
+		// inspecting the error at all.
+		if result.Outcome == validation.GateBlock {
+			failedValidation = true
+		}
+		if len(result.Published) > 0 {
+			published = true
+		}
+
 		if err != nil {
 			fmt.Fprintf(stderr, "ingest: series %s: %v\n", s.Slug, err)
 			failed++
 			continue
 		}
 		fmt.Fprintf(stdout, "ingest: series=%s outcome=%s published=%d run_id=%d\n", s.Slug, result.Outcome, len(result.Published), result.RunID)
+	}
+
+	// THE EXPORT GATE. Design D-2's original condition was "at least one
+	// series published (GateApplyResult.Published non-empty)", which
+	// implemented spec publishing-export's then-current "THEN no new
+	// artifact is exported" on a failed run. That clause has been NARROWED
+	// (verify-report CRITICAL-16; see publishing-export/spec.md's amended
+	// "A failed ingestion exports the failure state, never the suspect
+	// datum" scenario and design.md's D-2 resolution). The short version:
+	// the requirement's intent is that a SUSPECT DATUM must never be
+	// published, not that the pipeline must go silent. The publish gate
+	// already guarantees the first structurally -- a blocked run writes no
+	// observation, so the export physically cannot read one back -- while
+	// suppressing the export made the failure INVISIBLE to readers, which
+	// is the exact opposite of what PRD §6.1.3's validation banner exists
+	// for, and left the same spec's own "A series whose latest run failed
+	// MUST still appear, carrying its last valid data" unreachable.
+	//
+	// The condition is therefore "this cycle recorded a terminal run
+	// outcome the artifact must now reflect", which is true in exactly two
+	// cases, and the three failing kinds are deliberately NOT collapsed
+	// into one another:
+	//
+	//   - published: a run wrote at least one observation. The artifact
+	//     must carry the new datum. (Unchanged.)
+	//   - failedValidation: a run reached the publish gate and was blocked,
+	//     so ingestion_run now reads 'validation-failed' and
+	//     postgres.SeriesValidationOutcome will resolve the series to
+	//     PageStateValidationFailure. The artifact must carry the FAILURE,
+	//     with the last valid datum still standing as the latest value.
+	//     Covers a decode failure and an unclassified source status too:
+	//     both converge on the same gate and the same recorded outcome.
+	//   - neither: NOTHING new is knowable about any target series, so
+	//     there is nothing to say and the currently published artifact
+	//     stays exactly as it is. That is a fetch failure (no payload, no
+	//     ingestion_run row -- the zero Result), a config-resolution
+	//     failure that never reached a source, an infrastructure failure
+	//     below the gate, and a 'nothing-new' run (a value in
+	//     ingestion_run.outcome's documented set that nothing in Go writes
+	//     yet -- see postgres.RunOutcome; when it lands it produces neither
+	//     a published observation nor a Block verdict, so it falls in this
+	//     branch by the same rule rather than needing a new one).
+	//
+	// A re-fetch that returns an UNCHANGED payload still publishes today
+	// (postgres.ApplyGate records every candidate it hands the writer as
+	// Published, whether or not WriteRevision actually changed a row), so
+	// it exports. That is pre-existing slice-4 behaviour, deliberately
+	// untouched here: narrowing it would change what a SUCCESSFUL cycle
+	// does, which is outside CRITICAL-16's scope and would need its own
+	// decision about what `generated_at` means.
+	//
+	// Still unconditional on `failed`: an unrelated series' failure in the
+	// same batch does not withhold publication of what DID succeed (spec
+	// pipeline-operations, "one scheduled job per source" implies one
+	// series' failure is that series' own). outDir == "" (every pre-slice-4
+	// test call site) skips this block entirely, preserving the "not
+	// configured, not attempted" convention.
+	if (published || failedValidation) && outDir != "" {
+		result, err := publishing.Publish(ctx, buildExportDeps(db), dispatch, now, outDir, retentionHistoryDir(), retainedArtifacts(stderr))
+		if err != nil {
+			fmt.Fprintf(stderr, "ingest: publish: %v\n", err)
+		} else {
+			fmt.Fprintf(stdout, "ingest: publish: exported and dispatched to %s (%s)\n", outDir, exportReason(published, failedValidation))
+			if result.ArchiveErr != nil {
+				fmt.Fprintf(stderr, "ingest: publish: archiving retained artifact: %v\n", result.ArchiveErr)
+			}
+		}
 	}
 
 	if failed > 0 {

@@ -1,0 +1,45 @@
+-- 0005_series_discontinued.up.sql
+--
+-- Additive columns only. Closes verify-report CRITICAL-4 at the schema
+-- layer: PRD §6.1.3 requires three page states, one of which is
+-- "discontinued series -- a permanent banner with an explanation and,
+-- where one exists, a link to the successor series" (spec indicator-page,
+-- "The three page states of PRD §6.1.3"). Before this migration no
+-- column anywhere in the schema could express that, so the state was a
+-- hand-maintained constant on the web side and a discontinuation could
+-- never reach a reader without a source edit and a redeploy.
+--
+-- Editorial, not observable: no source in this project announces its own
+-- retirement in-band, so the two facts arrive from
+-- config/series/{slug}.yaml's `discontinued` block through
+-- postgres.ReconcileDimensions -- the same config -> reconcile ->
+-- database -> export path the break and event registries already take.
+-- publishing.Export reads the database exclusively through postgres
+-- ports, so anything the artifact must carry has to land in a column
+-- first.
+--
+-- Distinct from series.retired_at: a retired series leaves the artifact
+-- entirely (ListPublishedSeries filters on retired_at IS NULL), whereas
+-- a discontinued one MUST stay in it with its full history -- the spec
+-- is explicit that "the chart MUST NOT be hidden in any state". The
+-- source stopped publishing new periods; it did not un-publish the old
+-- ones.
+--
+-- Nullable: both columns are NULL for a live series, which is every
+-- series configured today. Existing rows have no value until the next
+-- reconcile (postgres.ReconcileDimensions, already run on every ingest
+-- cycle) writes one -- the same "no bespoke backfill, self-heals on next
+-- ingest" convention migrations 0003 and 0004 already established.
+--
+-- discontinued_successor_slug carries NO foreign key to series(id) on
+-- purpose. reconcileSeriesIdentity walks the configured series in file
+-- order, so a discontinued series can be upserted before its successor's
+-- own row exists, and an FK would make reconcile order load-bearing for
+-- a reference that is already gated upstream: validate-config rejects a
+-- successor that names no configured series, and rejects a series naming
+-- itself (adapters/config/validate.go, validateDiscontinued). The
+-- referential guarantee lives at the config gate, where it can produce a
+-- message naming the offending file and field, rather than as a
+-- constraint violation surfacing mid-ingest.
+ALTER TABLE series ADD COLUMN discontinued_since date;
+ALTER TABLE series ADD COLUMN discontinued_successor_slug text;

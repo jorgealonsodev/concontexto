@@ -1,0 +1,63 @@
+---
+// design-system spec, "Eight components in a documented workbench" — the
+// `action bar` entry. Ships zero runtime JavaScript, which bounds this slice's
+// scope: PRD §6.1.1 lists "copiar permalink, exportar PNG / SVG / CSV / JSON,
+// embeber (fase 3), citar" for this bar, but several of those need either a
+// client-side clipboard/share call (`navigator.clipboard`, Web Share API) or a
+// per-request computed value (a formatted citation needs "access date", which
+// this static architecture cannot know at build time) — both incompatible with
+// this component's zero-JS contract. Disclosed narrowing, not silent:
+//   - "Enlace permanente" is a real, functioning link showing the permalink as
+//     selectable text (manual copy works without JS; one-click clipboard copy
+//     would need a script this component does not ship).
+//   - "Exportar CSV" / "Exportar JSON" are real links pointing at whatever
+//     `csvHref`/`jsonHref` the caller supplies — this component does not
+//     itself know or verify the real `/data-derived` layout Go's publishing
+//     package writes. That correspondence is the CALLER's responsibility
+//     (`IndicatorPage.astro`) and is asserted by
+//     `indicator-page.container.test.ts`'s "action bar hrefs resolve to the
+//     artifact's REAL on-disk layout" test, which checks the rendered href
+//     against the real golden fixture directory rather than a second
+//     hard-coded string. A prior revision of this comment claimed these
+//     links were "fully functional today" without that check existing —
+//     they 404'd on all six pages until the verify-report CRITICAL-1
+//     remediation added it.
+//   - PNG/SVG export needs a rendered chart, which does not exist until slice
+//     7/8; native share and a formatted "citar" string are deferred pending a
+//     decision on where non-static behaviour belongs (the chart island's own
+//     bundle, or a future dedicated micro-island) — not this slice's call to
+//     make silently. "Embeber" is explicitly PRD "fase 3", out of scope here.
+import { es } from "../i18n/es";
+
+export interface Props {
+  permalink: string;
+  csvHref: string;
+  jsonHref?: string | null;
+  /** Overrides the bar's accessible name (default: "Acciones del indicador").
+   * Only needed when more than one ActionBar renders on the same page (this
+   * component's own workbench section) — a real indicator page has exactly
+   * one. */
+  ariaLabel?: string;
+}
+
+const { permalink, csvHref, jsonHref = null, ariaLabel = es.actionBar.defaultAriaLabel } = Astro.props;
+
+const linkClasses =
+  "inline-flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-control border border-ink/15 bg-surface px-3 text-body text-ink hover:border-accent hover:text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
+---
+
+<nav aria-label={ariaLabel} class="flex flex-wrap gap-2" data-testid="action-bar">
+  <a href={permalink} class={linkClasses} data-testid="action-bar-permalink">
+    {es.actionBar.permalinkLabel}
+  </a>
+  <a href={csvHref} download class={linkClasses} data-testid="action-bar-csv">
+    {es.actionBar.csvLabel}
+  </a>
+  {
+    jsonHref && (
+      <a href={jsonHref} download class={linkClasses} data-testid="action-bar-json">
+        {es.actionBar.jsonLabel}
+      </a>
+    )
+  }
+</nav>

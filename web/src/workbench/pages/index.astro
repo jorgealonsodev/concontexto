@@ -1,0 +1,41 @@
+---
+// The component workbench (design-system spec, "Eight components in a
+// documented workbench"): renders the seven static components standalone, in
+// both light and dark themes, so a reviewer can see them without assembling a
+// full indicator page. NOT under `src/pages` — never auto-routed. Injected at
+// `/workbench` only when `WORKBENCH=1` (design.md "Supporting decisions":
+// "routes injected only when WORKBENCH=1 (CI test/preview builds) ... keeps
+// prod surface = product pages; budget gates measure real pages only" — see
+// `astro.config.mjs`).
+//
+// Ships zero runtime JavaScript: none of the seven static components use a
+// `client:*` directive (design-system spec, "Seven components ship no runtime
+// JavaScript"), verified by `web/test/workbench/zero-runtime-js.test.ts`.
+import "../../styles/theme.css";
+// Cross-renderer component rules; see that file's header. Every page that
+// imports the token file imports this one too — they are not separable.
+import "../../styles/components.css";
+import WorkbenchShowcase from "../WorkbenchShowcase.astro";
+import { es } from "../../i18n/es";
+
+const title = "Workbench de componentes — ConContexto";
+---
+
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+  </head>
+  <body class="font-sans">
+    <main class="mx-auto max-w-4xl p-6">
+      <h1 class="mb-6 text-heading-lg font-semibold">{title}</h1>
+      <p class="mb-8 text-body text-ink-muted">
+        {es.workbench.intro}
+      </p>
+      <WorkbenchShowcase theme="light" />
+      <WorkbenchShowcase theme="dark" />
+    </main>
+  </body>
+</html>

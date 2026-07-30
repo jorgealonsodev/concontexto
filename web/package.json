@@ -4,11 +4,30 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "astro dev",
+    "dev": "BUILD_WITH_SYNTHETIC_FIXTURE=1 astro dev",
     "build": "astro build",
-    "preview": "astro preview"
+    "build:fixture": "BUILD_WITH_SYNTHETIC_FIXTURE=1 astro build",
+    "preview": "astro preview",
+    "check": "astro check",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "budget:lighthouse": "node --experimental-strip-types scripts/check-lighthouse-budget.ts"
   },
   "dependencies": {
-    "astro": "^7.1.4"
+    "@astrojs/svelte": "^9.0.1",
+    "astro": "^7.1.5",
+    "svelte": "^5.56.8",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.10",
+    "@axe-core/playwright": "^4.12.1",
+    "@playwright/test": "^1.62.0",
+    "@tailwindcss/node": "^4.3.3",
+    "@tailwindcss/vite": "^4.3.3",
+    "lighthouse": "^13.4.1",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10"
   }
 }

@@ -48,8 +48,41 @@ jobs:
             echo "::warning::PORTAINER_WEBHOOK_URL is not configured -- this run builds and pushes the image but performs no redeploy. See docs/deploy.md for exactly what infrastructure and secret are required to close PRD §17's milestone-0.1 deploy criterion."
           fi
 
+      # verify-report CRITICAL-15. The image build now REQUIRES an explicit
+      # export-artifact source, because it used to fall back to
+      # `web/test/fixtures/export` -- a fixture whose history is SYNTHESISED --
+      # and this workflow is what pushes that image to ghcr.io. A deploy that
+      # publishes invented numbers under INE attribution is the worst outcome
+      # this repository can produce, so the requirement is enforced here as a
+      # gate rather than left to the image build to discover.
+      #
+      # EXPORT_URL is a repository VARIABLE, not a secret: it is the site's own
+      # public /data-derived/ origin, which the running container already serves
+      # to anyone (design D-1, "the artifact IS /data-derived/"). Nothing about
+      # it is confidential, and a variable is visible in the run log, which is
+      # what you want for the one input that decides which numbers ship.
+      #
+      # THE BOOTSTRAP CASE IS DISCLOSED, NOT HIDDEN: before the first
+      # publication there is no live origin to point this at, so the first image
+      # must be built from a staged artifact (Dockerfile's web-builder stage,
+      # option 2). Until EXPORT_URL is configured this job builds and pushes
+      # NOTHING and says so -- exactly the shape the PORTAINER_WEBHOOK_URL gate
+      # above already established for missing infrastructure.
+      - name: Check EXPORT_URL is configured
+        id: artifact
+        env:
+          EXPORT_URL: ${{ vars.EXPORT_URL }}
+        run: |
+          if [ -n "$EXPORT_URL" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+            echo "The image will be built against $EXPORT_URL"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::The EXPORT_URL repository variable is not configured, so no image is built or pushed by this run. The web build has no export artifact to render, and it will NOT fall back to the synthetic test fixture (verify-report CRITICAL-15). See docs/deploy.md, 'Where the published numbers come from'."
+          fi
+
       - name: Log in to ghcr.io
-        if: steps.gate.outputs.configured == 'true'
+        if: steps.gate.outputs.configured == 'true' && steps.artifact.outputs.configured == 'true'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -57,17 +90,26 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push image
-        if: steps.gate.outputs.configured == 'true'
+        if: steps.gate.outputs.configured == 'true' && steps.artifact.outputs.configured == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
+          # The one input that decides which numbers this image publishes. The
+          # Dockerfile refuses to build without it; passing it here is what makes
+          # the refusal a configuration requirement rather than a broken deploy.
+          build-args: |
+            EXPORT_URL=${{ vars.EXPORT_URL }}
           tags: |
             ghcr.io/${{ github.repository }}:latest
             ghcr.io/${{ github.repository }}:${{ github.sha }}
 
       # Portainer's own webhook decides how the running stack is
       # replaced (re-pulling :latest) -- this workflow only notifies it.
+      #
+      # Also gated on the artifact check: with no new image pushed, a redeploy
+      # would re-pull the PREVIOUS :latest and report a successful deploy of a
+      # build this run never made.
       - name: Trigger Portainer stack redeploy
-        if: steps.gate.outputs.configured == 'true'
+        if: steps.gate.outputs.configured == 'true' && steps.artifact.outputs.configured == 'true'
         run: curl -fsS -X POST "${{ secrets.PORTAINER_WEBHOOK_URL }}"

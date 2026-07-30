@@ -37,11 +37,17 @@ const (
 // ObservationInput is the domain-facing input for writing one observed
 // value. It carries no pgx types — Clean/Hexagonal: the domain stays
 // free of the driver, only this adapter file does.
+//
+// SourceStatus is migration 0003's additive column (design D-3): the
+// source's own verbatim status token, nil when the source records none
+// (Eurostat's absent-flag case, or an adapter that does not yet classify
+// status — see ingestion/ingest.go's mapObservationStatus).
 type ObservationInput struct {
 	SeriesID       string
 	Period         string
 	Value          *float64 // nil only valid when Status == StatusWithdrawn
 	Status         ObservationStatus
+	SourceStatus   *string
 	ExtractedAt    time.Time
 	IngestionRunID int64
 }
@@ -53,6 +59,7 @@ type Observation struct {
 	Version        int
 	Value          *float64
 	Status         ObservationStatus
+	SourceStatus   *string
 	ExtractedAt    time.Time
 	IngestionRunID int64
 	IsCurrent      bool
@@ -62,17 +69,17 @@ type Observation struct {
 
 // observationColumnsUnqualified is used by INSERT/UPDATE ... RETURNING,
 // where no table alias exists.
-const observationColumnsUnqualified = `series_id, period, version, value, status, extracted_at, ingestion_run_id, is_current, superseded_at, rollback_reason`
+const observationColumnsUnqualified = `series_id, period, version, value, status, source_status, extracted_at, ingestion_run_id, is_current, superseded_at, rollback_reason`
 
 // observationColumnsQualified is used by SELECT queries that alias
 // observation as "o" (required once a query joins another table that
 // also has a series_id/period-shaped column, e.g. ingestion_run).
-const observationColumnsQualified = `o.series_id, o.period, o.version, o.value, o.status, o.extracted_at, o.ingestion_run_id, o.is_current, o.superseded_at, o.rollback_reason`
+const observationColumnsQualified = `o.series_id, o.period, o.version, o.value, o.status, o.source_status, o.extracted_at, o.ingestion_run_id, o.is_current, o.superseded_at, o.rollback_reason`
 
 func scanObservation(row pgx.Row) (Observation, error) {
 	var obs Observation
 	var status string
-	if err := row.Scan(&obs.SeriesID, &obs.Period, &obs.Version, &obs.Value, &status,
+	if err := row.Scan(&obs.SeriesID, &obs.Period, &obs.Version, &obs.Value, &status, &obs.SourceStatus,
 		&obs.ExtractedAt, &obs.IngestionRunID, &obs.IsCurrent, &obs.SupersededAt, &obs.RollbackReason); err != nil {
 		return Observation{}, err
 	}
@@ -138,6 +145,16 @@ func sameValue(a, b *float64) bool {
 	return *a == *b
 }
 
+// sameSourceStatus compares two nullable source_status pointers by
+// value, the same nil-safe shape as sameValue (design D-3: WriteRevision's
+// no-op check extends to source_status, not just value/status).
+func sameSourceStatus(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
+}
+
 // ObservationWriter is the driven adapter that owns the append-only
 // version chain and the is_current promotion invariant.
 type ObservationWriter struct {
@@ -168,7 +185,7 @@ func (w *ObservationWriter) WriteRevision(ctx context.Context, in ObservationInp
 	if err != nil {
 		return Observation{}, false, err
 	}
-	if found && sameValue(current.Value, in.Value) && current.Status == in.Status {
+	if found && sameValue(current.Value, in.Value) && current.Status == in.Status && sameSourceStatus(current.SourceStatus, in.SourceStatus) {
 		if err := tx.Commit(ctx); err != nil {
 			return Observation{}, false, fmt.Errorf("postgres: committing no-op revision: %w", err)
 		}
@@ -184,10 +201,10 @@ func (w *ObservationWriter) WriteRevision(ctx context.Context, in ObservationInp
 		}
 	}
 
-	row := tx.QueryRow(ctx, `INSERT INTO observation (series_id, period, version, value, status, extracted_at, ingestion_run_id, is_current)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, true)
+	row := tx.QueryRow(ctx, `INSERT INTO observation (series_id, period, version, value, status, source_status, extracted_at, ingestion_run_id, is_current)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true)
 		RETURNING `+observationColumnsUnqualified,
-		in.SeriesID, in.Period, nextVersion, in.Value, string(in.Status), in.ExtractedAt, in.IngestionRunID)
+		in.SeriesID, in.Period, nextVersion, in.Value, string(in.Status), in.SourceStatus, in.ExtractedAt, in.IngestionRunID)
 	obs, err := scanObservation(row)
 	if err != nil {
 		return Observation{}, false, fmt.Errorf("postgres: inserting new observation version for %s/%s: %w", in.SeriesID, in.Period, err)

@@ -77,9 +77,15 @@ const defaultMaxResponseBytes int64 = 8 * 1024 * 1024
 // Observation is one normalized INE data point: a canonical
 // indicators.Period (never a source-specific label -- see period.go) and
 // its value.
+//
+// SourceStatus carries T3_TipoDato's verbatim token, UNCLASSIFIED (task
+// 2a.1/2a.2 -- see envelope.go's decodeAndNormalize doc comment for why
+// classification is deliberately deferred to Client.Decode rather than
+// happening here).
 type Observation struct {
-	Period indicators.Period
-	Value  *float64
+	Period       indicators.Period
+	Value        *float64
+	SourceStatus string
 }
 
 // Result is FetchSeries's return value: the series' live descriptive
@@ -258,8 +264,8 @@ func (c *Client) FetchRaw(ctx context.Context, cod string) ([]byte, error) {
 // response body (see FetchRaw) -- no HTTP, no I/O, the exact same
 // decode/periodicity/normalize logic FetchSeries runs in one call, split
 // out so a caller can archive raw bytes between fetch and decode.
-func DecodeSeries(body []byte, cod string, expectedFrequency indicators.Frequency) (Result, error) {
-	return decodeAndNormalize(body, cod, expectedFrequency)
+func DecodeSeries(body []byte, cod string, expectedFrequency indicators.Frequency, segments ...indicators.CadenceSegment) (Result, error) {
+	return decodeAndNormalize(body, cod, expectedFrequency, segments)
 }
 
 // RequestURL satisfies indicators.SourceClient: the exact DATOS_SERIE
@@ -275,16 +281,33 @@ func (c *Client) RequestURL(ref string) string {
 // Decode satisfies indicators.SourceClient: it wraps the package-level
 // DecodeSeries (unchanged, still used directly by this package's own
 // tests) and converts ine.Observation into the shared
-// indicators.Observation shape -- the two are field-identical, so this
-// is a pure re-labelling, never a lossy conversion.
-func (c *Client) Decode(raw []byte, ref string, expectedFrequency indicators.Frequency) (indicators.SourceResult, error) {
-	result, err := DecodeSeries(raw, ref, expectedFrequency)
+// indicators.Observation shape -- Period and Value are a pure
+// re-labelling, never a lossy conversion.
+//
+// Task 2a.7/2a.8 (GREEN): Status is NOT a re-labelling -- this is where
+// each observation's verbatim T3_TipoDato token is classified,
+// fail-closed, into the shared domain status (classifyTipoDato,
+// envelope.go; design D-3). An unrecognised or missing token aborts the
+// WHOLE decode as a named sourceerr.SchemaDrift, exactly like a
+// periodicity mismatch already does, so IngestSeries's existing
+// decode-failure path (raw file + ingestion_run persist, zero
+// observations published) covers this case with no new code in
+// ingestion/ingest.go beyond reading the already-classified result.
+func (c *Client) Decode(raw []byte, ref string, expectedFrequency indicators.Frequency, segments ...indicators.CadenceSegment) (indicators.SourceResult, error) {
+	result, err := DecodeSeries(raw, ref, expectedFrequency, segments...)
 	if err != nil {
 		return indicators.SourceResult{}, err
 	}
 	observations := make([]indicators.Observation, 0, len(result.Observations))
 	for _, o := range result.Observations {
-		observations = append(observations, indicators.Observation{Period: o.Period, Value: o.Value})
+		status, statusErr := classifyTipoDato(o.SourceStatus)
+		if statusErr != nil {
+			return indicators.SourceResult{}, sourceerr.New(sourceerr.SchemaDrift, fmt.Sprintf(
+				"DATOS_SERIE/%s: %v at period %s", ref, statusErr, o.Period))
+		}
+		observations = append(observations, indicators.Observation{
+			Period: o.Period, Value: o.Value, Status: status, SourceStatus: o.SourceStatus,
+		})
 	}
 	return indicators.SourceResult{Name: result.Name, Observations: observations}, nil
 }
@@ -306,12 +329,12 @@ var _ indicators.SourceClient = (*Client)(nil)
 // issued for those classes, by construction, because fetchWithRetry
 // already returns before decode ever runs (spec source-ingestion-ine,
 // "Backoff does not loop on the restriction envelope").
-func (c *Client) FetchSeries(ctx context.Context, cod string, expectedFrequency indicators.Frequency) (Result, error) {
+func (c *Client) FetchSeries(ctx context.Context, cod string, expectedFrequency indicators.Frequency, segments ...indicators.CadenceSegment) (Result, error) {
 	body, err := c.fetchWithRetry(ctx, c.SeriesURL(cod))
 	if err != nil {
 		return Result{}, err
 	}
-	return decodeAndNormalize(body, cod, expectedFrequency)
+	return decodeAndNormalize(body, cod, expectedFrequency, segments)
 }
 
 func (c *Client) waitBeforeRetry(attempt int) {

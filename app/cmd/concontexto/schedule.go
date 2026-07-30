@@ -29,6 +29,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -43,6 +44,8 @@ import (
 	"github.com/jorgealonsodev/concontexto/app/internal/adapters/config"
 	"github.com/jorgealonsodev/concontexto/app/internal/adapters/filestore"
 	"github.com/jorgealonsodev/concontexto/app/internal/adapters/postgres"
+	"github.com/jorgealonsodev/concontexto/app/internal/ingestion/alerting"
+	"github.com/jorgealonsodev/concontexto/app/internal/publishing"
 	"github.com/jorgealonsodev/concontexto/app/internal/scheduler"
 )
 
@@ -91,7 +94,8 @@ func scheduleInterval(logs io.Writer) time.Duration {
 func scheduleSourceOp(db postgres.TxBeginner, cfg *config.Config, store *filestore.Store, archiveHashPath, publicHashPath, sourceID string, logs io.Writer) func(ctx context.Context) error {
 	return func(ctx context.Context) error {
 		var stdout, stderrBuf strings.Builder
-		if code := runIngest(ctx, db, cfg, store, archiveHashPath, publicHashPath, time.Now().UTC(), "", sourceID, &stdout, &stderrBuf); code != 0 {
+		if code := runIngest(ctx, db, cfg, store, archiveHashPath, publicHashPath, time.Now().UTC(), "", sourceID,
+			exportOutputDir(false), buildDispatcher(), &stdout, &stderrBuf); code != 0 {
 			return fmt.Errorf("scheduled ingest for source %s: %s", sourceID, strings.TrimSpace(stderrBuf.String()))
 		}
 		if stdout.Len() > 0 && logs != nil {
@@ -137,7 +141,15 @@ func scheduleSourceOp(db postgres.TxBeginner, cfg *config.Config, store *filesto
 // A nil seedLastSuccess (every existing test that does not care about
 // this distinction) preserves the prior "unknown means nil" behaviour
 // exactly.
-func runScheduler(ctx context.Context, runners map[string]*scheduler.Runner, newOp func(sourceID string) func(context.Context) error, interval time.Duration, tick <-chan time.Time, seedLastSuccess func(ctx context.Context, sourceID string) *time.Time) {
+// watchdog (task 4.11/4.12) is invoked once per tick for every source that
+// already has a known lastSuccess -- deliberately DECOUPLED from next[id]'s
+// own due-gating below, because a stalled rebuild has to be caught on a
+// regular cadence (this loop's own scheduleCheckInterval, in production),
+// not only when the source's next 24h ingest cycle happens to come back
+// around. A nil watchdog (every test that does not care about this
+// distinction) preserves prior behaviour exactly, mirroring
+// seedLastSuccess's own nil-safe convention.
+func runScheduler(ctx context.Context, runners map[string]*scheduler.Runner, newOp func(sourceID string) func(context.Context) error, interval time.Duration, tick <-chan time.Time, seedLastSuccess func(ctx context.Context, sourceID string) *time.Time, watchdog func(sourceID string, now, lastSuccess time.Time)) {
 	lastSuccess := make(map[string]*time.Time, len(runners))
 	seeded := make(map[string]bool, len(runners))
 	next := make(map[string]time.Time, len(runners))
@@ -147,6 +159,13 @@ func runScheduler(ctx context.Context, runners map[string]*scheduler.Runner, new
 		case <-ctx.Done():
 			return
 		case now := <-tick:
+			for id := range runners {
+				if watchdog != nil {
+					if last := lastSuccess[id]; last != nil {
+						watchdog(id, now, *last)
+					}
+				}
+			}
 			for id, runner := range runners {
 				if now.Before(next[id]) {
 					continue
@@ -267,5 +286,67 @@ func startSchedulerLoop(ctx context.Context, pool *pgxpool.Pool, cfg *config.Con
 		return last
 	}
 
-	runScheduler(ctx, runners, newOp, scheduleInterval(logs), tick, seedLastSuccess)
+	runScheduler(ctx, runners, newOp, scheduleInterval(logs), tick, seedLastSuccess, publishLatencyWatchdog(ctx, publishLatencyBudget(logs), logs))
+}
+
+// publishLatencyWatchdog builds runScheduler's watchdog callback (task
+// 4.11/4.12, spec pipeline-operations "An ingestion not followed by a
+// rebuild alerts operators"): for each tick it re-reads the newest LOCAL
+// export's manifest.json (publishing.ReadManifest, the best signal this
+// codebase can observe for "did the rebuild follow" without a live
+// deployed URL -- PORTAINER_WEBHOOK_URL/VPS provisioning remains a
+// separate, disclosed dependency, design.md's own Open Questions, blocking
+// end-to-end DEPLOY verification only, never this budget check) and
+// compares it against sourceID's last known successful ingestion via
+// scheduler.PublishLatencyBreached -- the exact same pure decision
+// app/internal/scheduler/watchdog.go's own tests exercise offline. A
+// breach raises alerting.PublishLatencyBreach, source-level (empty
+// series), the same established convention Alert.Series' own doc comment
+// already documents for KindSourceDown -- this watchdog observes one
+// export cycle covering every series at once, not a single series in
+// isolation.
+//
+// A manifest.json that has NEVER been written (os.ErrNotExist) is itself a
+// meaningful, comparable signal -- the zero time.Time it resolves to is
+// "before" any real success, so PublishLatencyBreached correctly treats
+// "the export has never run at all" as a breach once budget has elapsed,
+// exactly like a stale one. A genuinely UNREADABLE manifest (corrupt JSON,
+// a permission error) is different: this codebase's own best-effort
+// convention for every other watchdog/alert path is to log and skip that
+// tick rather than risk raising or suppressing an alert off garbage data.
+func publishLatencyWatchdog(ctx context.Context, budget time.Duration, logs io.Writer) func(sourceID string, now, lastSuccess time.Time) {
+	manifestPath := filepath.Join(exportOutputDir(false), "manifest.json")
+	return func(sourceID string, now, lastSuccess time.Time) {
+		var generatedAt time.Time
+		if m, err := publishing.ReadManifest(manifestPath); err == nil {
+			generatedAt = m.GeneratedAt
+		} else if !errors.Is(err, os.ErrNotExist) {
+			fmt.Fprintln(logs, "serve: scheduler: reading the local manifest for the publish-latency watchdog:", err)
+			return
+		}
+		if breached, elapsed := scheduler.PublishLatencyBreached(now, lastSuccess, generatedAt, budget); breached {
+			if err := alerting.PublishLatencyBreach(ctx, alerting.DefaultSink(), sourceID, "", elapsed); err != nil {
+				fmt.Fprintln(logs, "serve: scheduler: raising publish-latency-breach alert for", sourceID, ":", err)
+			}
+		}
+	}
+}
+
+// publishLatencyBudget resolves APP_PUBLISH_LATENCY_BUDGET (a Go duration
+// string, e.g. "30m"), falling back to scheduler.DefaultPublishLatencyBudget
+// when unset or unparsable -- mirrors scheduleInterval's own resilience
+// convention exactly (spec pipeline-operations: "The budget is
+// configuration, not a constant ... resolves from configuration with a
+// documented default of 30 minutes").
+func publishLatencyBudget(logs io.Writer) time.Duration {
+	raw := os.Getenv("APP_PUBLISH_LATENCY_BUDGET")
+	if raw == "" {
+		return scheduler.DefaultPublishLatencyBudget
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil {
+		fmt.Fprintf(logs, "serve: scheduler: APP_PUBLISH_LATENCY_BUDGET=%q is not a valid duration, using default %s: %v\n", raw, scheduler.DefaultPublishLatencyBudget, err)
+		return scheduler.DefaultPublishLatencyBudget
+	}
+	return d
 }

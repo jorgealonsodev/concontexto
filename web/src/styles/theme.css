@@ -1,0 +1,126 @@
+/*
+ * ConContexto design-token file (ADR-6, ADR-8; design.md D-6).
+ *
+ * This `@theme` block IS the project's design-token file, authored from
+ * scratch — not a customization of Tailwind's stock scales. It explicitly
+ * zeroes the four ADR-6-forbidden stock scales (colours, type scale, border
+ * radii, shadows) PLUS `--font-*`, so that a stock utility class such as
+ * `bg-blue-500`, `text-sm` or `font-serif` compiles to NO CSS RULE AT ALL.
+ * (design.md D5 resolution: the spec names only four scales as forbidden by
+ * ADR-6; `--font-*` is zeroed too for the same reason as the other four —
+ * a stock font-family utility is exactly the kind of Tailwind-default
+ * identity ADR-6 exists to prevent, even though the RFC-2119 requirement
+ * text only lists four. Zeroing a fifth scale beyond the floor is
+ * permitted, not a contract violation.) This is enforced by
+ * `test/design-system/token-guard.test.ts`, not left to review discipline.
+ *
+ * Spacing and breakpoints keep Tailwind's numeric scale — ADR-6 forbids
+ * palette, type scale, radii and shadows; spacing is not a visual-identity
+ * concern.
+ *
+ * Colour is a free design choice (ADR-8): there is no vetoed-hue list here.
+ * What is NOT free is accessibility (PRD §12.5): every pairing below is
+ * measured for AA contrast in both themes by
+ * `test/design-system/contrast.test.ts`, and `--color-pending` /
+ * `--color-provisional` are RESERVED semantics — amber always means pending
+ * data, dotted grey always means provisional data — enforced by
+ * `test/design-system/reserved-semantics.test.ts`.
+ */
+
+@import "tailwindcss";
+
+/* Scope Tailwind's automatic content scanner away from the test tree.
+ * Discovered empirically (slice 5, `sdd-apply`): Tailwind v4's candidate
+ * scanner is a fast text heuristic, not an AST parser — it does not
+ * distinguish code from comments, so a test file's PROSE mentioning a class
+ * name (e.g. this very file's own `token-guard.test.ts`, which names
+ * `rounded-full` in a comment explaining why it's excluded) is enough to
+ * make that utility appear in the production bundle. `rounded-full` /
+ * `rounded-none` / `shadow-none` are Tailwind static utilities not driven
+ * by the zeroed `--radius-*`/`--shadow-*` namespaces (see
+ * token-guard.test.ts), so they were leaking into `dist/`'s CSS via this
+ * exact mechanism before this exclusion was added — confirmed by diffing
+ * `npm run build`'s output before/after. */
+@source not "../../test/**";
+@source not "../../tests/**";
+
+/* Explicit dark variant: attribute-driven, not media-query-driven, so both
+   themes are deterministic in tests and the no-JS path gets a server-set
+   default (design.md D-6, "Alternatives considered"). */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme {
+  /* --- Zero Tailwind's stock scales: the four ADR-6 forbids, plus
+     --font-* (design.md D5 resolution — see file header comment). ------- */
+  --color-*: initial;
+  --font-*: initial;
+  --text-*: initial;
+  --radius-*: initial;
+  --shadow-*: initial;
+
+  /* --- Project tokens: colour (light values) ---------------------------
+   * Names are semantic, not Tailwind-shaped (no "blue-500" analogues), so
+   * there is no default-value ambiguity for the token guard to police. */
+  --color-bg: #f4f5f7; /* page background */
+  --color-surface: #ffffff; /* card/panel background */
+  --color-ink: #14171c; /* primary text */
+  --color-ink-muted: #565c68; /* secondary text, still AA on bg/surface */
+  --color-accent: #1d5fae; /* free choice per ADR-8: interactive/brand accent */
+  --color-fresh: #1c7a4b; /* free choice per ADR-8, NOT a reserved semantic like pending/provisional: FreshnessSemaphore's "fresh" state only (slice 6); always paired with a distinct icon + visible Spanish label, never colour alone */
+  --color-pending: #a15c00; /* RESERVED: pending-data semantic only (amber) */
+  --color-provisional: #5b6472; /* RESERVED: provisional-data semantic only (grey), always paired with a dotted stroke pattern, never colour alone */
+  --color-break-band: #6b4fa0; /* free choice per ADR-8, NOT a reserved semantic: IndicatorChart's break-band shading only (slice 7) — a methodological break is neither "pending" nor "provisional", so it gets its own token rather than borrowing a reserved one */
+  --color-tooltip-bg: #14171c; /* tooltip surface, explicit — not derived from --color-ink */
+  --color-tooltip-ink: #ffffff; /* tooltip text */
+
+  /* --- Project tokens: typography ---------------------------------------
+   * Semantic scale names (caption/body/heading/display), deliberately NOT
+   * reusing Tailwind's stock scale keys (xs/sm/base/lg/xl/2xl/3xl), so a
+   * stock class like `text-sm` can never accidentally resolve through a
+   * same-named project override. */
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-numeric: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; /* paired with the built-in `tabular-nums` utility (PRD §12.1) */
+
+  --text-caption: 0.75rem;
+  --text-caption--line-height: 1rem;
+  --text-body: 1rem;
+  --text-body--line-height: 1.5rem;
+  --text-body-lg: 1.125rem;
+  --text-body-lg--line-height: 1.75rem;
+  --text-heading-sm: 1.25rem;
+  --text-heading-sm--line-height: 1.75rem;
+  --text-heading-md: 1.5rem;
+  --text-heading-md--line-height: 2rem;
+  --text-heading-lg: 1.875rem;
+  --text-heading-lg--line-height: 2.25rem;
+  --text-display: 2.25rem;
+  --text-display--line-height: 2.5rem;
+
+  /* --- Project tokens: radii and shadows ---------------------------------
+   * Same rationale: semantic names (control/card/pill, card/popover), not
+   * Tailwind's stock sm/md/lg/xl keys. */
+  --radius-control: 0.375rem;
+  --radius-card: 0.75rem;
+  --radius-pill: 9999px;
+
+  --shadow-card: 0 1px 2px 0 rgb(0 0 0 / 0.06), 0 1px 1px 0 rgb(0 0 0 / 0.04);
+  --shadow-popover: 0 4px 16px 0 rgb(0 0 0 / 0.12);
+}
+
+/* Second, EXPLICIT dark token set (PRD §12.5 / design.md D-6): every light
+   semantic token is re-stated here with its own authored value. None of
+   these are computed from the light value at build time — that is a
+   requirement, not an implementation shortcut (see contrast.test.ts). */
+[data-theme="dark"] {
+  --color-bg: #14171c;
+  --color-surface: #1d2128;
+  --color-ink: #eef0f3;
+  --color-ink-muted: #aab0bb;
+  --color-accent: #6fa8ea;
+  --color-fresh: #4ade80; /* free choice, not reserved — see light-mode comment */
+  --color-pending: #e2a33d; /* RESERVED: pending-data semantic only (amber) */
+  --color-provisional: #9aa1ad; /* RESERVED: provisional-data semantic only (grey) */
+  --color-break-band: #b79ce8; /* free choice, not reserved — see light-mode comment */
+  --color-tooltip-bg: #2a2f38;
+  --color-tooltip-ink: #ffffff;
+}

@@ -1,0 +1,124 @@
+---
+// indicator-page spec, "Six indicator routes with frozen slugs": route
+// infra for all six frozen slugs (`tasa-de-paro-epa`, `ocupados-epa`,
+// `ipc-general`, `ipc-subyacente`, `pib`, `poblacion-residente`). Slice 9a
+// built real pages for exactly THREE of them; slice 9b adds the remaining
+// three (`ipc-general`, `ipc-subyacente`, `pib`) via nothing but their own
+// `content/indicators/{slug}.ts` + `methodology.ts` entries — this file's
+// own `getStaticPaths` needed NO route-level change, exactly as slice 9a's
+// own doc comment predicted.
+//
+// Disclosed slug divergence found THIS slice: the export artifact's `pib`
+// data is slugged `pib-cvi` (`config/series/pib-cvi.yaml`'s own Go-pipeline
+// slug — see `content/indicators/pib.ts`'s `artifactSlug` doc comment),
+// while this route's frozen public slug is `pib`. Every lookup into
+// `seriesBySlug` below therefore goes through `artifactSlugFor(slug)`
+// rather than the route slug directly; `doc.slug` itself is left exactly as
+// the artifact declares it (`pib-cvi`) because that IS the real filename
+// Go publishes (`ActionBar`'s CSV/JSON hrefs read `doc.slug` on purpose —
+// see `IndicatorPage.astro`'s own doc comment for why `data-slug` and
+// `ChartIsland`'s `slug` prop use the CONTENT slug instead).
+//
+// This file OWNS the one legitimate build-time read this whole capability
+// permits (indicator-page spec, "Zero database queries and zero
+// computation at request time"): the export artifact, loaded ONCE here via
+// the slice-9a loader, never a database. Every other concern (markup,
+// header, chart, methodology, related indicators) is delegated to
+// `IndicatorPage.astro`, kept independently testable via
+// `experimental_AstroContainer` without going through `getStaticPaths` at
+// all (see that component's own doc comment).
+import "../../styles/theme.css";
+// Cross-renderer component rules; see that file's header. Every page that
+// imports the token file imports this one too — they are not separable.
+import "../../styles/components.css";
+import IndicatorPage, { type RelatedCardData } from "../../templates/IndicatorPage.astro";
+import { loadExportArtifact, resolveLoadOptionsFromEnv } from "../../lib/export/loader";
+import { INDICATOR_CONTENT } from "../../content/indicators";
+import { METHODOLOGY_CONTENT } from "../../content/indicators/methodology";
+import type { SeriesDoc } from "../../lib/export/schema";
+
+export async function getStaticPaths() {
+  const { seriesBySlug } = await loadExportArtifact(resolveLoadOptionsFromEnv());
+
+  // Resolves the slug the export artifact actually uses for `routeSlug` —
+  // identical to `routeSlug` for every series except `pib` (see this
+  // file's own doc comment). Deliberately nested inside `getStaticPaths`
+  // (not a module-level function): Astro's build-time analysis extracts
+  // `getStaticPaths` into its own chunk and does not always capture a
+  // sibling top-level helper's closure — a real bug this slice found via
+  // a full `astro build` (`artifactSlugFor is not defined` at build time,
+  // vitest's own container tests never exercise `getStaticPaths` at all so
+  // they could not have caught it).
+  function artifactSlugFor(routeSlug: string): string {
+    return INDICATOR_CONTENT[routeSlug]?.artifactSlug ?? routeSlug;
+  }
+
+  const slugs = Object.keys(INDICATOR_CONTENT).filter(
+    (slug) => seriesBySlug.has(artifactSlugFor(slug)) && METHODOLOGY_CONTENT[slug] !== undefined,
+  );
+
+  function relatedCardFor(slug: string): RelatedCardData {
+    const doc = seriesBySlug.get(artifactSlugFor(slug));
+    const content = INDICATOR_CONTENT[slug];
+    const latest = doc?.points[doc.points.length - 1] ?? null;
+    return {
+      slug,
+      name: content?.name ?? slug,
+      unit: content?.unit ?? doc?.unit ?? "",
+      latestValue: latest?.value ?? null,
+      latestPeriod: latest?.period ?? "—",
+      // A related slug the artifact/pages haven't caught up with yet is
+      // disclosed as source-pending rather than fabricating a "fresh"
+      // state with no backing data. As of slice 9b, this never actually
+      // triggers — all six slugs resolve — but stays fail-safe for a
+      // future onboarding gap.
+      freshness: doc?.freshness ?? "source-pending",
+      decimals: content?.decimals,
+    };
+  }
+
+  return slugs.map((slug) => {
+    const doc = seriesBySlug.get(artifactSlugFor(slug)) as SeriesDoc;
+    const content = INDICATOR_CONTENT[slug];
+    const methodology = METHODOLOGY_CONTENT[slug];
+    const population = content.transforms.perCapita ? seriesBySlug.get("poblacion-residente")?.points : undefined;
+
+    return {
+      params: { slug },
+      props: {
+        doc,
+        content,
+        methodology,
+        relatedCards: methodology.relatedSlugs.map(relatedCardFor),
+        population,
+        canonicalPath: `/indicador/${slug}`,
+      },
+    };
+  });
+}
+
+const { doc, content, methodology, relatedCards, population, canonicalPath } = Astro.props;
+const title = `${content.name} — ConContexto`;
+---
+
+<!doctype html>
+<html lang="es" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <link rel="canonical" href={canonicalPath} />
+  </head>
+  <body class="bg-bg text-ink font-sans">
+    <main class="mx-auto max-w-4xl p-6">
+      <IndicatorPage
+        doc={doc}
+        content={content}
+        methodology={methodology}
+        relatedCards={relatedCards}
+        population={population}
+        canonicalPath={canonicalPath}
+      />
+    </main>
+  </body>
+</html>

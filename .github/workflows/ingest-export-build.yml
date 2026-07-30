@@ -1,0 +1,176 @@
+name: ingest-export-build
+
+# Task 4.13 (design D-1's own framing: "This is the test that kills the
+# 'built, tested, never connected' shape"; spec publishing-export, "One
+# end-to-end ingest-then-build test exists"). Fase 0 produced eight
+# components that were built, tested and never connected -- publishing's
+# hand-off between Go and Node (a JSON artifact one ecosystem writes and
+# the other reads) is exactly that failure shape at its most likely, so
+# this job runs the real chain -- ingest, export, astro build -- as one
+# CI unit, separate from ci.yml's own go/web jobs so a regression in
+# this specific hand-off is visible on its own line rather than buried
+# inside a broader suite.
+#
+# WHAT THIS JOB PROVES, AS OF SLICE 9a/9b.
+#   1. The chain is REAL: the artifact the Go end-to-end test exports is
+#      the artifact `astro build` consumes. Both halves are pointed at the
+#      ONE directory EXPORT_ARTIFACT_DIR names below. This was previously
+#      NOT true -- the Go test exported into a t.TempDir() it discarded on
+#      exit, while the build step set neither EXPORT_URL nor EXPORT_DIR and
+#      so fell back to the checked-in fixture. The two steps looked like a
+#      chain and were two unrelated runs in sequence: this job, created to
+#      kill the "built, tested, never connected" shape, was exhibiting it.
+#   2. The build genuinely READS those bytes: the six frozen indicator
+#      routes are emitted, and the latest value the artifact carries is
+#      asserted to appear in the rendered HTML.
+#   3. A CORRUPTED artifact FAILS the build, non-zero, three ways (stale
+#      sha256, wrong schema_version, Zod shape violation).
+#
+# Superseded rationale, named here on purpose rather than quietly deleted:
+# this job used to disclose that the corruption half could not be proven
+# "because the Zod content loader is slice 9a's own deliverable, not yet
+# built". That loader (web/src/lib/export/loader.ts) has existed since
+# slice 9a and is wired into /indicador/[slug].astro's getStaticPaths, so
+# the blocker expired. What remained open was narrower and is what points
+# 1-3 above now close.
+#
+# The write-side protection (publishing.ValidateArtifact never writes an
+# invalid artifact in the first place) is separate and older, exercised by
+# the Go step. Points 2 and 3 are the READ side: they prove the build is
+# not merely tolerating whatever it is handed.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  ingest-export-build:
+    name: Ingest fixtures -> export -> astro build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      # ONE definition, read by BOTH halves of the chain: the Go step
+      # exports here (E2E_EXPORT_DIR), the build step reads here
+      # (EXPORT_DIR). Declared once at job level rather than repeated as
+      # two literals, because two literals are exactly how the halves
+      # silently drifted apart before. Job-level env is exported into every
+      # step's shell, so the steps below reference "$EXPORT_ARTIFACT_DIR"
+      # directly and no step can be pointed elsewhere by accident.
+      # `github.workspace`, not `runner.temp`: the `runner` context is not
+      # available in job-level `env`.
+      EXPORT_ARTIFACT_DIR: ${{ github.workspace }}/.e2e-export-artifact
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # A real ingestion.IngestSeries run for the synthetic probe series
+      # AND all six frozen slugs, each against its own recorded fixture,
+      # through a real Postgres transaction (testcontainers-go -- Docker is
+      # preinstalled on GitHub-hosted runners, no separate service
+      # container needed), followed by a real publishing.Export.
+      #
+      # E2E_EXPORT_DIR is what makes this step's output survive the test
+      # process: without it the export lands in a t.TempDir() that Go
+      # deletes on exit, and everything downstream silently reads the
+      # checked-in fixture instead. The export must happen IN this process
+      # -- the test's rows live in a transaction that is rolled back, so no
+      # separate `concontexto export` invocation could ever see them.
+      #
+      # If the export writer and its own postgres reader ever stop
+      # agreeing, this step fails here -- before the build step below ever
+      # runs -- rather than in production.
+      - name: Ingest fixtures -> export (Go end-to-end test)
+        run: |
+          E2E_EXPORT_DIR="$EXPORT_ARTIFACT_DIR" \
+            go test -count=1 -run TestEndToEndIngestExportBuild -v ./app/internal/ingestion/...
+
+      # Fails loudly if the hand-off broke -- a renamed environment
+      # variable, a skipped test, an export that wrote elsewhere.
+      #
+      # This step used to be the ONLY thing standing between a broken hand-off
+      # and a green, meaningless pass, because the build step would then have
+      # fallen back to the checked-in synthetic fixture. That fallback is gone
+      # (verify-report CRITICAL-15: the loader now refuses to guess, and an
+      # EXPORT_DIR pointing at nothing is a non-zero build). The step stays
+      # anyway: failing HERE names the actual cause -- the Go export -- instead
+      # of surfacing as a missing-file error one step later.
+      - name: Assert the exported artifact is where the build will read it
+        run: |
+          test -f "$EXPORT_ARTIFACT_DIR/manifest.json" || {
+            echo "No manifest.json in $EXPORT_ARTIFACT_DIR: the Go step did not export here." >&2
+            echo "The build step below reads exactly this directory (EXPORT_DIR) and will exit non-zero." >&2
+            exit 1
+          }
+          echo "The astro build will read these exact bytes:"
+          find "$EXPORT_ARTIFACT_DIR" -type f | sort
+          sha256sum "$EXPORT_ARTIFACT_DIR/manifest.json"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
+      - name: npm ci
+        working-directory: web
+        run: npm ci
+
+      # The real read side. EXPORT_DIR is the loader's own
+      # `resolveLoadOptionsFromEnv` switch (design.md D-1, "EXPORT_URL live
+      # / EXPORT_DIR fixture"): setting it makes getStaticPaths load,
+      # digest-verify and Zod-validate the artifact the previous step just
+      # wrote. A green build here means the Go writer's bytes satisfy the
+      # TypeScript reader's contract -- the one claim no unit test on either
+      # side can make on its own.
+      - name: astro build from the exported artifact
+        working-directory: web
+        run: EXPORT_DIR="$EXPORT_ARTIFACT_DIR" npm run build
+
+      # A build can be green because it validated the artifact, or green
+      # because it never looked at it. This step separates those: every
+      # frozen route must exist in dist/, and the latest value the ARTIFACT
+      # carries must appear in the RENDERED HTML. The expected value is read
+      # out of the artifact rather than hard-coded, so the assertion cannot
+      # drift away from the data it is checking.
+      - name: Assert the build consumed the exported artifact
+        run: |
+          # `pib` is the frozen public route slug; the artifact slugs it
+          # `pib-cvi` (config/series/pib-cvi.yaml). Listing the ROUTE slugs
+          # here means this step also proves that alias resolves.
+          for slug in tasa-de-paro-epa ocupados-epa ipc-general ipc-subyacente pib poblacion-residente; do
+            page="web/dist/indicador/$slug/index.html"
+            test -f "$page" || { echo "Missing built page: $page" >&2; exit 1; }
+            echo "built $page"
+          done
+
+          latest="$(node -e '
+            const { readFileSync } = require("node:fs");
+            const doc = JSON.parse(readFileSync(process.env.EXPORT_ARTIFACT_DIR + "/series/tasa-de-paro-epa.json", "utf-8"));
+            const points = doc.points.filter((p) => p.value !== null);
+            if (points.length === 0) throw new Error("the exported artifact carries no non-null point to assert on");
+            process.stdout.write(String(points[points.length - 1].value));
+          ')"
+          echo "latest tasa-de-paro-epa value in the exported artifact: $latest"
+          grep -qF "$latest" web/dist/indicador/tasa-de-paro-epa/index.html || {
+            echo "The rendered page does not contain $latest, the value the exported artifact carries." >&2
+            echo "The build is not rendering from the artifact this job exported." >&2
+            exit 1
+          }
+          echo "The rendered page shows the value that was ingested."
+
+      # The half that had never been proven in CI. Runs `astro build` three
+      # more times, each against its own corrupted COPY of the artifact
+      # above, and FAILS THIS JOB if any of those builds succeeds -- see the
+      # script's own header for why each guard exists and why the assertion
+      # cannot pass by being silently inverted.
+      #
+      # Must run AFTER the assertions above: it overwrites web/dist with the
+      # output of failed builds.
+      - name: Assert a corrupted artifact fails the build
+        run: scripts/assert-corrupt-artifact-fails-build.sh "$EXPORT_ARTIFACT_DIR"

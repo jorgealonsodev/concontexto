@@ -1,0 +1,52 @@
+---
+// design-system spec, "Eight components in a documented workbench" — the
+// `annotation chip` entry, kept independently workbench-renderable per this
+// slice's D4 resolution (not fused with BreakBand into a single chart-only
+// partial).
+//
+// Represents one entry of the chart's three annotation groups (PRD §6.1.1,
+// indicator-page spec "Three separately toggleable annotation groups"):
+// (a) gobiernos, (b) shocks exógenos, (c) hitos normativos. This component
+// renders ONE already-resolved, already-confirmed entry — group visibility
+// (groups a/b off by default, absent controls for empty groups) is the chart
+// island's job (slice 8), not this static presentational chip's.
+//
+// "Sin colores partidistas, solo etiqueta" (PRD §6.1.1, government entries):
+// every group uses the same neutral chip styling regardless of which specific
+// government or shock it names — groups are distinguished by their label
+// prefix (a non-colour, textual channel), never by a per-entry hue.
+import { es } from "../i18n/es";
+
+export interface Props {
+  group: "governments" | "exogenous" | "milestones";
+  name: string;
+  dateLabel: string;
+  href?: string | null;
+}
+
+const { group, name, dateLabel, href = null } = Astro.props;
+
+const prefix = es.annotationChip.groupPrefix[group];
+const chipClasses =
+  "inline-flex items-center gap-1.5 rounded-pill border border-ink/15 bg-surface px-3 py-1 text-caption text-ink";
+---
+
+{
+  href ? (
+    <a
+      href={href}
+      class={`${chipClasses} min-h-11 min-w-11 justify-center hover:border-accent hover:text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent`}
+      data-testid="annotation-chip"
+    >
+      <span class="font-medium text-ink-muted">{prefix}:</span>
+      <span>{name}</span>
+      <span class="text-ink-muted">({dateLabel})</span>
+    </a>
+  ) : (
+    <span class={chipClasses} data-testid="annotation-chip">
+      <span class="font-medium text-ink-muted">{prefix}:</span>
+      <span>{name}</span>
+      <span class="text-ink-muted">({dateLabel})</span>
+    </span>
+  )
+}

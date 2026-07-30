@@ -185,8 +185,70 @@ type SeriesConfig struct {
 	// zero value means rule 1 has nothing to check for that series.
 	Schema SchemaConfig `yaml:"schema,omitempty"`
 
+	// CadenceSegments declares a cadence that changes over the series'
+	// life (spec editorial-config, "A series configuration expresses a
+	// cadence that changes over its life"; design D-4). Empty means the
+	// ordinary, common case: Frequency alone describes the whole series
+	// uniformly. Deliberately plain strings/ints here, not an
+	// indicators.Period/Frequency -- this package stays decoupled from
+	// the domain layer exactly like Frequency itself already does (see
+	// that field's own doc comment); adapters/config's ONLY caller-facing
+	// job is parsing and schema-validating the YAML shape.
+	CadenceSegments []CadenceSegmentConfig `yaml:"cadence_segments,omitempty"`
+
+	// Discontinued marks a series the SOURCE has stopped publishing
+	// (spec indicator-page, "The three page states of PRD §6.1.3",
+	// scenario "A discontinued series shows a permanent banner": "GIVEN
+	// a series marked discontinued by its source"). A pointer, not a
+	// value: nil means "live", which is every series configured today,
+	// and a zero-valued struct would be indistinguishable from a
+	// discontinued series with a missing date.
+	//
+	// This is editorial configuration, not an observable fact of the
+	// payload -- no source in this project announces its own retirement
+	// in-band. It follows the same config -> reconcile -> database ->
+	// export path the break and event registries already take, so the
+	// artifact's page state stays reproducible from the database alone
+	// (publishing.Export reads exclusively through postgres ports).
+	Discontinued *DiscontinuedConfig `yaml:"discontinued,omitempty"`
+
 	// FilePath is set by the loader, same rationale as SourceConfig.FilePath.
 	FilePath string `yaml:"-"`
+}
+
+// DiscontinuedConfig is one config/series/{slug}.yaml `discontinued`
+// block.
+//
+// Since is an ISO date (YYYY-MM-DD), kept as a plain string for the same
+// reason SeriesConfig.Frequency is: this package's only job is parsing
+// and schema-validating the YAML shape, and it stays decoupled from the
+// domain and from time.Time.
+//
+// Successor is optional -- the spec says "where one exists", and a
+// source can retire a series without publishing a replacement. When
+// present it MUST name another configured series (validate.go), because
+// a successor link that 404s strands the reader worse than no link does.
+type DiscontinuedConfig struct {
+	Since     string `yaml:"since"`
+	Successor string `yaml:"successor,omitempty"`
+}
+
+// CadenceSegmentConfig is one config/series/{slug}.yaml cadence_segments
+// entry (spec editorial-config, "A series configuration expresses a
+// cadence that changes over its life"; D3 adjudication, orchestrator
+// settled). From/To are period labels on the series' own base Frequency
+// grid ("1977-Q1", "2023-Q2" for a quarterly series); To empty means
+// open-ended (must be the series' last segment). Cadence is the source's
+// own descriptive word for this segment's real-world cadence
+// ("semiannual", "quarterly") -- diagnostic and legibility only, never a
+// domain Frequency. Present lists the grid ordinals (1-4 for quarterly,
+// 1-12 for monthly) this segment expects populated; empty means every
+// ordinal is expected (an ordinary dense segment).
+type CadenceSegmentConfig struct {
+	From    string `yaml:"from"`
+	To      string `yaml:"to,omitempty"`
+	Cadence string `yaml:"cadence"`
+	Present []int  `yaml:"present,omitempty"`
 }
 
 // SchemaConfig declares what validation rule 1 (schema) expects a

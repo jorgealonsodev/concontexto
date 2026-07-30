@@ -11,7 +11,13 @@ package config
 // an unfiltered prc_hicp_minr request served 157 MB against a 256 MB
 // container, Engram #4692).
 
-import "fmt"
+import (
+	"fmt"
+	"regexp"
+	"sort"
+	"strconv"
+	"time"
+)
 
 // Violation is one schema violation. Its String form is exactly the
 // "names the file and field" shape validate-config's CLI output prints.
@@ -106,6 +112,213 @@ func validateSeries(cfg *Config, s SeriesConfig) []Violation {
 	if hasXLSXRef {
 		out = append(out, validateXLSXSchema(s.FilePath, s.Schema.XLSX)...)
 	}
+	out = append(out, validateCadenceSegments(s)...)
+	out = append(out, validateDiscontinued(cfg, s)...)
+	return out
+}
+
+// isoDatePattern is the YYYY-MM-DD shape `discontinued.since` must take.
+// Deliberately a shape check plus a real calendar parse, not a shape
+// check alone: "2026-02-31" matches the pattern and is not a date.
+var isoDatePattern = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
+
+// validateDiscontinued enforces the shape of the `discontinued` block
+// (spec indicator-page, "A discontinued series shows a permanent
+// banner"). A nil block is the ordinary live case and is always valid.
+func validateDiscontinued(cfg *Config, s SeriesConfig) []Violation {
+	d := s.Discontinued
+	if d == nil {
+		return nil
+	}
+	var out []Violation
+
+	// The banner is permanent and states WHEN the source stopped
+	// publishing. Without a date there is nothing truthful to render.
+	if d.Since == "" {
+		out = append(out, Violation{File: s.FilePath, Field: "discontinued.since", Message: "required field is missing"})
+	} else if !isoDatePattern.MatchString(d.Since) {
+		out = append(out, Violation{
+			File: s.FilePath, Field: "discontinued.since",
+			Message: fmt.Sprintf("must be an ISO date (YYYY-MM-DD), got %q", d.Since),
+		})
+	} else if _, err := time.Parse("2006-01-02", d.Since); err != nil {
+		out = append(out, Violation{
+			File: s.FilePath, Field: "discontinued.since",
+			Message: fmt.Sprintf("is not a real calendar date: %q", d.Since),
+		})
+	}
+
+	if d.Successor == "" {
+		return out // optional -- the spec says "where one exists"
+	}
+	if d.Successor == s.Slug {
+		out = append(out, Violation{
+			File: s.FilePath, Field: "discontinued.successor",
+			Message: "names the series itself; a successor link must lead somewhere else",
+		})
+		return out
+	}
+	var known bool
+	for _, other := range cfg.Series {
+		if other.Slug == d.Successor {
+			known = true
+			break
+		}
+	}
+	if !known {
+		out = append(out, Violation{
+			File: s.FilePath, Field: "discontinued.successor",
+			Message: fmt.Sprintf("references unknown series %q (no series/%s.yaml with that slug)", d.Successor, d.Successor),
+		})
+	}
+	return out
+}
+
+// cadencePeriodPattern recognises the same "YYYY-Qn" / "YYYY-MM" label
+// shapes indicators.NormalizePeriodLabel does (indicators/period.go).
+// Deliberately re-implemented here, not imported, to keep this package
+// decoupled from the domain layer -- SeriesConfig.Frequency has followed
+// that same "plain string, no domain type" convention since Load was
+// first written; a cadence_segments boundary is validated the same way.
+var (
+	cadenceQuarterlyPattern = regexp.MustCompile(`^(\d{4})-Q([1-4])$`)
+	cadenceMonthlyPattern   = regexp.MustCompile(`^(\d{4})-(0[1-9]|1[0-2])$`)
+)
+
+// cadenceOrdinal is a package-local (year, ordinal) period value on a
+// series' own base-grid Frequency, used only to order and check the
+// continuity of cadence_segments boundaries.
+type cadenceOrdinal struct {
+	year, ordinal, stepsPerYear int
+}
+
+func (o cadenceOrdinal) before(other cadenceOrdinal) bool {
+	if o.year != other.year {
+		return o.year < other.year
+	}
+	return o.ordinal < other.ordinal
+}
+
+func (o cadenceOrdinal) next() cadenceOrdinal {
+	if o.ordinal >= o.stepsPerYear {
+		return cadenceOrdinal{year: o.year + 1, ordinal: 1, stepsPerYear: o.stepsPerYear}
+	}
+	return cadenceOrdinal{year: o.year, ordinal: o.ordinal + 1, stepsPerYear: o.stepsPerYear}
+}
+
+func (o cadenceOrdinal) label(freq string) string {
+	if freq == "M" {
+		return fmt.Sprintf("%04d-%02d", o.year, o.ordinal)
+	}
+	return fmt.Sprintf("%04d-Q%d", o.year, o.ordinal)
+}
+
+func parseCadenceOrdinal(raw, freq string) (cadenceOrdinal, error) {
+	switch freq {
+	case "M":
+		if m := cadenceMonthlyPattern.FindStringSubmatch(raw); m != nil {
+			year, _ := strconv.Atoi(m[1])
+			month, _ := strconv.Atoi(m[2])
+			return cadenceOrdinal{year: year, ordinal: month, stepsPerYear: 12}, nil
+		}
+		return cadenceOrdinal{}, fmt.Errorf("%q is not a valid monthly period label (expected YYYY-MM)", raw)
+	default: // "Q" and any other frequency validate as quarterly-shaped labels
+		if m := cadenceQuarterlyPattern.FindStringSubmatch(raw); m != nil {
+			year, _ := strconv.Atoi(m[1])
+			quarter, _ := strconv.Atoi(m[2])
+			return cadenceOrdinal{year: year, ordinal: quarter, stepsPerYear: 4}, nil
+		}
+		return cadenceOrdinal{}, fmt.Errorf("%q is not a valid quarterly period label (expected YYYY-Qn)", raw)
+	}
+}
+
+// validateCadenceSegments enforces spec editorial-config's "A series
+// configuration expresses a cadence that changes over its life":
+// segments must be ordered, non-overlapping, leave no gap, and the last
+// segment must stay open-ended (no "to") so it keeps covering ongoing
+// history. A series declaring no cadence_segments (the common, uniform
+// case) is not touched at all (spec "A uniform cadence still validates").
+func validateCadenceSegments(s SeriesConfig) []Violation {
+	if len(s.CadenceSegments) == 0 {
+		return nil
+	}
+	var out []Violation
+
+	type resolved struct {
+		seg       CadenceSegmentConfig
+		from, to  cadenceOrdinal
+		openEnded bool
+	}
+	var segs []resolved
+	for _, seg := range s.CadenceSegments {
+		if seg.Cadence == "" {
+			out = append(out, Violation{File: s.FilePath, Field: "cadence_segments.cadence",
+				Message: fmt.Sprintf("segment starting %q: cadence is required", seg.From)})
+		}
+		from, err := parseCadenceOrdinal(seg.From, s.Frequency)
+		if err != nil {
+			out = append(out, Violation{File: s.FilePath, Field: "cadence_segments.from", Message: err.Error()})
+			continue
+		}
+		r := resolved{seg: seg, from: from}
+		if seg.To == "" {
+			r.openEnded = true
+		} else {
+			to, err := parseCadenceOrdinal(seg.To, s.Frequency)
+			if err != nil {
+				out = append(out, Violation{File: s.FilePath, Field: "cadence_segments.to", Message: err.Error()})
+				continue
+			}
+			if to.before(from) {
+				out = append(out, Violation{File: s.FilePath, Field: "cadence_segments.to",
+					Message: fmt.Sprintf("segment %s..%s: \"to\" is before \"from\"", seg.From, seg.To)})
+				continue
+			}
+			r.to = to
+		}
+		for _, p := range seg.Present {
+			if p < 1 || p > from.stepsPerYear {
+				out = append(out, Violation{File: s.FilePath, Field: "cadence_segments.present",
+					Message: fmt.Sprintf("segment starting %s: present ordinal %d is out of range for frequency %s (1..%d)",
+						seg.From, p, s.Frequency, from.stepsPerYear)})
+			}
+		}
+		segs = append(segs, r)
+	}
+	if len(out) > 0 {
+		return out // unparseable segments -- ordering/continuity checks below would be meaningless
+	}
+
+	sort.Slice(segs, func(i, j int) bool { return segs[i].from.before(segs[j].from) })
+
+	for i, r := range segs {
+		if i == 0 {
+			continue
+		}
+		prev := segs[i-1]
+		if prev.openEnded {
+			out = append(out, Violation{File: s.FilePath, Field: "cadence_segments",
+				Message: fmt.Sprintf("segment starting %s is open-ended but is followed by another segment starting %s",
+					prev.seg.From, r.seg.From)})
+			continue
+		}
+		expectedNext := prev.to.next()
+		switch {
+		case r.from.before(expectedNext):
+			out = append(out, Violation{File: s.FilePath, Field: "cadence_segments",
+				Message: fmt.Sprintf("segments %s..%s and %s..%s overlap", prev.seg.From, prev.seg.To, r.seg.From, r.seg.To)})
+		case expectedNext.before(r.from):
+			out = append(out, Violation{File: s.FilePath, Field: "cadence_segments",
+				Message: fmt.Sprintf("gap between segment ending %s and segment starting %s (expected %s to start immediately)",
+					prev.seg.To, r.seg.From, expectedNext.label(s.Frequency))})
+		}
+	}
+
+	if last := segs[len(segs)-1]; !last.openEnded {
+		out = append(out, Violation{File: s.FilePath, Field: "cadence_segments",
+			Message: "the last cadence segment must be open-ended (no \"to\") to cover the series' ongoing history"})
+	}
+
 	return out
 }
 

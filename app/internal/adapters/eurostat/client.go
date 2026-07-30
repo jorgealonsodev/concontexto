@@ -252,8 +252,8 @@ func (c *Client) FetchProbe(ctx context.Context, ref string, lastTimePeriod int)
 // indicators.SourceClient. It delegates to the package-level Decode
 // function so a caller with no need for a live Client (this package's
 // own tests, task 6.1) can decode a fixture directly.
-func (c *Client) Decode(raw []byte, ref string, expectedFrequency indicators.Frequency) (indicators.SourceResult, error) {
-	return Decode(raw, ref, expectedFrequency)
+func (c *Client) Decode(raw []byte, ref string, expectedFrequency indicators.Frequency, segments ...indicators.CadenceSegment) (indicators.SourceResult, error) {
+	return Decode(raw, ref, expectedFrequency, segments...)
 }
 
 var _ indicators.SourceClient = (*Client)(nil)

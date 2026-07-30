@@ -1,4 +1,4 @@
 {"Nombre": "Tasa de paro de la población. Ambos sexos. Total Nacional. Total. ",
- "Data": [{"Anyo": 2025, "T3_Periodo": "T4", "Valor": 9.93, "Secreto": false},
-          {"Anyo": 2026, "T3_Periodo": "T1", "Valor": 10.83, "Secreto": false},
-          {"Anyo": 2026, "T3_Periodo": "T2", "Valor": 9.87, "Secreto": false}]}
+ "Data": [{"Anyo": 2025, "T3_Periodo": "T4", "T3_TipoDato": "Definitivo", "Valor": 9.93},
+          {"Anyo": 2026, "T3_Periodo": "T1", "T3_TipoDato": "Definitivo", "Valor": 10.83},
+          {"Anyo": 2026, "T3_Periodo": "T2", "T3_TipoDato": "Definitivo", "Valor": 9.87}]}

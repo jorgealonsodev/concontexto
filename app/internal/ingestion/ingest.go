@@ -136,14 +136,20 @@ var sixRules = []validation.Rule{
 // active break resolves to an empty (nil-safe) slice, so an
 // un-reconciled or break-free series behaves exactly as it did before
 // this was wired.
-// TipoDato (Provisional/Definitivo) is a real per-period flag INE's wire
-// format carries but app/internal/adapters/ine.Observation does not yet
-// surface -- every observation this function writes is recorded
-// StatusDefinitive regardless. This is a disclosed simplification, not a
-// silently dropped fact: none of the six validation rules inspects
-// status, so it does not affect this milestone's exit criteria, but a
-// future data-model decision is needed before status can be trusted
-// end-to-end.
+// Task 2a.8/2b (GREEN): TipoDato (Provisional/Definitivo) and Eurostat
+// flag status mapping. ine.Client.Decode (design D-3;
+// adapters/ine/tipodato_test.go) and eurostat.Decode
+// (adapters/eurostat/envelope_test.go, task 2b) both now classify every
+// observation's status fail-closed before IngestSeries ever sees it -- a
+// source-decoded observation reaching the candidate-building loop below
+// therefore always carries a valid, already-classified Status.
+// mapObservationStatus/sourceStatusPtr below do the trivial remaining
+// conversion into postgres's own types. Slice 2a's disclosed
+// compatibility fallback (defaulting a never-classified Status to
+// Definitive, scoped to Eurostat's then-not-yet-built decoding) is
+// CLOSED by this slice: firstUnclassifiedStatus, below, now fails the
+// whole run closed instead -- see mapObservationStatus's own doc comment
+// for why removing the default, rather than only guarding it, is safe.
 func IngestSeries(ctx context.Context, db postgres.TxBeginner, store *filestore.Store, client indicators.SourceClient, cfg SeriesIngestConfig, now time.Time) (Result, error) {
 	// startedAt is a real wall-clock read solely to measure this run's
 	// own log Duration (task 9.5/9.6) -- distinct from `now`, which
@@ -200,7 +206,7 @@ func IngestSeries(ctx context.Context, db postgres.TxBeginner, store *filestore.
 		return Result{}, fmt.Errorf("ingestion: creating ingestion_run for %s: %w", cfg.SeriesID, err)
 	}
 
-	decoded, decodeErr := client.Decode(raw, cfg.COD, cfg.Series.Frequency)
+	decoded, decodeErr := client.Decode(raw, cfg.COD, cfg.Series.Frequency, cfg.Series.CadenceSegments...)
 	if decodeErr != nil {
 		findings := []validation.Finding{{
 			Rule: "source-decode", Severity: validation.SeverityBlock, Message: decodeErr.Error(),
@@ -215,6 +221,37 @@ func IngestSeries(ctx context.Context, db postgres.TxBeginner, store *filestore.
 
 	incoming := decoded.Observations
 
+	// Task 2b (closes slice 2a's disclosed compatibility shim): both
+	// adapters this change governs now classify EVERY observation's
+	// status before IngestSeries ever sees it (ine.Client.Decode's
+	// classifyTipoDato; eurostat.Decode's own flag classification,
+	// envelope.go). An observation reaching this point with a still-
+	// unclassified (zero-value) Status can therefore only come from a
+	// SourceClient that does not classify status at all -- design D-3's
+	// mapping table has no row for such a source (adapters/xlsx today,
+	// a disclosed, pre-existing, out-of-scope gap; see apply-progress).
+	// Per D-3's own governing principle ("Coercing unknown tokens to D
+	// ... is exactly the silent lie this change exists to remove"), that
+	// case now fails the WHOLE run closed -- through the same
+	// synthetic-Block-finding path a decode failure already takes, so it
+	// converges on the file's own "record failed, write nothing" effect
+	// -- rather than silently defaulting to Definitive.
+	// mapObservationStatus below no longer has a default branch to fall
+	// into, because this guard makes that branch structurally
+	// unreachable past this point.
+	if period, found := firstUnclassifiedStatus(incoming); found {
+		findings := []validation.Finding{{
+			Rule: "source-status", Severity: validation.SeverityBlock, Period: period.String(),
+			Message: fmt.Sprintf("%s: observation at %s reached the candidate loop with no classified status (internal defect, not a source failure)", cfg.SeriesID, period),
+		}}
+		result, gateErr := postgres.ApplyGate(ctx, db, runID, findings, nil)
+		if gateErr != nil {
+			return Result{}, fmt.Errorf("ingestion: recording unclassified-status failure for %s: %w", cfg.SeriesID, gateErr)
+		}
+		logAndAlertRun(ctx, cfg, runID, archived.Hash, result, findings, startedAt)
+		return Result{GateApplyResult: result, RunID: runID}, fmt.Errorf("ingestion: %s: observation at %s reached the candidate loop with no classified status", cfg.SeriesID, period)
+	}
+
 	prior, err := postgres.ListCurrentObservations(ctx, db, cfg.SeriesID)
 	if err != nil {
 		return Result{}, fmt.Errorf("ingestion: reading prior vintage for %s: %w", cfg.SeriesID, err)
@@ -224,6 +261,13 @@ func IngestSeries(ctx context.Context, db postgres.TxBeginner, store *filestore.
 	if err != nil {
 		return Result{}, fmt.Errorf("ingestion: resolving active breaks for %s: %w", cfg.SeriesID, err)
 	}
+
+	// Task 2b.6 (GREEN): a decoded break/definition-differs flag (design
+	// D-3, Eurostat's b/d, envelope.go's BreakSignals) whose period no
+	// already-active series_break covers yet is logged and alerted --
+	// never blocked, never written as series_break itself (rupturas.yaml
+	// remains the only writer, editorial follow-up).
+	alertUncoveredBreakSignals(ctx, cfg, decoded.BreakSignals, breaks)
 
 	seriesCtx := validation.SeriesContext{
 		Series:         cfg.Series,
@@ -245,7 +289,8 @@ func IngestSeries(ctx context.Context, db postgres.TxBeginner, store *filestore.
 			SeriesID:       cfg.SeriesID,
 			Period:         o.Period.String(),
 			Value:          o.Value,
-			Status:         postgres.StatusDefinitive,
+			Status:         mapObservationStatus(o.Status),
+			SourceStatus:   sourceStatusPtr(o.SourceStatus),
 			ExtractedAt:    now,
 			IngestionRunID: runID,
 		})
@@ -257,6 +302,76 @@ func IngestSeries(ctx context.Context, db postgres.TxBeginner, store *filestore.
 	}
 	logAndAlertRun(ctx, cfg, runID, archived.Hash, result, findings, startedAt)
 	return Result{GateApplyResult: result, RunID: runID}, nil
+}
+
+// mapObservationStatus converts the shared domain classification
+// (indicators.ObservationStatus) into postgres's own status enum. The
+// two types carry an identical P/D/W value set by design (indicators
+// never imports postgres -- see indicators/observation.go's own doc
+// comment), so this is a direct conversion.
+//
+// Slice 2a's disclosed compatibility shim -- defaulting a zero-value
+// (never-classified) Status to postgres.StatusDefinitive, scoped to
+// adapters/eurostat's then-not-yet-built status decoding -- is REMOVED
+// here (task 2b, this slice's own closing item). It is safe to remove,
+// not merely hidden, because firstUnclassifiedStatus already rejects the
+// whole run (IngestSeries, above) before any candidate reaches this
+// function: mapObservationStatus can now assume status is always
+// classified, exactly like sourceStatusPtr below already assumes a
+// non-empty token means something and an empty one means "none
+// recorded".
+func mapObservationStatus(status indicators.ObservationStatus) postgres.ObservationStatus {
+	return postgres.ObservationStatus(status)
+}
+
+// firstUnclassifiedStatus returns the period of the first observation in
+// incoming whose Status is still the domain zero value, and true, or the
+// zero Period and false when every observation already carries a
+// classified status (design D-3; see IngestSeries's own doc comment
+// above for the full rationale).
+func firstUnclassifiedStatus(incoming []indicators.Observation) (indicators.Period, bool) {
+	for _, o := range incoming {
+		if o.Status == "" {
+			return o.Period, true
+		}
+	}
+	return indicators.Period{}, false
+}
+
+// alertUncoveredBreakSignals logs and raises an alerting.
+// KindBreakSignalUncovered alert (task 2b.6) for every signal in signals
+// whose Period no break in breaks already covers. It never blocks
+// publication and never writes series_break itself -- purely an
+// operational disclosure that the metadata linkage (rupturas.yaml, the
+// only writer) is still missing for that period.
+func alertUncoveredBreakSignals(ctx context.Context, cfg SeriesIngestConfig, signals []indicators.BreakSignal, breaks []indicators.Break) {
+	if len(signals) == 0 {
+		return
+	}
+	covered := make(map[string]bool, len(breaks))
+	for _, b := range breaks {
+		covered[b.Period.String()] = true
+	}
+	for _, s := range signals {
+		if covered[s.Period.String()] {
+			continue
+		}
+		slog.Default().LogAttrs(ctx, slog.LevelWarn, "uncovered source break/definition signal",
+			slog.String("source", cfg.SourceID), slog.String("series", cfg.SeriesID),
+			slog.String("period", s.Period.String()), slog.String("flag", s.Flag))
+		_ = alerting.BreakSignalUncovered(ctx, alerting.DefaultSink(), cfg.SourceID, cfg.SeriesID, s.Period.String(), s.Flag)
+	}
+}
+
+// sourceStatusPtr converts the domain's empty-string-means-none
+// convention into source_status's NULL-means-none column convention
+// (migration 0003; spec data-model-vintages, "A null token is valid and
+// means definitive for Eurostat").
+func sourceStatusPtr(token string) *string {
+	if token == "" {
+		return nil
+	}
+	return &token
 }
 
 // logAndAlertRun emits this run's structured log line (spec pipeline-

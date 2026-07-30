@@ -1,0 +1,1096 @@
+{
+  "schema_version": 1,
+  "slug": "poblacion-residente",
+  "name": "poblacion-residente",
+  "unit": "personas",
+  "frequency": "Q",
+  "decimals": 0,
+  "geo": "ES",
+  "operation": "ine-ecp",
+  "base": null,
+  "source": {
+    "id": "ine",
+    "name": "INE — Instituto Nacional de Estadística",
+    "attribution": "Fuente: Instituto Nacional de Estadística (INE)",
+    "licenceName": "Reutilización con atribución (condiciones INE)",
+    "licenceUrl": "https://www.ine.es/aviso_legal"
+  },
+  "origin": {
+    "kind": "ine-series-cod",
+    "ref": "ECP320",
+    "requestUrl": "http://127.0.0.1:39935/DATOS_SERIE/ECP320?nult=9999\u0026tip=A"
+  },
+  "vintage": {
+    "ingestionRunId": 5,
+    "extractedAt": "2026-07-29T12:00:00Z"
+  },
+  "points": [
+    {
+      "period": "1971-Q1",
+      "value": 34000000,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1971-Q3",
+      "value": 34130226,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1972-Q1",
+      "value": 34260452,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1972-Q3",
+      "value": 34390679,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1973-Q1",
+      "value": 34520905,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1973-Q3",
+      "value": 34651131,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1974-Q1",
+      "value": 34781357,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1974-Q3",
+      "value": 34911584,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1975-Q1",
+      "value": 35041810,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1975-Q3",
+      "value": 35172036,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1976-Q1",
+      "value": 35302262,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1976-Q3",
+      "value": 35432489,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1977-Q1",
+      "value": 35562715,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1977-Q3",
+      "value": 35692941,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1978-Q1",
+      "value": 35823167,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1978-Q3",
+      "value": 35953394,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1979-Q1",
+      "value": 36083620,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1979-Q3",
+      "value": 36213846,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1980-Q1",
+      "value": 36344072,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1980-Q3",
+      "value": 36474299,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1981-Q1",
+      "value": 36604525,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1981-Q3",
+      "value": 36734751,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1982-Q1",
+      "value": 36864977,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1982-Q3",
+      "value": 36995204,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1983-Q1",
+      "value": 37125430,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1983-Q3",
+      "value": 37255656,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1984-Q1",
+      "value": 37385882,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1984-Q3",
+      "value": 37516109,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1985-Q1",
+      "value": 37646335,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1985-Q3",
+      "value": 37776561,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1986-Q1",
+      "value": 37906787,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1986-Q3",
+      "value": 38037014,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1987-Q1",
+      "value": 38167240,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1987-Q3",
+      "value": 38297466,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1988-Q1",
+      "value": 38427692,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1988-Q3",
+      "value": 38557919,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1989-Q1",
+      "value": 38688145,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1989-Q3",
+      "value": 38818371,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1990-Q1",
+      "value": 38948597,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1990-Q3",
+      "value": 39078824,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1991-Q1",
+      "value": 39209050,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1991-Q3",
+      "value": 39339276,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1992-Q1",
+      "value": 39469502,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1992-Q3",
+      "value": 39599728,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1993-Q1",
+      "value": 39729955,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1993-Q3",
+      "value": 39860181,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1994-Q1",
+      "value": 39990407,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1994-Q3",
+      "value": 40120633,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1995-Q1",
+      "value": 40250860,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1995-Q3",
+      "value": 40381086,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1996-Q1",
+      "value": 40511312,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1996-Q3",
+      "value": 40641538,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1997-Q1",
+      "value": 40771765,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1997-Q3",
+      "value": 40901991,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1998-Q1",
+      "value": 41032217,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1998-Q3",
+      "value": 41162443,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1999-Q1",
+      "value": 41292670,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "1999-Q3",
+      "value": 41422896,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2000-Q1",
+      "value": 41553122,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2000-Q3",
+      "value": 41683348,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2001-Q1",
+      "value": 41813575,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2001-Q3",
+      "value": 41943801,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2002-Q1",
+      "value": 42074027,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2002-Q3",
+      "value": 42204253,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2003-Q1",
+      "value": 42334480,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2003-Q3",
+      "value": 42464706,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2004-Q1",
+      "value": 42594932,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2004-Q3",
+      "value": 42725158,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2005-Q1",
+      "value": 42855385,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2005-Q3",
+      "value": 42985611,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2006-Q1",
+      "value": 43115837,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2006-Q3",
+      "value": 43246063,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2007-Q1",
+      "value": 43376290,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2007-Q3",
+      "value": 43506516,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2008-Q1",
+      "value": 43636742,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2008-Q3",
+      "value": 43766968,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2009-Q1",
+      "value": 43897195,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2009-Q3",
+      "value": 44027421,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2010-Q1",
+      "value": 44157647,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2010-Q3",
+      "value": 44287873,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2011-Q1",
+      "value": 44418099,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2011-Q3",
+      "value": 44548326,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2012-Q1",
+      "value": 44678552,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2012-Q3",
+      "value": 44808778,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2013-Q1",
+      "value": 44939004,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2013-Q3",
+      "value": 45069231,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2014-Q1",
+      "value": 45199457,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2014-Q3",
+      "value": 45329683,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2015-Q1",
+      "value": 45459909,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2015-Q3",
+      "value": 45590136,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2016-Q1",
+      "value": 45720362,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2016-Q3",
+      "value": 45850588,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2017-Q1",
+      "value": 45980814,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2017-Q3",
+      "value": 46111041,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2018-Q1",
+      "value": 46241267,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2018-Q3",
+      "value": 46371493,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2019-Q1",
+      "value": 46501719,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2019-Q3",
+      "value": 46631946,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2020-Q1",
+      "value": 46762172,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2020-Q3",
+      "value": 46892398,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2021-Q1",
+      "value": 47022624,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2021-Q2",
+      "value": 47152851,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2021-Q3",
+      "value": 47283077,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2021-Q4",
+      "value": 47413303,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2022-Q1",
+      "value": 47543529,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2022-Q2",
+      "value": 47673756,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2022-Q3",
+      "value": 47803982,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2022-Q4",
+      "value": 47934208,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2023-Q1",
+      "value": 48064434,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2023-Q2",
+      "value": 48194661,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2023-Q3",
+      "value": 48324887,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2023-Q4",
+      "value": 48455113,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2024-Q1",
+      "value": 48585339,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2024-Q2",
+      "value": 48715566,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2024-Q3",
+      "value": 48845792,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2024-Q4",
+      "value": 48976018,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2025-Q1",
+      "value": 49106244,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2025-Q2",
+      "value": 49236471,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2025-Q3",
+      "value": 49366697,
+      "status": "D",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2025-Q4",
+      "value": 49496923,
+      "status": "P",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2026-Q1",
+      "value": 49590099,
+      "status": "P",
+      "version": 1,
+      "ingestionRunId": 5
+    },
+    {
+      "period": "2026-Q2",
+      "value": 49687120,
+      "status": "P",
+      "version": 1,
+      "ingestionRunId": 5
+    }
+  ],
+  "sourceStatus": {
+    "1971-Q1": "Definitivo",
+    "1971-Q3": "Definitivo",
+    "1972-Q1": "Definitivo",
+    "1972-Q3": "Definitivo",
+    "1973-Q1": "Definitivo",
+    "1973-Q3": "Definitivo",
+    "1974-Q1": "Definitivo",
+    "1974-Q3": "Definitivo",
+    "1975-Q1": "Definitivo",
+    "1975-Q3": "Definitivo",
+    "1976-Q1": "Definitivo",
+    "1976-Q3": "Definitivo",
+    "1977-Q1": "Definitivo",
+    "1977-Q3": "Definitivo",
+    "1978-Q1": "Definitivo",
+    "1978-Q3": "Definitivo",
+    "1979-Q1": "Definitivo",
+    "1979-Q3": "Definitivo",
+    "1980-Q1": "Definitivo",
+    "1980-Q3": "Definitivo",
+    "1981-Q1": "Definitivo",
+    "1981-Q3": "Definitivo",
+    "1982-Q1": "Definitivo",
+    "1982-Q3": "Definitivo",
+    "1983-Q1": "Definitivo",
+    "1983-Q3": "Definitivo",
+    "1984-Q1": "Definitivo",
+    "1984-Q3": "Definitivo",
+    "1985-Q1": "Definitivo",
+    "1985-Q3": "Definitivo",
+    "1986-Q1": "Definitivo",
+    "1986-Q3": "Definitivo",
+    "1987-Q1": "Definitivo",
+    "1987-Q3": "Definitivo",
+    "1988-Q1": "Definitivo",
+    "1988-Q3": "Definitivo",
+    "1989-Q1": "Definitivo",
+    "1989-Q3": "Definitivo",
+    "1990-Q1": "Definitivo",
+    "1990-Q3": "Definitivo",
+    "1991-Q1": "Definitivo",
+    "1991-Q3": "Definitivo",
+    "1992-Q1": "Definitivo",
+    "1992-Q3": "Definitivo",
+    "1993-Q1": "Definitivo",
+    "1993-Q3": "Definitivo",
+    "1994-Q1": "Definitivo",
+    "1994-Q3": "Definitivo",
+    "1995-Q1": "Definitivo",
+    "1995-Q3": "Definitivo",
+    "1996-Q1": "Definitivo",
+    "1996-Q3": "Definitivo",
+    "1997-Q1": "Definitivo",
+    "1997-Q3": "Definitivo",
+    "1998-Q1": "Definitivo",
+    "1998-Q3": "Definitivo",
+    "1999-Q1": "Definitivo",
+    "1999-Q3": "Definitivo",
+    "2000-Q1": "Definitivo",
+    "2000-Q3": "Definitivo",
+    "2001-Q1": "Definitivo",
+    "2001-Q3": "Definitivo",
+    "2002-Q1": "Definitivo",
+    "2002-Q3": "Definitivo",
+    "2003-Q1": "Definitivo",
+    "2003-Q3": "Definitivo",
+    "2004-Q1": "Definitivo",
+    "2004-Q3": "Definitivo",
+    "2005-Q1": "Definitivo",
+    "2005-Q3": "Definitivo",
+    "2006-Q1": "Definitivo",
+    "2006-Q3": "Definitivo",
+    "2007-Q1": "Definitivo",
+    "2007-Q3": "Definitivo",
+    "2008-Q1": "Definitivo",
+    "2008-Q3": "Definitivo",
+    "2009-Q1": "Definitivo",
+    "2009-Q3": "Definitivo",
+    "2010-Q1": "Definitivo",
+    "2010-Q3": "Definitivo",
+    "2011-Q1": "Definitivo",
+    "2011-Q3": "Definitivo",
+    "2012-Q1": "Definitivo",
+    "2012-Q3": "Definitivo",
+    "2013-Q1": "Definitivo",
+    "2013-Q3": "Definitivo",
+    "2014-Q1": "Definitivo",
+    "2014-Q3": "Definitivo",
+    "2015-Q1": "Definitivo",
+    "2015-Q3": "Definitivo",
+    "2016-Q1": "Definitivo",
+    "2016-Q3": "Definitivo",
+    "2017-Q1": "Definitivo",
+    "2017-Q3": "Definitivo",
+    "2018-Q1": "Definitivo",
+    "2018-Q3": "Definitivo",
+    "2019-Q1": "Definitivo",
+    "2019-Q3": "Definitivo",
+    "2020-Q1": "Definitivo",
+    "2020-Q3": "Definitivo",
+    "2021-Q1": "Definitivo",
+    "2021-Q2": "Definitivo",
+    "2021-Q3": "Definitivo",
+    "2021-Q4": "Definitivo",
+    "2022-Q1": "Definitivo",
+    "2022-Q2": "Definitivo",
+    "2022-Q3": "Definitivo",
+    "2022-Q4": "Definitivo",
+    "2023-Q1": "Definitivo",
+    "2023-Q2": "Definitivo",
+    "2023-Q3": "Definitivo",
+    "2023-Q4": "Definitivo",
+    "2024-Q1": "Definitivo",
+    "2024-Q2": "Definitivo",
+    "2024-Q3": "Definitivo",
+    "2024-Q4": "Definitivo",
+    "2025-Q1": "Definitivo",
+    "2025-Q2": "Definitivo",
+    "2025-Q3": "Definitivo",
+    "2025-Q4": "Provisional",
+    "2026-Q1": "Provisional",
+    "2026-Q2": "Provisional"
+  },
+  "withdrawn": [],
+  "vintages": {
+    "5": {
+      "extractedAt": "2026-07-29T12:00:00Z",
+      "rawFileSha256": "da97384b294f3e78a87f87a2048ed897a9782a16a36a1a9b94147d620c4fc2d6",
+      "requestUrl": "http://127.0.0.1:39935/DATOS_SERIE/ECP320?nult=9999\u0026tip=A"
+    }
+  },
+  "breaks": [],
+  "events": [
+    {
+      "id": "gobierno-calvo-sotelo-1981",
+      "group": "governments",
+      "name": "Leopoldo Calvo-Sotelo",
+      "dateStart": "1981-02-25",
+      "noteMd": "Investido tras la dimisión de Adolfo Suárez, días después del intento de golpe de Estado del 23 de febrero de 1981."
+    },
+    {
+      "id": "gobierno-gonzalez-1982",
+      "group": "governments",
+      "name": "Felipe González",
+      "dateStart": "1982-12-02",
+      "noteMd": "Investido tras las elecciones generales de octubre de 1982."
+    },
+    {
+      "id": "gobierno-aznar-1996",
+      "group": "governments",
+      "name": "José María Aznar",
+      "dateStart": "1996-05-05",
+      "noteMd": "Investido tras las elecciones generales de marzo de 1996."
+    },
+    {
+      "id": "gobierno-zapatero-2004",
+      "group": "governments",
+      "name": "José Luis Rodríguez Zapatero",
+      "dateStart": "2004-04-17",
+      "noteMd": "Investido tras las elecciones generales de marzo de 2004."
+    },
+    {
+      "id": "crisis-financiera-2008-2013",
+      "group": "exogenous",
+      "name": "Crisis financiera global y crisis de deuda soberana europea",
+      "dateStart": "2008-01-01",
+      "dateEnd": "2013-12-31",
+      "noteMd": "Crisis financiera global iniciada con la quiebra de Lehman Brothers (15 de septiembre de 2008) y su prolongación en la crisis de deuda soberana europea; rango tomado literalmente de PRD §6.1.1(b)/§9.6 (\"2008-2013\")."
+    },
+    {
+      "id": "gobierno-rajoy-2011",
+      "group": "governments",
+      "name": "Mariano Rajoy",
+      "dateStart": "2011-12-21",
+      "noteMd": "Investido tras las elecciones generales de noviembre de 2011."
+    },
+    {
+      "id": "gobierno-sanchez-2018",
+      "group": "governments",
+      "name": "Pedro Sánchez",
+      "dateStart": "2018-06-02",
+      "noteMd": "Investido tras la moción de censura contra Mariano Rajoy del 1 de junio de 2018."
+    },
+    {
+      "id": "pandemia-2020-2021",
+      "group": "exogenous",
+      "name": "Pandemia de COVID-19",
+      "dateStart": "2020-03-14",
+      "dateEnd": "2021-05-09",
+      "noteMd": "Estados de alarma decretados en España: 14 de marzo de 2020 a 21 de junio de 2020, y 25 de octubre de 2020 a 9 de mayo de 2021 (fecha de fin de esta entrada). Impacto económico y social generalizado sobre la práctica totalidad de los indicadores del portal."
+    },
+    {
+      "id": "ngeu-primer-desembolso",
+      "group": "exogenous",
+      "name": "Inicio de los desembolsos del Mecanismo de Recuperación y Resiliencia (Next Generation EU)",
+      "dateStart": "2021-08-01",
+      "noteMd": "Primer desembolso (prefinanciación) del Mecanismo de Recuperación y Resiliencia (Next Generation EU) a España; fecha exacta pendiente de confirmar contra el calendario oficial de desembolsos."
+    },
+    {
+      "id": "shock-energetico-2022",
+      "group": "exogenous",
+      "name": "Shock energético 2022",
+      "dateStart": "2022-02-24",
+      "noteMd": "Shock en los precios de la energía asociado a la invasión rusa de Ucrania (iniciada el 24 de febrero de 2022). Sin fecha de fin fijada: su repercusión sobre los precios se fue absorbiendo gradualmente, no en una fecha puntual identificable."
+    }
+  ],
+  "freshness": "fresh",
+  "pageState": {
+    "kind": "fresh",
+    "lastCorrectUpdate": null,
+    "successorSlug": null
+  }
+}

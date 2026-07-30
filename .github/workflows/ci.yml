@@ -47,8 +47,14 @@ jobs:
         run: ./scripts/check-env-example.sh
 
   web:
-    name: Frontend build
+    name: Frontend build and tests
     runs-on: ubuntu-latest
+    # Design-system slice (design-system spec, web-accessibility-gates spec
+    # "Web test commands are declared and blocking"): unit tests
+    # (design-token guard, dark-token parity, contrast harness, reserved
+    # semantics, dependency guard, tabular figures, export-schema
+    # anti-drift), the production build, and the Playwright/axe e2e suite
+    # all run here as blocking jobs — no more `TBD` (openspec/config.yaml).
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -63,16 +69,159 @@ jobs:
         working-directory: web
         run: npm ci
 
-      - name: astro build
+      # verify-report SUGGESTION-14: `web/` had no `tsconfig.json` and no
+      # `@astrojs/check`, so the entire web layer shipped with ZERO static type
+      # verification — every type annotation in `src/`, `test/`, `tests/e2e/`
+      # and `scripts/` was documentation that nothing enforced. Blocking, and
+      # placed before the test steps on purpose: a type error should stop the
+      # job in seconds rather than after a Chromium download and two browser
+      # suites. `astro check` regenerates `.astro/types.d.ts` itself, so no
+      # separate `astro sync` step is needed on a clean checkout.
+      - name: astro check (TypeScript across src/, test/, tests/e2e/ and scripts/)
         working-directory: web
-        run: npm run build
+        run: npm run check
+
+      - name: Vitest (design-token guards, contrast harness, export-schema anti-drift)
+        working-directory: web
+        run: npm test
+
+      - name: Install Playwright browsers (chromium)
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
+      # NOTE the position of this step relative to `astro build` below — it is
+      # load-bearing, not cosmetic. `playwright.config.ts`'s `webServer.command`
+      # is `WORKBENCH=1 npm run build && npm run preview`, and under `CI` it
+      # sets `reuseExistingServer: false`, so this step ALWAYS rebuilds `dist/`
+      # with the workbench route injected. Anything that reads `dist/` after
+      # this step is reading the workbench build.
+      - name: Playwright e2e (axe-core accessibility scan, both themes, keyboard nav, 44px, no-JS)
+        working-directory: web
+        run: npm run test:e2e
+
+      # verify-report WARNING-8: this production build used to run BEFORE the
+      # e2e step, which then overwrote `dist/` with its own `WORKBENCH=1`
+      # build — so the preview server and the budget gate below measured the
+      # workbench artifact, not the one that ships. A budget gate that measures
+      # the wrong artifact is not a gate. It now runs AFTER e2e, so `dist/` is
+      # the production build for the remainder of the job. It is also still the
+      # production-build gate in its own right: `astro build` with no WORKBENCH
+      # variable is exactly what the deploy pipeline runs.
+      #
+      # verify-report CRITICAL-15: this step must now say WHERE its data comes
+      # from. The loader no longer defaults to `web/test/fixtures/export`,
+      # because that default was reached by the DOCKERFILE's build too, and so
+      # the shipped image published the fixture's SYNTHESISED history as INE
+      # statistics. `BUILD_WITH_SYNTHETIC_FIXTURE=1` is the explicit opt-in, and
+      # this job is a legitimate opter-in: it publishes nothing, and the fixture
+      # is the only six-series artifact available without a database.
+      #
+      # Two consequences worth stating plainly rather than discovering later:
+      #   - this step verifies the production build's SHAPE (route set, CSS
+      #     output, zero-JS budget), never the truth of its numbers. The chain
+      #     that verifies a build against a REAL artifact is
+      #     `.github/workflows/ingest-export-build.yml`, which sets EXPORT_DIR to
+      #     an artifact a real ingestion just wrote.
+      #   - the transferred-bytes gate below measures these pages, and the
+      #     synthetic fixture carries each series at its real full length (98 to
+      #     294 points), so the measurement stays conservative rather than
+      #     flattering.
+      - name: astro build (production — no WORKBENCH; restores dist/ after the e2e rebuild)
+        working-directory: web
+        run: BUILD_WITH_SYNTHETIC_FIXTURE=1 npm run build
+
+      # web-accessibility-gates spec, "The transferred-bytes budget is a
+      # blocking gate" (task 9b.8) — a NAMED assertion that every indicator
+      # page transfers under 300 KB, excluding the typeface. Backfilled in
+      # slice 9b: no Lighthouse gate existed in this workflow before then —
+      # see design.md's Open Questions for the disclosed timeline gap
+      # against the spec's own "wired from the first web slice" requirement.
+      # Reuses the SAME Playwright chromium binary installed above (no
+      # second headless-Chrome install).
+      #
+      # Server and gate share ONE step, deliberately. They used to be two, with
+      # the server backgrounded via `nohup … & disown` and expected to survive
+      # the step boundary (verify-report scrutinised claim 6). That pattern
+      # normally works on GitHub-hosted runners, but "normally" is the wrong
+      # bar for a blocking gate, and the old failure mode was not a red build —
+      # it was a green build that measured nothing. A single step with a `trap`
+      # removes the cross-step survival assumption altogether and still leaves
+      # no stray server behind, whether the gate passes, fails or crashes.
+      #
+      # The gate itself no longer depends on this ordering being right: it
+      # probes `/workbench` first and refuses to measure a workbench build
+      # (`assertProductionBuild`), and it refuses to report a pass on a
+      # measurement it could not take (`assertRealPageLoad`, verify-report
+      # CRITICAL-2). The ordering above is the fix; those assertions are the
+      # guard rail that keeps a future edit from silently undoing it.
+      - name: Lighthouse transferred-bytes budget gate (<300 KB per page, excl. typeface, all six indicator pages)
+        working-directory: web
+        run: |
+          set -euo pipefail
+          # `node_modules/.bin/astro`, NOT `npm run preview`: `npm run` forks
+          # the real server as a grandchild, so `$!` is the npm wrapper and
+          # killing it leaves the preview server listening (verified locally —
+          # port 4321 was still bound after the trap fired). Exec'ing the CLI
+          # directly makes `$!` the process that actually holds the port.
+          ./node_modules/.bin/astro preview --port 4321 --host 127.0.0.1 > preview.log 2>&1 &
+          preview_pid=$!
+          trap 'kill "$preview_pid" 2>/dev/null || true' EXIT
+          for _ in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:4321/ > /dev/null; then break; fi
+            if ! kill -0 "$preview_pid" 2>/dev/null; then
+              echo "preview server exited before becoming ready" >&2
+              cat preview.log >&2 || true
+              exit 1
+            fi
+            sleep 1
+          done
+          if ! curl -sf http://127.0.0.1:4321/ > /dev/null; then
+            echo "preview server did not become ready in time" >&2
+            cat preview.log >&2 || true
+            exit 1
+          fi
+          npm run budget:lighthouse
 
   container-smoke-test:
     name: Container smoke test
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+
+    env:
+      # Where the real exported artifact is staged for the image build, and the
+      # value handed to `docker compose build` as the EXPORT_DIR build arg.
+      # Relative to /web inside the web-builder stage, which is why it must sit
+      # under `web/` in the build context (see Dockerfile's web-builder stage).
+      EXPORT_DIR: data-derived
+
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # verify-report CRITICAL-15: the image build no longer has a fallback
+      # artifact. It used to build against `web/test/fixtures/export` — whose
+      # history is SYNTHESISED — and that is precisely the defect being closed,
+      # so this job cannot simply opt back into the fixture: `.dockerignore` now
+      # keeps the test tree out of the build context altogether.
+      #
+      # An image build cannot produce an artifact by itself (the Go exporter
+      # reads PostgreSQL at runtime), so one is produced HERE, before the build,
+      # by the same real end-to-end export `ingest-export-build.yml` runs: real
+      # ingestion of the recorded INE payloads through a real Postgres
+      # transaction, then a real publishing.Export. The smoke-tested image
+      # therefore serves REAL data — a strictly stronger smoke test than the one
+      # this step replaces, which served invented numbers.
+      - name: Export a real artifact for the image build
+        run: |
+          E2E_EXPORT_DIR="$PWD/web/$EXPORT_DIR" \
+            go test -count=1 -run TestEndToEndIngestExportBuild ./app/internal/ingestion/...
+          test -f "web/$EXPORT_DIR/manifest.json" || {
+            echo "No manifest.json in web/$EXPORT_DIR: the image build has no artifact to render." >&2
+            exit 1
+          }
 
       # Task 1.21: build the image, run the compose stack, exercise
       # /healthz, /, and the shell-free healthcheck subcommand (both

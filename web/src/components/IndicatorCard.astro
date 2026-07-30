@@ -1,0 +1,42 @@
+---
+// design-system spec, "Eight components in a documented workbench" — the
+// `indicator card` entry. Used both for the home page's featured indicators and
+// for each page's "related indicators" section (indicator-page spec, "Related
+// cards are within range and resolvable" — 3-5 cards, every one linking to an
+// existing `/indicador/{slug}` route). Ships zero runtime JavaScript.
+//
+// Tabular figures on the latest value (PRD §12.1: "Tabular figures on all
+// numerals" — design-system spec requirement) via `font-numeric` + the built-in
+// `tabular-nums` utility.
+import FreshnessSemaphore from "./FreshnessSemaphore.astro";
+import type { ArtifactFreshness } from "../lib/export/schema";
+import { es } from "../i18n/es";
+
+export interface Props {
+  slug: string;
+  name: string;
+  latestValue: number | null;
+  latestPeriod: string;
+  unit: string;
+  freshness: ArtifactFreshness;
+  decimals?: number;
+}
+
+const { slug, name, latestValue, latestPeriod, unit, freshness, decimals = 1 } = Astro.props;
+
+const formattedValue = latestValue === null ? "—" : latestValue.toFixed(decimals);
+---
+
+<a
+  href={`/indicador/${slug}`}
+  class="group flex min-h-11 flex-col gap-2 rounded-card border border-ink/10 bg-surface p-4 shadow-card transition-colors hover:border-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+  data-testid="indicator-card"
+>
+  <span class="text-body font-semibold text-ink group-hover:text-accent" data-testid="indicator-card-name">{name}</span>
+  <span class="font-numeric text-heading-md tabular-nums text-ink">
+    {formattedValue}
+    <span class="text-body text-ink-muted">{unit}</span>
+  </span>
+  <span class="text-caption text-ink-muted">{es.indicatorCard.periodLabel} {latestPeriod}</span>
+  <FreshnessSemaphore state={freshness} />
+</a>

@@ -14,6 +14,22 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      # The web build's export-artifact source (verify-report CRITICAL-15).
+      # The Dockerfile has no default and no fallback: it used to build against
+      # `web/test/fixtures/export`, whose history is SYNTHESISED, and shipped
+      # those invented numbers as INE statistics. Forwarded from the environment
+      # so `docker compose build app` can be pointed at a real artifact — set
+      # ONE of them (see env.example and the Dockerfile's web-builder stage):
+      #
+      #   EXPORT_URL=https://<host>/data-derived/ docker compose build app
+      #   EXPORT_DIR=data-derived docker compose build app   # staged under web/
+      #
+      # With neither set, both arrive empty and the build FAILS with
+      # instructions. That is intended: an image that builds by inventing data
+      # is worse than an image that does not build.
+      args:
+        EXPORT_URL: ${EXPORT_URL:-}
+        EXPORT_DIR: ${EXPORT_DIR:-}
     restart: unless-stopped
     environment:
       PORT: "8080"

@@ -117,7 +117,12 @@ func (c *Client) FetchRaw(ctx context.Context, ref string) ([]byte, error) {
 
 // Decode satisfies indicators.SourceClient by delegating to the
 // package-level Decode with this Client's baked-in schema.
-func (c *Client) Decode(raw []byte, ref string, expectedFrequency indicators.Frequency) (indicators.SourceResult, error) {
+// segments is accepted only for indicators.SourceClient conformance and
+// is otherwise unused: no xlsx-url-sourced series declares
+// cadence_segments today (design's File Changes table does not touch
+// this package for D-4), so this adapter still asserts periodicity from
+// the first parsed observation via the package-level Decode below.
+func (c *Client) Decode(raw []byte, ref string, expectedFrequency indicators.Frequency, segments ...indicators.CadenceSegment) (indicators.SourceResult, error) {
 	return Decode(raw, c.schema, expectedFrequency)
 }
 

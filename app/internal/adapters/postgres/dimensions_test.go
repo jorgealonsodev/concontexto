@@ -85,3 +85,62 @@ func TestReconcileDimensions_UpsertsSourceDatasetSeriesAndActiveMappingIdempoten
 		t.Errorf("expected the second reconcile to add zero new mapping rows, got %d total", mappingCount2)
 	}
 }
+
+// TestReconcileSource_PersistsDistinctLicenceURL is slice 4's closure of
+// a slice-3 disclosed gap (design.md's "Disclosed gaps" note):
+// config.LicenceConfig.URL was always schema-validated but never
+// persisted anywhere -- migration 0004_source_licence_url adds the
+// column this test proves reconcileSource now writes, distinctly from
+// the source's general url.
+func TestReconcileSource_PersistsDistinctLicenceURL(t *testing.T) {
+	ctx := context.Background()
+	tx := newTx(t)
+	if err := postgres.NewRunner(tx).Up(ctx); err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+
+	cfg := &config.Config{
+		Sources: map[string]config.SourceConfig{
+			"test-source-lic": {ID: "test-source-lic", Name: "Test Source", URL: "https://example.test", AccessType: "api-json",
+				Licence: config.LicenceConfig{Name: "lic", AttributionText: "attr", URL: "https://example.test/licencia"}},
+		},
+		Series: []config.SeriesConfig{
+			{Slug: "test-series-lic", Name: "Test Series", Source: "test-source-lic", Dataset: "test-dataset-lic",
+				Unit: "index", Frequency: "M", Decimals: 1, Geo: "ES",
+				SourceRefs: []config.SourceRef{{Kind: "ine-series-cod", Ref: "TESTLIC001", ValidFrom: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}}},
+		},
+	}
+	now := time.Date(2026, 7, 29, 0, 0, 0, 0, time.UTC)
+	if err := postgres.ReconcileDimensions(ctx, tx, cfg, now); err != nil {
+		t.Fatalf("ReconcileDimensions: %v", err)
+	}
+
+	var url, licenceURL string
+	if err := tx.QueryRow(ctx, `SELECT url, licence_url FROM source WHERE id='test-source-lic'`).Scan(&url, &licenceURL); err != nil {
+		t.Fatalf("reading source: %v", err)
+	}
+	if url != "https://example.test" {
+		t.Errorf("expected url to stay the general website, got %q", url)
+	}
+	if licenceURL != "https://example.test/licencia" {
+		t.Errorf("expected licence_url to be persisted distinctly, got %q", licenceURL)
+	}
+
+	// A source declaring no licence URL persists NULL, not an empty string
+	// masquerading as "none configured" (mirrors nullableString's
+	// established convention elsewhere in this package).
+	cfg.Sources["test-source-lic"] = config.SourceConfig{
+		ID: "test-source-lic", Name: "Test Source", URL: "https://example.test", AccessType: "api-json",
+		Licence: config.LicenceConfig{Name: "lic", AttributionText: "attr"},
+	}
+	if err := postgres.ReconcileDimensions(ctx, tx, cfg, now); err != nil {
+		t.Fatalf("ReconcileDimensions (licence URL cleared): %v", err)
+	}
+	var licenceURLPtr *string
+	if err := tx.QueryRow(ctx, `SELECT licence_url FROM source WHERE id='test-source-lic'`).Scan(&licenceURLPtr); err != nil {
+		t.Fatalf("reading source after clearing licence url: %v", err)
+	}
+	if licenceURLPtr != nil {
+		t.Errorf("expected licence_url to be NULL once cleared from config, got %q", *licenceURLPtr)
+	}
+}

@@ -134,6 +134,139 @@ func TestStartSchedulerLoop_ColdStartWithARecentPersistedSuccessRaisesNoIncident
 	}
 }
 
+// TestStartSchedulerLoop_APublishLatencyBreachAlertsWhenTheLocalExportNeverCaughtUp
+// pins task 4.11/4.12's REAL production wiring end to end:
+// startSchedulerLoop -> publishLatencyWatchdog -> publishing.ReadManifest
+// -> scheduler.PublishLatencyBreached -> alerting.PublishLatencyBreach.
+// A source's last successful ingestion (real download_attempt row) is well
+// past the default 30-minute budget, and STATIC_ROOT points at a directory
+// where no export has EVER run (no data-derived/manifest.json at all) --
+// the watchdog must raise exactly one KindPublishLatencyBreach alert on
+// the tick where the breach first becomes observable.
+func TestStartSchedulerLoop_APublishLatencyBreachAlertsWhenTheLocalExportNeverCaughtUp(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping: requires Docker (testcontainers), disabled by -short")
+	}
+	ctx := context.Background()
+	container, err := tcpostgres.Run(ctx, "postgres:17-alpine",
+		tcpostgres.WithDatabase("concontexto_watchdog_test"),
+		tcpostgres.WithUsername("concontexto_watchdog_test"),
+		tcpostgres.WithPassword("concontexto_watchdog_test"),
+		tcpostgres.BasicWaitStrategies(),
+	)
+	if err != nil {
+		t.Fatalf("starting postgres container: %v", err)
+	}
+	t.Cleanup(func() { _ = container.Terminate(context.Background()) })
+	dsn, err := container.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		t.Fatalf("connection string: %v", err)
+	}
+
+	var migrateOut, migrateErr bytes.Buffer
+	t.Setenv("DATABASE_URL", dsn)
+	if code := cmdMigrate([]string{"up"}, &migrateOut, &migrateErr); code != 0 {
+		t.Fatalf("migrate up: exit %d, stderr=%q", code, migrateErr.String())
+	}
+
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("connecting pool: %v", err)
+	}
+	defer pool.Close()
+
+	const sourceID = "test-watchdog-src"
+	cfg := &config.Config{
+		Sources: map[string]config.SourceConfig{
+			sourceID: {ID: sourceID, Name: "Test", URL: "https://example.test", AccessType: "api-json",
+				Licence: config.LicenceConfig{Name: "lic", AttributionText: "attr"}},
+		},
+		Series: []config.SeriesConfig{
+			{Slug: "test-watchdog-series", Name: "Test", Source: sourceID, Dataset: "test-watchdog-dataset",
+				Unit: "index", Frequency: "M", Decimals: 1, Geo: "ES",
+				SourceRefs: []config.SourceRef{{Kind: "unsupported-source-ref-kind", Ref: "X", ValidFrom: time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)}}},
+		},
+	}
+
+	if err := postgres.ReconcileDimensions(ctx, pool, cfg, time.Now().UTC()); err != nil {
+		t.Fatalf("seeding dimensions: %v", err)
+	}
+
+	base := time.Date(2026, 7, 29, 12, 0, 0, 0, time.UTC)
+	// One hour before base -- well past the default 30-minute publish-
+	// latency budget by the time the watchdog first evaluates it below.
+	staleSuccess := base.Add(-1 * time.Hour)
+
+	rawFile, _, err := postgres.RecordRawFile(ctx, pool, postgres.RawFile{
+		Hash: "test-watchdog-hash", SourceID: sourceID, URL: "https://example.test/seed",
+		DownloadedAt: staleSuccess, StoragePath: "unused", SizeBytes: 1,
+	})
+	if err != nil {
+		t.Fatalf("seeding raw_file: %v", err)
+	}
+	if _, err := postgres.RecordDownloadAttempt(ctx, pool, postgres.DownloadAttempt{
+		SourceID: sourceID, URL: "https://example.test/seed", AttemptedAt: staleSuccess,
+		ResultingHash: &rawFile.Hash, Outcome: postgres.OutcomeNewFile,
+	}); err != nil {
+		t.Fatalf("seeding download_attempt: %v", err)
+	}
+
+	prevSink := alerting.DefaultSink()
+	spy := &spyAlertSink{}
+	alerting.SetDefaultSink(spy)
+	t.Cleanup(func() { alerting.SetDefaultSink(prevSink) })
+
+	root := t.TempDir()
+	staticRoot := t.TempDir()
+	// STATIC_ROOT resolves exportOutputDir's own data-derived path (see
+	// export_cmd.go's exportOutputDir/staticAssetRoot) -- no manifest.json
+	// is ever written under it in this test, so ReadManifest resolves the
+	// "no export has ever run" case.
+	t.Setenv("STATIC_ROOT", staticRoot)
+
+	loopCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	tick := make(chan time.Time)
+	var logs bytes.Buffer
+	go startSchedulerLoop(loopCtx, pool, cfg, root, staticRoot, tick, &logs)
+
+	// First tick: seeds lastSuccess from the real, persisted
+	// download_attempt above (the op itself fails fast on the unsupported
+	// ref kind, which does not matter here -- seeding happens before the
+	// op runs). The watchdog cannot fire yet: nothing was known before
+	// this tick.
+	tick <- base
+
+	// Give the first tick's own cycle (seed -> op) time to complete before
+	// asserting nothing fired -- same generous polling window the
+	// pre-existing cold-start test above uses for the same reason.
+	time.Sleep(300 * time.Millisecond)
+	if got := len(spy.alerts); got != 0 {
+		t.Fatalf("expected no alert on the very first tick (nothing known yet), got %d: %+v", got, spy.alerts)
+	}
+
+	// Second tick: lastSuccess is now known and is already 61+ minutes
+	// old -- comfortably past the 30-minute default budget -- with no
+	// local export ever written. The watchdog must raise exactly one
+	// KindPublishLatencyBreach alert.
+	tick <- base.Add(1 * time.Minute)
+
+	deadline := time.Now().Add(2 * time.Second)
+	for len(spy.alerts) == 0 && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	if len(spy.alerts) != 1 {
+		t.Fatalf("expected exactly 1 alert, got %d: %+v", len(spy.alerts), spy.alerts)
+	}
+	if spy.alerts[0].Kind != alerting.KindPublishLatencyBreach {
+		t.Errorf("expected KindPublishLatencyBreach, got %v", spy.alerts[0].Kind)
+	}
+	if spy.alerts[0].Source != sourceID {
+		t.Errorf("expected the alert to name source %q, got %q", sourceID, spy.alerts[0].Source)
+	}
+}
+
 // TestStartScheduler_DatabaseURLUnsetDisablesTheScheduler covers
 // startScheduler's own early-return branch cheaply (no Docker): a
 // missing DATABASE_URL must leave the scheduler disabled and log why,

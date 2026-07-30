@@ -110,6 +110,41 @@ func TestRule4Revision_BrandNewPeriodIsNeverARevision(t *testing.T) {
 	}
 }
 
+// TestRule4Revision_StatusOnlyChangeNinePeriodsBackNeverTripsSignoff
+// confirms the write path's third precondition (source-ingestion-ine
+// slice 2a scope): Rule4Revision's revision test (valuesDiffer) reads
+// ONLY indicators.Observation.Value -- Status/SourceStatus are not
+// inputs to the comparison at all -- so a status-only change at the SAME
+// value can never be judged "revising" the prior value, however far back
+// the period is (design D-3: "MUST NOT trip the deep-revision
+// human-signoff block, because no value changed"; spec
+// data-model-vintages, "A status-only transition does not require human
+// signoff").
+func TestRule4Revision_StatusOnlyChangeNinePeriodsBackNeverTripsSignoff(t *testing.T) {
+	ctx := validation.SeriesContext{
+		Series: indicators.Series{Slug: "test-series", Frequency: indicators.FrequencyQuarterly},
+		Prior: []indicators.Observation{
+			{Period: indicators.Period{Frequency: indicators.FrequencyQuarterly, Year: 2028, Ordinal: 1}, Value: ptrRule4(100)},
+			{
+				Period: indicators.Period{Frequency: indicators.FrequencyQuarterly, Year: 2025, Ordinal: 4}, // nine periods before 2028-Q1
+				Value:  ptrRule4(50), Status: indicators.ObservationStatusProvisional, SourceStatus: "Provisional",
+			},
+		},
+	}
+	// Same value (50), status flips provisional -> definitive.
+	incoming := []indicators.Observation{
+		{
+			Period: indicators.Period{Frequency: indicators.FrequencyQuarterly, Year: 2025, Ordinal: 4},
+			Value:  ptrRule4(50), Status: indicators.ObservationStatusDefinitive, SourceStatus: "Definitivo",
+		},
+	}
+
+	findings := validation.Rule4Revision(ctx, incoming)
+	if len(findings) != 0 {
+		t.Fatalf("expected a same-value, status-only change to never trip rule 4 regardless of how far back the period is, got findings: %+v", findings)
+	}
+}
+
 func TestRule4Revision_SeriesFirstRunPassesTrivially(t *testing.T) {
 	ctx := validation.SeriesContext{
 		Series: indicators.Series{Slug: "test-series", Frequency: indicators.FrequencyQuarterly},

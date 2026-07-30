@@ -20,11 +20,35 @@ export interface Props {
   unit: string;
   freshness: ArtifactFreshness;
   decimals?: number;
+  /**
+   * Renders the indicator's name as a heading at this level instead of as a
+   * plain span. ADDED in milestone 1.2 for the homepage, where the cards ARE
+   * the page's content: six indicator names with no heading among them leave
+   * a screen-reader user an outline of `h1` and nothing else, and no way to
+   * jump between the six things the page is for.
+   *
+   * Optional, and OMITTED means "span", byte-for-byte what this component
+   * rendered before — so the "related indicators" strip on every indicator
+   * page is unchanged. That strip is navigational trim beside an already-
+   * verified outline (h1 title → h2 "Indicadores relacionados"), not the
+   * page's subject, and promoting six links there to headings would add
+   * outline entries a reader did not ask for.
+   *
+   * The level is the CALLER's, never this component's: only the page knows
+   * what heading precedes the cards, and a level chosen here is exactly how
+   * an h1 → h4 skip happens.
+   */
+  headingLevel?: 2 | 3 | 4;
 }
 
-const { slug, name, latestValue, latestPeriod, unit, freshness, decimals = 1 } = Astro.props;
+const { slug, name, latestValue, latestPeriod, unit, freshness, decimals = 1, headingLevel } = Astro.props;
 
 const formattedValue = latestValue === null ? "—" : latestValue.toFixed(decimals);
+
+// Astro renders a capitalised variable as a dynamic tag name. The union is
+// spelled out rather than inferred from the template literal so `astro check`
+// keeps this pinned to real heading elements.
+const NameTag = (headingLevel === undefined ? "span" : `h${headingLevel}`) as "span" | "h2" | "h3" | "h4";
 ---
 
 <a
@@ -32,10 +56,17 @@ const formattedValue = latestValue === null ? "—" : latestValue.toFixed(decima
   class="group flex min-h-11 flex-col gap-2 rounded-card border border-ink/10 bg-surface p-4 shadow-card transition-colors hover:border-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
   data-testid="indicator-card"
 >
-  <span class="text-body font-semibold text-ink group-hover:text-accent" data-testid="indicator-card-name">{name}</span>
+  <NameTag class="text-body font-semibold text-ink group-hover:text-accent" data-testid="indicator-card-name">{name}</NameTag>
+  {
+    /* The `{" "}` is load-bearing, not formatting. Astro strips the
+       whitespace around a lone expression, so `{formattedValue}` on its own
+       line followed by the unit span emitted NO text node between them and
+       the card rendered "22779personas" — found by reading the built page's
+       visible text, not its markup, because every assertion here looked for
+       the number and the unit separately and each of them passed. */
+  }
   <span class="font-numeric text-heading-md tabular-nums text-ink">
-    {formattedValue}
-    <span class="text-body text-ink-muted">{unit}</span>
+    {formattedValue}{" "}<span class="text-body text-ink-muted">{unit}</span>
   </span>
   <span class="text-caption text-ink-muted">{es.indicatorCard.periodLabel} {latestPeriod}</span>
   <FreshnessSemaphore state={freshness} />

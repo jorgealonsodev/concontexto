@@ -213,6 +213,14 @@ export const es = {
     ingestionScriptLinkLabel: "Ver script de ingesta en el repositorio",
     latestValueLabel: "Último valor",
     latestPeriodLabel: "Periodo",
+    /** Milestone 1.2: until `/` listed the indicators, an indicator page was
+     * a dead end — a reader who arrived on one had no link anywhere else on
+     * the site. NEW reader-facing copy, flagged for editorial sign-off.
+     * "Volver al inicio" rather than the bare "Inicio" because the control
+     * is a return path from a page the reader is already on, and the longer
+     * label is also what makes the link wide enough to be a comfortable
+     * touch target without padding invented for its own sake. */
+    backToHomeLabel: "Volver al inicio",
   },
   /** verify-report CRITICAL-3 remediation: the shared column-header
    * vocabulary for every rendered data table (`AccessibleDataTable.astro`'s
@@ -301,7 +309,26 @@ export const es = {
    * so this string went unnoticed until the scan was widened to glob every
    * `.astro`/`.svelte` file under `src/`. */
   home: {
-    tagline: "Portal de Datos Económicos de España — deploy smoke target for milestone 0.1.",
+    /** REWRITTEN in milestone 1.2, when `/` stopped being a placeholder and
+     * became the site's only entry point to the six indicators. The previous
+     * value ended "— deploy smoke target for milestone 0.1.": an English
+     * build-process note printed to Spanish-speaking readers on the first
+     * page they see. It described the page's role in this repository, not
+     * anything the site does for them.
+     *
+     * NEW reader-facing copy — flagged for editorial sign-off, per this
+     * project's established convention. Every clause is a fact the site
+     * already keeps: each indicator page carries a latest value, a named
+     * source and a methodology sheet. Deliberately promises nothing the
+     * product does not yet do (no forecasts, no analysis, no coverage
+     * claims beyond the six). */
+    tagline:
+      "Portal de Datos Económicos de España. Cada indicador se publica con su último dato, su fuente y su " +
+      "ficha metodológica.",
+    /** Heading of the one section `/` has. Named for what it lists rather
+     * than for how many there are: the count is frozen at six today, and a
+     * heading that said so would have to be edited the day that changes. */
+    indicatorsHeading: "Indicadores",
   },
   /** verify-report WARNING-18 remediation: `src/workbench/pages/index.astro`'s
    * own intro paragraph, moved here verbatim. Same widened-scan discovery as

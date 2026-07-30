@@ -119,6 +119,30 @@ const perCapitaAttribution = content.transforms.perCapita ? es.chart.perCapita.a
 }
 <article data-testid="indicator-page" data-slug={content.slug}>
   {
+    /* The way back (milestone 1.2). Before `/` listed the indicators, an
+       indicator page linked to sibling indicators and to its source, but to
+       nothing that would show a reader what else this site holds — arriving
+       on a permalink was arriving at a dead end.
+
+       It lives in this TEMPLATE, once, so all six routes get it from one
+       place; `[slug].astro` stays the thin route file it was designed to be.
+
+       Deliberately a link and not a navigation bar: one destination does not
+       need a `<nav>` landmark, a logo, or a breadcrumb trail whose second
+       segment would always be the page you are on. The sizing classes are
+       `ActionBar`'s own (`min-h-11` is the 44 CSS px touch-target floor the
+       accessibility gate sweeps at a 375 px viewport), so this control is
+       measured by exactly the rule every other control on the page is. */
+  }
+  <a
+    href="/"
+    data-testid="back-to-home"
+    class="mb-4 inline-flex min-h-11 min-w-11 items-center gap-1.5 rounded-control px-1 text-body text-ink-muted underline hover:text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+  >
+    {es.page.backToHomeLabel}
+  </a>
+
+  {
     bannerCopy && (
       <div
         role="status"

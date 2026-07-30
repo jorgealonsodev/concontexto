@@ -30,6 +30,9 @@ export class IndicatorPage extends BasePage {
   readonly customRangeApply: Locator;
   readonly customRangeStatus: Locator;
   readonly yoyVariation: Locator;
+  /** The link back to `/` (milestone 1.2). Rendered by `IndicatorPage.astro`,
+   * so all six routes carry it. */
+  readonly backToHome: Locator;
 
   constructor(page: Page, slug: string) {
     super(page);
@@ -47,6 +50,7 @@ export class IndicatorPage extends BasePage {
     this.customRangeApply = this.chartSection.getByTestId("custom-range-apply");
     this.customRangeStatus = this.chartSection.getByTestId("custom-range-status");
     this.yoyVariation = page.getByTestId("page-yoy-variation");
+    this.backToHome = page.getByTestId("back-to-home");
   }
 
   /** One range-preset button by its preset key ("full", "5y", "10y",

@@ -1,0 +1,89 @@
+---
+// The homepage's composition (milestone 1.2): the six frozen indicators as
+// a list of links. Extracted from `src/pages/index.astro` for exactly the
+// reason `IndicatorPage.astro` is extracted from `[slug].astro` — the route
+// file owns the one build-time artifact read, this file owns rendering, and
+// only the second half can be driven through `experimental_AstroContainer`
+// with props the checked-in artifact does not contain (a source-pending
+// indicator, for instance: every fixture series is fresh).
+//
+// Placed under `src/templates/`, not `src/components/`, for the reason that
+// directory's first occupant documents: several slice 5/6 guards scan
+// `src/components/` wholesale on the assumption that every `.astro` file
+// there is one of the design system's eight catalog components.
+//
+// SCOPE, STATED SO THE NEXT READER DOES NOT ASSUME OTHERWISE: this page
+// lists indicators and links to them. It has no search, no filter, no
+// category navigation and no catalogue beyond the six frozen slugs — those
+// are later milestones, and adding a search box to a list of six items
+// would be furniture, not navigation.
+//
+// Ships zero runtime JavaScript. Both components below are static, there is
+// no `client:*` directive anywhere in this file, and `home.container.test.ts`
+// asserts the rendered markup contains no `<script>` tag at all.
+import IndicatorCard from "../components/IndicatorCard.astro";
+import type { IndicatorListingEntry } from "../lib/indicator/homeListing";
+import { es } from "../i18n/es";
+
+export interface Props {
+  /** Already resolved by the route file, all six of them or none —
+   * `homeIndicatorListing` throws rather than returning a short list, so
+   * this component never has to decide what a partial site looks like. */
+  indicators: IndicatorListingEntry[];
+}
+
+/**
+ * The product's name. A proper noun, so it is deliberately NOT in `es.ts`:
+ * that module holds Spanish copy a translator would rewrite, and this is
+ * the one string on the page that must read identically in every language.
+ * Exported so the route file's `<title>` and this heading are the same
+ * literal rather than two that can drift.
+ */
+export const SITE_NAME = "ConContexto";
+
+const { indicators } = Astro.props;
+---
+
+<div data-testid="home-page" class="flex flex-col gap-6">
+  <header class="flex flex-col gap-2">
+    <h1 class="text-heading-lg font-semibold text-ink">{SITE_NAME}</h1>
+    <p class="text-body text-ink-muted">{es.home.tagline}</p>
+  </header>
+
+  <section aria-labelledby="home-indicators-heading">
+    <h2 id="home-indicators-heading" class="mb-3 text-heading-sm font-semibold text-ink">
+      {es.home.indicatorsHeading}
+    </h2>
+    {
+      /* An explicit `role="list"`: Tailwind's preflight sets `list-style:
+         none`, which makes WebKit drop the list semantics of a `<ul>`
+         entirely, so the "6 elementos" announcement — the one thing that
+         tells a screen-reader user how much site there is — silently
+         disappears on Safari and VoiceOver. Restating the implicit role is
+         the documented workaround, not redundancy.
+
+         `headingLevel={3}` follows the `h2` above with no gap. The level is
+         passed from here, and not defaulted inside `IndicatorCard`, because
+         this file is the only one that knows what heading precedes the
+         cards. */
+    }
+    <ul role="list" class="grid list-none grid-cols-1 gap-4 p-0 sm:grid-cols-2 lg:grid-cols-3">
+      {
+        indicators.map((indicator) => (
+          <li>
+            <IndicatorCard
+              slug={indicator.slug}
+              name={indicator.name}
+              unit={indicator.unit}
+              latestValue={indicator.latestValue}
+              latestPeriod={indicator.latestPeriod}
+              freshness={indicator.freshness}
+              decimals={indicator.decimals}
+              headingLevel={3}
+            />
+          </li>
+        ))
+      }
+    </ul>
+  </section>
+</div>

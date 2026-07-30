@@ -1,29 +1,43 @@
 ---
-// Deploy smoke target, now wired to the Fase 1 design-token file
-// (web/src/styles/theme.css, ADR-6/ADR-8). Real indicator pages replace this
-// one starting slice 9; until then this page also doubles as the e2e/axe
-// harness's first target (web/tests/e2e/home.spec.ts).
+// The homepage (milestone 1.2). Until this slice it was a 490-byte deploy
+// smoke target, and the six indicator pages could only be reached by typing
+// their permalinks — the site had pages but no way in.
+//
+// Structured exactly like its sibling route `indicador/[slug].astro`: this
+// file owns the one legitimate build-time read (the export artifact, via the
+// slice-9a loader, never a database and never a request-time fetch) and
+// delegates every rendering decision to `templates/HomePage.astro`.
+//
+// `homeIndicatorListing` is where the interesting decision lives, and its
+// own header argues it at length: the homepage lists all six frozen
+// indicators or the build fails, because it reuses the same
+// `resolveIndicatorRouteSlugs` guard `/indicador/{slug}` does. A homepage
+// that quietly listed five would hide the sixth from every reader who does
+// not already hold its permalink — the silent-shrink failure that guard
+// exists to prevent, on the one page where nothing else can compensate for
+// it.
 import "../styles/theme.css";
 // Cross-renderer component rules; see that file's header. Every page that
 // imports the token file imports this one too — they are not separable.
 import "../styles/components.css";
-import { es } from "../i18n/es";
+import HomePage, { SITE_NAME } from "../templates/HomePage.astro";
+import { loadExportArtifact, resolveLoadOptionsFromEnv } from "../lib/export/loader";
+import { homeIndicatorListing } from "../lib/indicator/homeListing";
 
-const title = "ConContexto";
+const { seriesBySlug } = await loadExportArtifact(resolveLoadOptionsFromEnv());
+const indicators = homeIndicatorListing(seriesBySlug);
 ---
 <!doctype html>
 <html lang="es" data-theme="light">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{title}</title>
+    <title>{SITE_NAME}</title>
+    <link rel="canonical" href="/" />
   </head>
   <body class="bg-bg text-ink font-sans">
-    <main class="mx-auto max-w-2xl p-8">
-      <h1 class="text-heading-lg">{title}</h1>
-      <p class="text-body text-ink-muted">
-        {es.home.tagline}
-      </p>
+    <main class="mx-auto max-w-4xl p-6">
+      <HomePage indicators={indicators} />
     </main>
   </body>
 </html>

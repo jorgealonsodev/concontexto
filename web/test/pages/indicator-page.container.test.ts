@@ -17,6 +17,7 @@ import { loadExportArtifact } from "../../src/lib/export/loader";
 import { INDICATOR_CONTENT } from "../../src/content/indicators";
 import { METHODOLOGY_CONTENT } from "../../src/content/indicators/methodology";
 import type { SeriesDoc } from "../../src/lib/export/schema";
+import { es } from "../../src/i18n/es";
 
 const FIXTURES_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../fixtures/export");
 
@@ -979,6 +980,40 @@ describe("IndicatorPage — the fixture carries a production-representative hist
         },
       });
       expect(html, `${slug}: unexpected break band`).not.toContain('data-testid="chart-breaks"');
+    }
+  });
+});
+
+describe("IndicatorPage — the way back (milestone 1.2)", () => {
+  // Until `/` listed the indicators, an indicator page was a dead end: it
+  // linked to sibling indicators and to the source, but to nothing that
+  // would show a reader what else this site holds. The link lives in this
+  // TEMPLATE rather than in `[slug].astro` so all six routes get it from one
+  // place — the same reason every other cross-page concern here does.
+  it("every indicator page offers a link back to the homepage", async () => {
+    const { seriesBySlug } = await loadFixtureArtifact();
+    for (const slug of ALL_SIX_SLUGS) {
+      const doc = docFor(slug, seriesBySlug);
+      const container = await AstroContainer.create({ renderers: [{ name: "@astrojs/svelte", ssr: svelteServerRenderer }] });
+      const html = await container.renderToString(IndicatorPage, {
+        props: {
+          doc,
+          content: INDICATOR_CONTENT[slug],
+          methodology: METHODOLOGY_CONTENT[slug],
+          relatedCards: [],
+          canonicalPath: `/indicador/${slug}`,
+        },
+      });
+
+      expect(html, `${slug}: no back-to-home link`).toContain('data-testid="back-to-home"');
+      // The href really is the homepage, and the label really is the
+      // externalised Spanish string — a `data-testid` on an element pointing
+      // anywhere would satisfy the assertion above on its own.
+      expect(renderedText(html, "back-to-home"), `${slug}: back link is not labelled`).toBe(es.page.backToHomeLabel);
+      expect(
+        /<a[^>]*href="\/"[^>]*data-testid="back-to-home"/.test(html),
+        `${slug}: back link does not point at "/"`,
+      ).toBe(true);
     }
   });
 });

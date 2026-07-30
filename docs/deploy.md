@@ -14,6 +14,132 @@ explicitly — when the one required secret below is absent, its gate step
 prints a `::warning::` and every deploy step is skipped, rather than
 reporting a fake green deploy.
 
+## What a clean bring-up does
+
+`docker compose up` on a machine with no volumes and no database reaches a
+working site with real data and **no manual step**. The sequence Compose
+enforces:
+
+| # | Service | What runs | Gate on the next step |
+|---|---|---|---|
+| 1 | `postgres` | Postgres starts | `condition: service_healthy` |
+| 2 | `migrate` | `concontexto migrate up`, then exits | `condition: service_completed_successfully` |
+| 3 | `app` | `concontexto serve` — HTTP server **plus** the in-process scheduler, whose first cycle runs immediately | — |
+
+Measured on a clean slate (`docker compose down -v`, then up): `up` returned
+in **7 seconds**, and all three sources (INE, Seguridad Social, Eurostat —
+10 series) had ingested, validated, published and exported within **17
+seconds** of `up`. `/healthz`, `/indicador/tasa-de-paro-epa/` and
+`/data-derived/csv/tasa-de-paro-epa.csv` all returned 200 with real data;
+the artifact's `manifest.json` carried a `generated_at` 10 seconds after
+`up`, which is what distinguishes a runtime export from the copy the image
+seeds the volume with.
+
+### Why `migrate` is a service and not an operator instruction
+
+`app` used to start against whatever schema happened to exist, which on a
+clean machine was none. A fresh deploy therefore needed someone to run
+`docker compose exec app /concontexto migrate up` before the pipeline could
+write anything — and nothing in the repository said so, so the failure mode
+was a stack that came up healthy, served pages, and 404'd every
+`/data-derived/` download forever.
+
+This does **not** weaken spec platform-runtime's "migrations run only on
+explicit command". It *is* the explicit command: the same `migrate up`
+subcommand, with the same `migrate.ExecutionCount()` accounting. What
+changed is who issues it — Compose, as an ordered deploy step, rather than
+a human who has to know to. `serve` still never migrates on boot.
+`migrate up` is idempotent (applied versions are recorded in
+`migration_state.schema_migrations`), so re-running it on every `up` and
+every Portainer redeploy is a no-op once the schema is current.
+
+### Why the scheduler runs inside `serve` rather than in its own container
+
+`serve` has always launched the scheduler in its own goroutine beside the
+HTTP server (`app/cmd/concontexto/serve.go` → `startScheduler`; design.md's
+"serve = static server + /healthz + in-process scheduler"). There is no
+`schedule` subcommand and there deliberately is not one. Weighed against a
+second container running the same image with a different `command`:
+
+- **Memory.** PRD §14.3 budgets app 256 MB and postgres 512 MB. A separate
+  scheduler container would need a limit of its own, and the ingest half is
+  the memory-hungry half, so the stack would grow from 768 MB to roughly
+  1 GB on a VPS the PRD explicitly sizes for low memory. Splitting the
+  existing 256 MB instead is worse than sharing it: an idle static file
+  server has a tiny resident set, so one shared cgroup lets an ingest peak
+  into nearly the whole budget and hand it straight back.
+- **Crash isolation.** This is the real cost of the choice, and it is
+  accepted rather than dismissed: an ingest that panics or is OOM-killed
+  takes the HTTP server with it. What bounds the damage is that the site is
+  100% pre-rendered static files shipped in the image — there is no cache to
+  warm and no query to replay, so `restart: unless-stopped` restores service
+  in a process start. The golden rule (PRD §14.2, zero DB queries at request
+  time) means served content never depended on the scheduler succeeding.
+  The blast radius is seconds of 502 from Nginx Proxy Manager, not degraded
+  or stale data.
+- **Restart semantics.** A restart is already a designed-for case, not an
+  edge case: `startSchedulerLoop` seeds each source's last success from
+  `download_attempt` in Postgres rather than from process memory, precisely
+  so a restart does not raise a false "down for over 24h" incident.
+- **Shared state.** One process means one pgxpool, one embedded config, and
+  exactly one writer for `/web/dist/data-derived`. Two containers mounting
+  the same `export_artifact` volume could both export into it.
+
+### The first cycle is immediate, not 15 minutes away
+
+The scheduler wakes every `scheduleCheckInterval` (15 minutes) and runs any
+source that is due; on the first pass every source is due. Production used
+to hand that loop a bare `time.NewTicker(15m).C`, whose *first* send lands
+one full interval after start — so a fresh deployment served pages backed by
+an empty database, with every download link 404ing, for 15 minutes.
+`schedulerTicks` (`app/cmd/concontexto/schedule.go`) prepends one tick at
+start-up and then relays the real ticker. Nothing about the loop's own
+due-gating changed.
+
+A consequence worth stating plainly: **the container now contacts the live
+INE, Eurostat and Seguridad Social endpoints as soon as it starts**, once
+per source, on every start. That is the app's purpose in production. For a
+stack that must come up without touching a third-party API — a hermetic test
+stack above all — set `APP_SCHEDULE_DISABLED=true` (see `env.example`),
+which leaves `serve` a pure static file server while `migrate` and
+`healthcheck --deep` keep working.
+
+## Reaching the app from the host
+
+`docker-compose.yml` publishes **no** ports. That is the production
+topology it documents, and `scripts/smoke-test.sh` step 5 asserts it on
+every CI run: a published port binds the container to the host's
+interfaces, where it is reachable without passing through Nginx Proxy
+Manager, so TLS becomes optional in practice.
+
+For local development, copy the committed template once:
+
+```bash
+cp docker-compose.override.yml.example docker-compose.override.yml
+docker compose up -d
+curl http://localhost:8080/healthz
+```
+
+Compose merges `docker-compose.override.yml` automatically, with no extra
+`-f` flags. The copy is git-ignored (`.gitignore`), so the committed
+topology stays the production one and the opt-in cannot be committed by
+accident. The template binds `127.0.0.1:8080` rather than `0.0.0.0:8080`,
+so the app is not published to whatever network the workstation is on.
+
+Without the override — which is how CI does it — the container is reachable
+over the `proxy` network without publishing anything:
+
+```bash
+docker run --rm --network proxy curlimages/curl:8.11.1 \
+  -fsS http://app:8080/healthz
+```
+
+**One interaction to know about:** `scripts/smoke-test.sh` invokes plain
+`docker compose`, so an override left in place is merged into the smoke
+test too, and its step 5 ("no published ports") then fails. Either remove
+`docker-compose.override.yml` before running the smoke test, or run it with
+`COMPOSE_FILE=docker-compose.yml ./scripts/smoke-test.sh`.
+
 ## What must exist before this criterion can close
 
 1. A VPS (or any host) running Portainer, reachable from the internet
@@ -81,7 +207,7 @@ Two supported sources, both explicit:
 
 | Source | Build arg | When |
 |---|---|---|
-| Live origin | `--build-arg EXPORT_URL=https://<host>/data-derived/` | Normal operation. A publishing cycle writes the artifact into the container's `public_html` volume and dispatches a rebuild, which fetches it back from the site it is rebuilding. |
+| Live origin | `--build-arg EXPORT_URL=https://<host>/data-derived/` | Normal operation. A publishing cycle writes the artifact into the container's `export_artifact` volume and dispatches a rebuild, which fetches it back from the site it is rebuilding. |
 | Staged directory | `--build-arg EXPORT_DIR=data-derived` | The first deploy, before any live origin exists. Stage a real artifact under `web/` in the build context — the path is relative to the builder's `/web` working directory. |
 
 ### The bootstrap, stated plainly
@@ -122,6 +248,110 @@ CI's own container smoke test (`ci.yml`) takes the staged route: it runs
 the real end-to-end ingest-and-export first, into `web/data-derived`, and
 builds the image against that. The image it smoke-tests therefore serves
 real data.
+
+## Volumes: what persists, and why the pages must not
+
+A named Docker volume is seeded from the image **only when it is first
+created**, and then persists untouched across image rebuilds and container
+recreation. That is the intended behaviour for data; it is fatal for
+pre-rendered pages.
+
+`docker-compose.yml` used to mount a single `public_html` volume at
+`/web/dist`. The consequence was measured on a live stack and it disables
+the entire deploy pipeline: `deploy.yml` builds a new image, pushes it and
+POSTs the Portainer webhook; Portainer recreates the container; the volume
+survives; **the reader keeps seeing the first deploy's pages forever.** The
+freshly built image carried five indicator pages rendered from a
+98-to-306-observation artifact, while the served volume still held six —
+including an `ocupados-epa` the current artifact no longer supports, and a
+`tasa-de-paro-epa` page with four table rows and no range controls.
+
+`/web/dist` mixes two opposite lifecycles:
+
+| Path | Written by | Lifecycle |
+|---|---|---|
+| `/web/dist/**` (pages, `_astro/`) | the image build | **replaced on every deploy** |
+| `/web/dist/data-derived/` | `concontexto export` at runtime | **must survive recreation** |
+| `/web/dist/transparencia/` | every ingest, at runtime | **must survive recreation** |
+| `/app_data/` | `filestore` + retention, at runtime | **must survive recreation** |
+
+So the volumes are narrowed to the runtime-written subtrees only:
+
+```yaml
+volumes:
+  - export_artifact:/web/dist/data-derived
+  - raw_hashes:/web/dist/transparencia
+  - app_data:/app_data
+```
+
+Pages now come from the image on every deploy, and the artifact behind
+their download links still persists. `app_data` was checked rather than
+assumed: the image contains no `/app_data` content, so that mount shadows
+nothing — it was already correct.
+
+### First boot
+
+The image ships `/web/dist/data-derived` and `/web/dist/transparencia`, so
+both volumes seed from it. In an `EXPORT_DIR` build the Dockerfile copies
+the staged artifact into `dist/data-derived`, which means the CSV/JSON
+download links resolve from the very first boot instead of 404ing until the
+first publish cycle. In an `EXPORT_URL` build that directory ships empty,
+and nothing is lost: `EXPORT_URL` names a live, already-published origin,
+so the deployment being rebuilt already has a populated `export_artifact`
+volume, and an existing volume is never re-seeded.
+
+### Volume ownership
+
+The container runs as distroless `nonroot` (uid 65532) and has no shell, so
+it cannot repair permissions at start-up. Docker stamps a newly created
+volume with the ownership and mode of the image directory it seeds from, so
+the three mount points are `COPY --chown=65532:65532`'d in the Dockerfile's
+final stage. Without that, a clean `docker compose up` failed the first
+ingest with `mkdir /app_data/raw: permission denied` and needed a manual
+`chown`. No operator step is required any more.
+
+## Upgrading a stack deployed before the volume was narrowed
+
+A stack deployed before this change has a `public_html` volume holding a
+whole `dist/` — pages, `_astro/`, plus the live `data-derived/` and
+`transparencia/` subtrees. Nothing mounts `public_html` any more, so **the
+upgrade is correct with no manual step**: the volume is simply left
+orphaned, and the new `export_artifact` and `raw_hashes` volumes are created
+and seeded from the new image.
+
+The one thing to understand before cleaning up: `export_artifact` starts
+either from the image's staged artifact (`EXPORT_DIR` build) or empty
+(`EXPORT_URL` build). Both are regenerable — the next scheduled ingest, or
+one explicit `concontexto export`, rewrites the artifact from PostgreSQL,
+which is the actual system of record and lives in `pg_data`. If you want the
+published artifact restored immediately rather than at the next cycle:
+
+```bash
+# Optional: republish now instead of waiting for the scheduler.
+docker compose exec app /concontexto export
+```
+
+Then remove the orphan once you are satisfied the site serves correctly:
+
+```bash
+docker volume ls                          # expect concontexto_public_html, unused
+docker volume rm concontexto_public_html  # holds only regenerable content
+```
+
+Do **not** rename the new volumes back to `public_html`. Reusing the name
+would mount the old whole-`dist/` content at `/web/dist/data-derived`,
+publishing the previous deploy's pages under `/data-derived/` URLs beside
+the real artifact.
+
+If you would rather carry the existing artifact across explicitly instead of
+re-exporting, copy it before removing the old volume:
+
+```bash
+docker run --rm \
+  -v concontexto_public_html:/old \
+  -v concontexto_export_artifact:/new \
+  alpine:3 sh -c 'cp -a /old/data-derived/. /new/ && chown -R 65532:65532 /new'
+```
 
 ## What the workflow does once the secret is configured
 

@@ -7,6 +7,15 @@ prd_web_datos_economicos_v2 (1).md
 .env.*
 !env.example
 
+# Local Compose overrides. Compose merges this file into
+# docker-compose.yml automatically, which is exactly why it must not be
+# committed: docker-compose.yml is the PRODUCTION topology and publishes no
+# ports to the host, and a committed override would silently re-publish
+# them on every deploy made from a checkout. docker-compose.override.yml.example
+# is the committed template — copy it, do not track the copy.
+/docker-compose.override.yml
+/docker-compose.override.yaml
+
 # Local backup output from scripts/backup/pg_dump.sh
 /backups/
 

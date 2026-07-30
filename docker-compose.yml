@@ -8,28 +8,107 @@
 #   `proxy` network, hence unreachable from Nginx Proxy Manager or the
 #   internet.
 # - Logging: json-file, rotated at 10 MB x 3 files, compressed.
+#
+# HOST ACCESS IS DELIBERATELY ABSENT FROM THIS FILE. It used to carry
+# `ports: ["8080:8080"]` on `app`, which contradicted the first bullet
+# above and, more to the point, contradicted `scripts/smoke-test.sh` step
+# 5 — a committed test that asserts neither service publishes a port and
+# that CI runs on every push. Publishing 8080 puts the app on the host's
+# public interfaces, bypassing Nginx Proxy Manager and therefore TLS.
+# For local access, copy the committed template once:
+#
+#   cp docker-compose.override.yml.example docker-compose.override.yml
+#
+# Compose merges `docker-compose.override.yml` automatically, so
+# `docker compose up` then publishes 127.0.0.1:8080. That file is
+# git-ignored, so the committed topology stays the production one. See
+# docs/deploy.md, "Reaching the app from the host".
+#
+# THIS STACK BOOTSTRAPS ITSELF. `docker compose up` applies migrations
+# (the one-shot `migrate` service) and then `app`'s in-process scheduler
+# runs its first ingest/export cycle at boot. No manual `migrate up` and
+# no manual `ingest` — see docs/deploy.md, "What a clean bring-up does".
+
+# `app` and `migrate` are the SAME binary from the SAME build, so both the
+# image tag and the build definition are declared once here and referenced
+# by each service. A shared tag also means Compose's second build is a full
+# cache hit rather than a second compile of the Go and Astro stages.
+#
+# Declared at the top level rather than inline on `app` because YAML
+# anchors must appear before the aliases that reference them, and `migrate`
+# is ordered first below to match the boot sequence it enforces.
+x-app-image: &app_image concontexto-app:local
+
+x-app-build: &app_build
+  context: .
+  dockerfile: Dockerfile
+  # The web build's export-artifact source (verify-report CRITICAL-15).
+  # The Dockerfile has no default and no fallback: it used to build against
+  # `web/test/fixtures/export`, whose history is SYNTHESISED, and shipped
+  # those invented numbers as INE statistics. Forwarded from the environment
+  # so `docker compose build app` can be pointed at a real artifact — set
+  # ONE of them (see env.example and the Dockerfile's web-builder stage):
+  #
+  #   EXPORT_URL=https://<host>/data-derived/ docker compose build app
+  #   EXPORT_DIR=data-derived docker compose build app   # staged under web/
+  #
+  # With neither set, both arrive empty and the build FAILS with
+  # instructions. That is intended: an image that builds by inventing data
+  # is worse than an image that does not build.
+  args:
+    EXPORT_URL: ${EXPORT_URL:-}
+    EXPORT_DIR: ${EXPORT_DIR:-}
 
 services:
+  # ---------------------------------------------------------------------
+  # migrate — one-shot schema bootstrap, runs to completion before `app`.
+  #
+  # `app` used to start against whatever schema happened to exist, which
+  # on a clean machine was none: a fresh deploy needed an operator to run
+  # `docker compose exec app /concontexto migrate up` by hand before the
+  # pipeline could write anything, and nothing in the repository said so.
+  #
+  # This does NOT weaken spec platform-runtime's "migrations run only on
+  # explicit command". It IS the explicit command — `migrate up`, the same
+  # subcommand, with the same `migrate.ExecutionCount()` accounting. What
+  # changed is who types it: Compose, as an ordered deploy step, instead
+  # of a human who has to know to. `serve` still never migrates on boot.
+  #
+  # `migrate up` is idempotent (app/internal/adapters/postgres/runner.go
+  # records applied versions in migration_state.schema_migrations and
+  # skips them), so re-running it on every `up` and every redeploy is a
+  # no-op once the schema is current.
+  migrate:
+    image: *app_image
+    build: *app_build
+    # A one-shot job, not a service: it must exit, and `app` gates on that
+    # exit being 0. Never restart it — a restart loop here would block the
+    # whole stack instead of surfacing the failure.
+    restart: "no"
+    environment:
+      DATABASE_URL: "postgres://${POSTGRES_USER:-concontexto}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-concontexto}?sslmode=disable"
+    command: ["migrate", "up"]
+    # `internal` only: this job talks to postgres and nothing else, so it
+    # never needs to be on the `proxy` network.
+    networks:
+      - internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+        compress: "true"
+
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      # The web build's export-artifact source (verify-report CRITICAL-15).
-      # The Dockerfile has no default and no fallback: it used to build against
-      # `web/test/fixtures/export`, whose history is SYNTHESISED, and shipped
-      # those invented numbers as INE statistics. Forwarded from the environment
-      # so `docker compose build app` can be pointed at a real artifact — set
-      # ONE of them (see env.example and the Dockerfile's web-builder stage):
-      #
-      #   EXPORT_URL=https://<host>/data-derived/ docker compose build app
-      #   EXPORT_DIR=data-derived docker compose build app   # staged under web/
-      #
-      # With neither set, both arrive empty and the build FAILS with
-      # instructions. That is intended: an image that builds by inventing data
-      # is worse than an image that does not build.
-      args:
-        EXPORT_URL: ${EXPORT_URL:-}
-        EXPORT_DIR: ${EXPORT_DIR:-}
+    image: *app_image
+    build: *app_build
     restart: unless-stopped
     environment:
       PORT: "8080"
@@ -39,15 +118,64 @@ services:
       # must stay usable even when no credentials are configured.
       POSTGRES_ADDR: "postgres:5432"
       DATABASE_URL: "postgres://${POSTGRES_USER:-concontexto}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-concontexto}?sslmode=disable"
+      # Turns the in-process scheduler off, leaving `serve` a pure static
+      # file server. UNSET IN PRODUCTION — an empty value means enabled,
+      # which is the default here. It is forwarded because the scheduler's
+      # first cycle now runs at boot (schedulerTicks), so a stack that must
+      # come up without contacting INE/Eurostat needs a way to say so
+      # without also withholding DATABASE_URL, which `migrate` and
+      # `healthcheck --deep` need. See env.example.
+      APP_SCHEDULE_DISABLED: ${APP_SCHEDULE_DISABLED:-}
+    # VOLUMES ARE NARROWED TO THE RUNTIME-WRITTEN SUBTREES ONLY.
+    #
+    # /web/dist used to be a single `public_html:/web/dist` mount, and that
+    # made the entire deploy pipeline a no-op. A named volume is seeded from
+    # the image the first time it is created and then persists untouched
+    # across image rebuilds and container recreation — so `deploy.yml` built
+    # a new image, pushed it, POSTed the Portainer webhook, Portainer
+    # recreated the container, and the reader kept receiving the FIRST
+    # deploy's pre-rendered pages. Measured on the live stack: the image
+    # carried five indicator pages built from a 98-to-306-observation
+    # artifact while the volume served six, including a `ocupados-epa` the
+    # current artifact no longer supports and a `tasa-de-paro-epa` with four
+    # table rows and no range controls.
+    #
+    # /web/dist holds two lifecycles that cannot share one mount:
+    #   - the pre-rendered pages, produced by the image build, which MUST be
+    #     replaced on every deploy;
+    #   - the runtime-written subtrees below, which MUST survive container
+    #     recreation.
+    # Mounting the parent satisfies the second and destroys the first.
     volumes:
-      - public_html:/web/dist
+      # `concontexto export` writes the published artifact here
+      # (STATIC_ROOT=/web/dist, app/cmd/concontexto/export_cmd.go). Every
+      # page's CSV/JSON download link resolves into it, so it must outlive
+      # the container; the pages around it must not.
+      - export_artifact:/web/dist/data-derived
+      # Each ingest copies app_data/raw_files.sha256 to
+      # /web/dist/transparencia/raw-files.sha256 (ingest_cmd.go:
+      # resolveIngestPaths). Same lifecycle, same reason, separate subtree.
+      - raw_hashes:/web/dist/transparencia
+      # The raw-source archive and its append-only hash listing. Written
+      # only at runtime and absent from the image's /web/dist, so this mount
+      # shadows nothing — verified against the image's own file list.
       - app_data:/app_data
+    # NO `ports:` HERE, DELIBERATELY — see this file's header. Host access
+    # for local development comes from docker-compose.override.yml, which
+    # is git-ignored and templated by docker-compose.override.yml.example.
     networks:
       - proxy
       - internal
     depends_on:
       postgres:
         condition: service_healthy
+      # The schema must exist before `app`'s in-process scheduler runs its
+      # first cycle, which it now does at boot rather than 15 minutes in
+      # (app/cmd/concontexto/schedule.go: schedulerTicks). Gating on the
+      # migration having EXITED 0 — not merely started — is what makes a
+      # clean `docker compose up` reach a working site with no manual step.
+      migrate:
+        condition: service_completed_successfully
     deploy:
       resources:
         limits:
@@ -121,10 +249,24 @@ networks:
     internal: true
 
 volumes:
-  # Pre-seeded from the image's baked-in /web/dist on first start (standard
-  # Docker named-volume behavior), then persists independently of image
-  # rebuilds.
-  public_html:
+  # RENAMED FROM `public_html`, deliberately. Keeping the old name would
+  # mount an existing deployment's whole-`dist/` volume at
+  # /web/dist/data-derived, serving the old site's pages under
+  # /data-derived/ URLs alongside the real artifact until an operator
+  # noticed. A new name means Docker creates a fresh, image-seeded volume,
+  # the stale `public_html` volume is simply left orphaned, and the upgrade
+  # needs no manual step to be CORRECT — only an optional cleanup. See
+  # docs/deploy.md, "Upgrading a stack deployed before the volume was
+  # narrowed".
+  #
+  # Seeded on creation from the image's /web/dist/data-derived: populated in
+  # an EXPORT_DIR build (the artifact the pages were rendered from, so
+  # downloads work on first boot), empty in an EXPORT_URL build (which only
+  # ever rebuilds a deployment whose volume already exists and is therefore
+  # never re-seeded).
+  export_artifact:
+  # /web/dist/transparencia/raw-files.sha256, republished by every ingest.
+  raw_hashes:
   # Raw source archive + raw_files.sha256 (filestore, PR 5a).
   app_data:
   pg_data:

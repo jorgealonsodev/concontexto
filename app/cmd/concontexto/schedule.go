@@ -35,6 +35,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -82,6 +83,36 @@ func scheduleInterval(logs io.Writer) time.Duration {
 		return defaultScheduleInterval
 	}
 	return d
+}
+
+// scheduleDisabled resolves APP_SCHEDULE_DISABLED, the opt-out that turns
+// `serve` back into a pure static file server.
+//
+// It exists because schedulerTicks now delivers the scheduler's first tick
+// AT BOOT rather than 15 minutes later (verify-report WARNING-24). That is
+// required for a real deployment -- a fresh `docker compose up` must reach
+// a site with real data -- but it also means any short-lived stack built
+// from this compose file starts fetching from the live INE/Eurostat APIs
+// the moment it comes up. A hermetic test stack (CI's container smoke
+// test) needs a way to say "serve, do not ingest" that does not involve
+// withholding DATABASE_URL, which the stack needs for `migrate` and for
+// `healthcheck --deep`.
+//
+// Fails OPEN, mirroring scheduleInterval and publishLatencyBudget: an
+// unparsable value is logged and treated as "not disabled", because
+// silently switching the whole pipeline off over a typo is strictly worse
+// than ignoring the typo.
+func scheduleDisabled(logs io.Writer) bool {
+	raw := os.Getenv("APP_SCHEDULE_DISABLED")
+	if raw == "" {
+		return false
+	}
+	v, err := strconv.ParseBool(raw)
+	if err != nil {
+		fmt.Fprintf(logs, "serve: scheduler: APP_SCHEDULE_DISABLED=%q is not a valid boolean, leaving the scheduler ENABLED: %v\n", raw, err)
+		return false
+	}
+	return v
 }
 
 // scheduleSourceOp builds the op scheduler.Runner.Run needs for
@@ -206,6 +237,11 @@ func runScheduler(ctx context.Context, runners map[string]*scheduler.Runner, new
 // wrapper: resolve DATABASE_URL/config/root, then delegate to
 // startSchedulerLoop.
 func startScheduler(ctx context.Context, logs io.Writer) {
+	if scheduleDisabled(logs) {
+		fmt.Fprintln(logs, "serve: scheduler: APP_SCHEDULE_DISABLED is set, scheduler disabled (serving static content only)")
+		return
+	}
+
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
 		fmt.Fprintln(logs, "serve: scheduler: DATABASE_URL not set, scheduler disabled (serving static content only)")
@@ -232,12 +268,67 @@ func startScheduler(ctx context.Context, logs io.Writer) {
 	}
 
 	root := appDataRoot()
-	ticker := time.NewTicker(scheduleCheckInterval)
+	tick, stopTicks := schedulerTicks(ctx)
 	go func() {
-		defer ticker.Stop()
+		defer stopTicks()
 		defer pool.Close()
-		startSchedulerLoop(ctx, pool, cfg, root, staticAssetRoot(), ticker.C, logs)
+		startSchedulerLoop(ctx, pool, cfg, root, staticAssetRoot(), tick, logs)
 	}()
+}
+
+// schedulerTicks builds the PRODUCTION tick source for
+// startSchedulerLoop: one tick delivered immediately, then one every
+// scheduleCheckInterval until ctx is cancelled. The returned func stops
+// the underlying ticker and must always be called.
+//
+// The immediate first tick is the whole point (verify-report
+// WARNING-24). runScheduler already documents and implements "every
+// source runs on the very first tick" -- next[id] starts at the zero
+// time, so nothing is gated on the first pass. What was missing is that
+// production handed it a bare `time.NewTicker(scheduleCheckInterval).C`,
+// and a ticker's FIRST send lands one full interval after creation. The
+// consequence on a clean `docker compose up` is not a slow start, it is a
+// broken site: the pages ship pre-rendered in the image, but the database
+// is empty and `/web/dist/data-derived` holds only whatever the image
+// seeded, so every CSV/JSON download link 404s until the pipeline has run
+// once -- 15 minutes of a deployment that looks up and serves nothing
+// real.
+//
+// This deliberately changes ONLY when the first tick arrives, never the
+// loop's due-gating. In particular it does not seed next[id] from the
+// persisted last success: `runScheduler`'s cold-start contract is that a
+// restart re-reads freshness from `download_attempt` and still runs the
+// source (schedule_freshness_test.go asserts exactly that, and would be
+// made vacuous by such a change). The cost is honest and bounded: a
+// container restart triggers one cycle per source instead of waiting up
+// to 15 minutes for one, which is the same number of third-party fetches
+// per restart either way.
+func schedulerTicks(ctx context.Context) (<-chan time.Time, func()) {
+	ticker := time.NewTicker(scheduleCheckInterval)
+
+	// Buffered so the immediate tick can be queued before any receiver
+	// exists -- startScheduler builds the channel before the goroutine
+	// that reads it.
+	out := make(chan time.Time, 1)
+	out <- time.Now().UTC()
+
+	go func() {
+		defer close(out)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case t := <-ticker.C:
+				select {
+				case out <- t:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}
+	}()
+
+	return out, ticker.Stop
 }
 
 // startSchedulerLoop is startScheduler's composition core, extracted for

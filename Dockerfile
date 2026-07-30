@@ -23,6 +23,17 @@ COPY config_embed.go ./
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" \
     -o /out/concontexto ./app/cmd/concontexto
 
+# An empty /app_data skeleton, so the final image OWNS that path and the
+# `app_data` named volume can be seeded from it. A named volume whose
+# mount point does not exist in the image is created ROOT-owned, and this
+# container runs as `nonroot` (uid 65532) on a distroless base with no
+# shell — so the first ingest died on `mkdir /app_data/raw: permission
+# denied` and no `RUN chown` was available to repair it. Docker copies the
+# image directory's ownership and mode onto a freshly created volume, so
+# shipping this directory `--chown`ed below is what makes a clean
+# `docker compose up` work with no manual operator step.
+RUN mkdir -p /out/app_data
+
 # ---- Web builder (Node, build-time only — PRD §14.2: no Node in prod) -
 #
 # THIS STAGE REQUIRES AN EXPLICIT ARTIFACT SOURCE (verify-report CRITICAL-15).
@@ -104,6 +115,42 @@ RUN if [ -z "$EXPORT_URL" ] && [ -z "$EXPORT_DIR" ]; then \
     fi; \
     EXPORT_URL="$EXPORT_URL" EXPORT_DIR="$EXPORT_DIR" npm run build
 
+# FIRST-BOOT SEEDING OF THE RUNTIME-WRITTEN SUBTREES.
+#
+# `docker-compose.yml` no longer mounts a volume over the whole of
+# /web/dist — that mount is what made every deploy a no-op, because a named
+# volume is seeded from the image only when it is FIRST created and then
+# survives every rebuild, so the pages served were forever the first
+# deploy's. The volumes are now narrowed to the two subtrees the RUNNING
+# container writes, and both must therefore exist in the image:
+#
+#   dist/data-derived  — `concontexto export` writes the published artifact
+#                        here (STATIC_ROOT/data-derived, export_cmd.go).
+#                        Every page's CSV/JSON download link resolves into
+#                        it.
+#   dist/transparencia — each ingest copies app_data/raw_files.sha256 to
+#                        STATIC_ROOT/transparencia/raw-files.sha256
+#                        (ingest_cmd.go: resolveIngestPaths).
+#
+# `astro build` produces neither, so they are created here. Without them
+# the mount points would be absent from the image and Docker would create
+# both volumes root-owned — the same permission failure /app_data hit.
+#
+# The artifact copy: in the EXPORT_DIR form the build context HOLDS the
+# exact artifact these pages were rendered from, so it is shipped into
+# dist/data-derived and the download links work from the very first boot
+# instead of 404ing until the first publish cycle completes. This cannot
+# leak the synthetic fixture: `.dockerignore` removes `web/test/` from the
+# build context entirely, so no EXPORT_DIR can name it.
+#
+# The EXPORT_URL form ships an empty dist/data-derived, and that is
+# correct rather than a gap: EXPORT_URL points at a live, already-published
+# origin, which by definition means the deployment it rebuilds ALREADY has
+# a populated `export_artifact` volume. A volume is seeded only at
+# creation, so nothing this branch could copy would ever be read.
+RUN mkdir -p dist/data-derived dist/transparencia; \
+    if [ -n "$EXPORT_DIR" ]; then cp -R "$EXPORT_DIR"/. dist/data-derived/; fi
+
 # ---- Final image -------------------------------------------------------
 # distroless: no shell, no package manager, no curl — this is the entire
 # reason the `healthcheck` subcommand exists (exec-form HEALTHCHECK below
@@ -111,7 +158,18 @@ RUN if [ -z "$EXPORT_URL" ] && [ -z "$EXPORT_DIR" ]; then \
 FROM gcr.io/distroless/static-debian12:nonroot AS final
 
 COPY --from=go-builder /out/concontexto /concontexto
-COPY --from=web-builder /web/dist /web/dist
+
+# `--chown=65532:65532` is the distroless `nonroot` uid:gid, spelled
+# numerically because this stage has no shell and no name resolution during
+# COPY. It matters for exactly one reason: /web/dist/data-derived,
+# /web/dist/transparencia and /app_data are named-volume mount points, and
+# Docker stamps a newly created volume with the ownership and mode of the
+# image directory it seeds from. Root-owned mount points here mean a
+# root-owned volume, which a `nonroot` process cannot write — the failure
+# that had to be repaired by hand with `docker run ... chown` on the first
+# deployment of this stack.
+COPY --from=web-builder --chown=65532:65532 /web/dist /web/dist
+COPY --from=go-builder --chown=65532:65532 /out/app_data /app_data
 
 USER nonroot:nonroot
 ENV PORT=8080

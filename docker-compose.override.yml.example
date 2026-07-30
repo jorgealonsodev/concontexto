@@ -1,0 +1,53 @@
+# Local development override — host access to `app`.
+#
+#     cp docker-compose.override.yml.example docker-compose.override.yml
+#
+# Compose merges `docker-compose.override.yml` into `docker-compose.yml`
+# automatically, with no extra `-f` flags, so after that one copy a plain
+# `docker compose up` publishes the app on the host.
+#
+# WHY THIS IS A SEPARATE, GIT-IGNORED FILE
+#
+# `docker-compose.yml` is the production topology and documents itself as
+# such: "`app` and `postgres` publish NO ports to the host. `app` is
+# reachable only through the external `proxy` network, where Nginx Proxy
+# Manager terminates TLS and forwards to `app:8080`." It nevertheless
+# carried `ports: ["8080:8080"]`, which is not a style inconsistency — a
+# published port binds the container to the host's interfaces and is
+# reachable without passing through the reverse proxy, so production TLS
+# becomes optional in practice. `scripts/smoke-test.sh` step 5 asserts the
+# absence of any published port, and CI runs it on every push.
+#
+# Keeping the mapping here inverts the default: the committed topology is
+# the safe one, and a developer opts in explicitly, once, on a machine
+# where it is wanted. `.gitignore` lists `docker-compose.override.yml`, so
+# the opt-in cannot be committed by accident.
+#
+# ALTERNATIVE, NO FILE AT ALL
+#
+# The proxy network reaches the container without publishing anything:
+#
+#   docker run --rm --network proxy curlimages/curl:8.11.1 \
+#     -fsS http://app:8080/healthz
+#
+# That is what CI uses. It is precise but awkward for a browser, which is
+# what this file is for.
+#
+# ONE INTERACTION TO KNOW ABOUT
+#
+# `scripts/smoke-test.sh` invokes plain `docker compose`, so a copy of this
+# file left in place is merged into the smoke test as well, and its step 5
+# ("no published ports") then fails. Remove the copy before running the
+# smoke test, or run it as:
+#
+#   COMPOSE_FILE=docker-compose.yml ./scripts/smoke-test.sh
+
+services:
+  app:
+    ports:
+      # Bound to the loopback interface ON PURPOSE. A bare "8080:8080"
+      # binds 0.0.0.0, which publishes the app to every network the
+      # developer's machine is attached to — including whatever café or
+      # co-working Wi-Fi it happens to be on. Reachable at
+      # http://localhost:8080/ either way.
+      - "127.0.0.1:8080:8080"

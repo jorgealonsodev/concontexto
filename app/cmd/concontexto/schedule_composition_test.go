@@ -122,15 +122,18 @@ func TestStartSchedulerLoop_ColdStartWithARecentPersistedSuccessRaisesNoIncident
 	// unsupported ref kind before any network call), so a short, generous
 	// poll window covers the whole cycle (seed -> run -> alert-or-not).
 	deadline := time.Now().Add(2 * time.Second)
-	for len(spy.alerts) == 0 && time.Now().Before(deadline) {
+	for spy.count() == 0 && time.Now().Before(deadline) {
 		time.Sleep(20 * time.Millisecond)
 	}
 
-	if len(spy.alerts) != 0 {
+	// count/snapshot, never spy.alerts: startSchedulerLoop runs on its own
+	// goroutine and records alerts from there (see spyAlertSink's own doc
+	// comment for the race `go test -race` caught).
+	if got := spy.snapshot(); len(got) != 0 {
 		t.Fatalf("expected NO incident when a recent persisted success genuinely exists in postgres "+
 			"(cold-start, seeded %s before the tick) -- got %d alert(s): %+v. "+
 			"A nil seedLastSuccess reaching runScheduler (verify-report CRITICAL C8/M2) produces exactly this failure.",
-			base.Sub(recentSuccess), len(spy.alerts), spy.alerts)
+			base.Sub(recentSuccess), len(got), got)
 	}
 }
 
@@ -241,8 +244,8 @@ func TestStartSchedulerLoop_APublishLatencyBreachAlertsWhenTheLocalExportNeverCa
 	// asserting nothing fired -- same generous polling window the
 	// pre-existing cold-start test above uses for the same reason.
 	time.Sleep(300 * time.Millisecond)
-	if got := len(spy.alerts); got != 0 {
-		t.Fatalf("expected no alert on the very first tick (nothing known yet), got %d: %+v", got, spy.alerts)
+	if got := spy.snapshot(); len(got) != 0 {
+		t.Fatalf("expected no alert on the very first tick (nothing known yet), got %d: %+v", len(got), got)
 	}
 
 	// Second tick: lastSuccess is now known and is already 61+ minutes
@@ -252,18 +255,80 @@ func TestStartSchedulerLoop_APublishLatencyBreachAlertsWhenTheLocalExportNeverCa
 	tick <- base.Add(1 * time.Minute)
 
 	deadline := time.Now().Add(2 * time.Second)
-	for len(spy.alerts) == 0 && time.Now().Before(deadline) {
+	for spy.count() == 0 && time.Now().Before(deadline) {
 		time.Sleep(20 * time.Millisecond)
 	}
 
-	if len(spy.alerts) != 1 {
-		t.Fatalf("expected exactly 1 alert, got %d: %+v", len(spy.alerts), spy.alerts)
+	alerts := spy.snapshot()
+	if len(alerts) != 1 {
+		t.Fatalf("expected exactly 1 alert, got %d: %+v", len(alerts), alerts)
 	}
-	if spy.alerts[0].Kind != alerting.KindPublishLatencyBreach {
-		t.Errorf("expected KindPublishLatencyBreach, got %v", spy.alerts[0].Kind)
+	if alerts[0].Kind != alerting.KindPublishLatencyBreach {
+		t.Errorf("expected KindPublishLatencyBreach, got %v", alerts[0].Kind)
 	}
-	if spy.alerts[0].Source != sourceID {
-		t.Errorf("expected the alert to name source %q, got %q", sourceID, spy.alerts[0].Source)
+	if alerts[0].Source != sourceID {
+		t.Errorf("expected the alert to name source %q, got %q", sourceID, alerts[0].Source)
+	}
+}
+
+// TestStartScheduler_ScheduleDisabledSkipsTheSchedulerEvenWithADatabaseURL
+// covers the opt-out that the immediate first tick (verify-report
+// WARNING-24, schedulerTicks) makes necessary.
+//
+// Before that change the scheduler's first cycle landed 15 minutes after
+// boot, so any short-lived stack -- CI's container smoke test above all --
+// exited long before the pipeline ran and never touched a third-party API.
+// Now the first cycle starts at boot, which is exactly the point for a
+// real deployment and exactly wrong for a hermetic test stack. This flag
+// is how such a stack keeps `serve` serving without also making it fetch
+// from INE/Eurostat.
+//
+// Note the branch order: the flag is honoured BEFORE DATABASE_URL is
+// even read, so a disabled scheduler needs no credentials to stay quiet.
+func TestStartScheduler_ScheduleDisabledSkipsTheSchedulerEvenWithADatabaseURL(t *testing.T) {
+	t.Setenv("APP_SCHEDULE_DISABLED", "true")
+	// A syntactically valid DSN pointing at nothing: reaching the connect
+	// step at all would be the failure this test exists to catch.
+	t.Setenv("DATABASE_URL", "postgres://nobody@127.0.0.1:1/none?sslmode=disable")
+	var logs bytes.Buffer
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	startScheduler(ctx, &logs)
+
+	if !bytes.Contains(logs.Bytes(), []byte("APP_SCHEDULE_DISABLED")) {
+		t.Fatalf("expected a log line naming APP_SCHEDULE_DISABLED, got %q", logs.String())
+	}
+	if bytes.Contains(logs.Bytes(), []byte("DATABASE_URL not set")) {
+		t.Fatalf("expected the disable check to short-circuit before DATABASE_URL, got %q", logs.String())
+	}
+}
+
+// TestScheduleDisabled_ParsesTheFlagAndFailsOpen triangulates the flag's
+// own parsing. "Fails open" is deliberate and matches every other
+// resolver in schedule.go (scheduleInterval, publishLatencyBudget): an
+// unparsable value falls back to ENABLED and is logged, because silently
+// disabling the entire pipeline over a typo is the worse failure.
+func TestScheduleDisabled_ParsesTheFlagAndFailsOpen(t *testing.T) {
+	tests := []struct {
+		name string
+		env  string
+		want bool
+	}{
+		{name: "unset leaves the scheduler enabled", env: "", want: false},
+		{name: "true disables it", env: "true", want: true},
+		{name: "1 disables it", env: "1", want: true},
+		{name: "false leaves it enabled", env: "false", want: false},
+		{name: "an unparsable value fails open", env: "yes-please", want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("APP_SCHEDULE_DISABLED", tt.env)
+			var logs bytes.Buffer
+			if got := scheduleDisabled(&logs); got != tt.want {
+				t.Fatalf("scheduleDisabled() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 

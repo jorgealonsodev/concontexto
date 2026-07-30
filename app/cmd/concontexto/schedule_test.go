@@ -268,6 +268,61 @@ func TestRunScheduler_InvokesWatchdogEveryTickOnceASuccessIsKnown(t *testing.T) 
 	}
 }
 
+// TestSchedulerTicks_DeliversTheFirstTickImmediately pins the mechanism
+// that makes a fresh deployment produce data (verify-report WARNING-24).
+//
+// runScheduler's contract is "every source runs on the very first tick"
+// (next[id] starts at the zero time, so every source is due). Production
+// used to hand it a bare `time.NewTicker(scheduleCheckInterval).C`, whose
+// FIRST send lands one full interval after start -- so a clean
+// `docker compose up` served pages backed by an empty database, and every
+// `/data-derived/` download 404'd, for 15 minutes before the pipeline ran
+// once. schedulerTicks closes that gap without touching the loop's own
+// due-gating: it prepends one tick at start-up and then relays the real
+// ticker.
+//
+// The 2-second deadline is deliberately far below scheduleCheckInterval:
+// reverting to a bare ticker makes this test fail rather than merely run
+// slowly.
+func TestSchedulerTicks_DeliversTheFirstTickImmediately(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	before := time.Now()
+	tick, stop := schedulerTicks(ctx)
+	defer stop()
+
+	select {
+	case got := <-tick:
+		if got.Before(before) {
+			t.Errorf("first tick reported %v, which precedes the call at %v", got, before)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("no tick within 2s: scheduleCheckInterval is %s, so a fresh deployment would ingest nothing for that long", scheduleCheckInterval)
+	}
+}
+
+// TestSchedulerTicks_StopsWhenContextIsCancelled proves the relay
+// goroutine is bound to the same shutdown ctx everything else in
+// startScheduler is, so `serve` still exits promptly on SIGTERM.
+func TestSchedulerTicks_StopsWhenContextIsCancelled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	tick, stop := schedulerTicks(ctx)
+	defer stop()
+
+	<-tick // drain the immediate first tick
+	cancel()
+
+	select {
+	case _, open := <-tick:
+		if open {
+			t.Fatal("expected the tick channel to be closed after ctx was cancelled")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected the tick relay to stop promptly once ctx is cancelled")
+	}
+}
+
 func TestRunScheduler_StopsWhenContextIsCancelled(t *testing.T) {
 	counter := newCallCounter()
 	newOp := func(sourceID string) func(context.Context) error {

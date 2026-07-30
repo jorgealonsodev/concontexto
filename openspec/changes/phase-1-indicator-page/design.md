@@ -1193,3 +1193,161 @@ assumes the control is live.
       `MethodologySheet` now receives `slug={content.slug}` (the route slug), so the pib page no longer
       carries the DOM id `methodology-heading-pib-cvi`; `ActionBar`'s two hrefs still use `doc.slug`
       deliberately, because they must name real published files.
+- [x] **New (slice 16), resolved same slice — `SeverityBlockRequiresSignoff` had no resolving half, so it
+      was a comment rather than a control.** The severity has existed since PR 4b and `rule4_revision.go`
+      argues its purpose at length: a deep revision is either a legitimate methodology revision or a parser
+      silently rewriting history, the machine cannot tell, so the decision goes to a human. Nothing ever
+      resolved it — `validation/gate.go:97`'s `blocks()` returned true for `SeverityBlock` and
+      `SeverityBlockRequiresSignoff` alike, so a finding that named a human decision was permanently
+      terminal. This design document never recorded the gap, and the capability that closes it had no design
+      entry at all until this one (verify-report pass-5 WARNING-40 names that omission).
+
+      **What closed it (commit `bdb6cc8`).** An editorial acknowledgement registry,
+      `config/reconocimientos.yaml`, reconciled to `validation_acknowledgement` (migration
+      `0006_validation_acknowledgement`) the same way `rupturas.yaml` and `eventos.yaml` are: the file is the
+      source of truth, the table is a projection. The design decisions worth carrying forward, each of which
+      constrains a future change:
+
+      - **Scope is one series, one period, one rule, compared by exact equality.** There is no schema syntax
+        for "all periods", "the whole series" or "all rules", and `adapters/config/acknowledgement.go`
+        rejects any attempt to widen. A mechanism that can blanket-disable a guard is worse than the gap it
+        fills.
+      - **Only `rule3-plausibility` and `rule4-revision` are acknowledgeable**, and
+        `TestAcknowledgeableRules_AreExactlyRule3AndRule4` runs the real rules so the allowlist cannot drift
+        from what they emit. Those two are the ones whose finding genuinely means "this number is surprising
+        and I cannot tell legitimate from broken". Rule 2 is excluded because its own requirement says the
+        remedy is to correct the series configuration, never to relax the rule.
+      - **Staleness is a pinned value, not an expiry date.** The calendar is unrelated to whether the datum
+        changed; an expiry would re-block correct data while still covering revised data — wrong in both
+        directions. A revised value raises its own blocking `acknowledgement-stale` finding naming both
+        values.
+      - **An override is never mistakable for a pass**: outcome `publish-overridden`, a WARN-level log
+        carrying an `acknowledgements` attribute naming the record and the signer, and
+        `ingestion_run.outcome = succeeded-with-acknowledgement`.
+      - **The authority is the signature, and the unsigned state is modelled rather than absent.**
+        `signature_status: unsigned` + `drafted_by` + `todo` is `rupturas.yaml`'s `date_status: unconfirmed`
+        discipline applied a second time — never project an unverified fact. An unsigned record is inert in
+        two independent layers (`reconcile.go:116` never projects it; `validation/acknowledgement.go:168`
+        refuses it again), because a mechanism whose safety rests on one layer never being bypassed is not
+        safe. This is not a hypothetical: the first version of `bdb6cc8` shipped a forged signature, and the
+        two-state schema is the fix for the schema hole that produced it. See "A second process finding" in
+        `apply-progress.md`.
+
+      **The registry is designed, shipped, tested and currently resolving nothing**, because its one record
+      is an unsigned draft. That is the intended behaviour, and it is also this change's only archive
+      blocker — recorded as its own open question below rather than folded in here.
+- [ ] **New (slice 15/16/17) — "a check placed where the failure it guards cannot occur" has now appeared
+      FIVE times in this change, and deserves a design entry rather than five separate findings.** The
+      instances, in order: CRITICAL-2 (`details?.items ?? []` made the blocking budget gate unable to fail);
+      CRITICAL-15 (the silent fixture fallback); CRITICAL-27's `dist/` loop (the only all-six route
+      assertion lived in a job that always builds from a six-series fixture); slice 14's finding that
+      `ingest-export-build.yml`'s two halves never touched the same bytes; and now CRITICAL-37, where the
+      **entire CI corpus** builds from artifacts in which the production failure cannot occur.
+
+      Verify-report pass 5 tabulates the last one precisely: `ci` / Frontend uses
+      `BUILD_WITH_SYNTHETIC_FIXTURE=1`; `ci` / Container smoke uses `web/data-derived` from the Go e2e test;
+      `ingest-export-build` uses `TestEndToEndIngestExportBuild`; the Playwright and Lighthouse gates use the
+      committed fixture. All four always contain all six series. The third looks like it should catch this
+      and is the one worth naming: it *does* run a real `IngestSeries` for all six frozen slugs through a
+      real Postgres, but `ineIngestConfig` (`app/internal/ingestion/ingest_test.go:121`) passes
+      `Validation: config.ValidationConfig{}` — no thresholds at all — over three-period fixtures that do not
+      contain 2020-Q2. The one job exercising the real Go→Astro hand-off disables the guard that blocks the
+      series in production.
+
+      **What distinguishes this instance from the previous four**: it is not a bug in a gate. Each gate is
+      correct. The gap is that **no CI path is ever handed production's own artifact shape**. That makes it a
+      design question about the test corpus rather than a defect in any one check, which is why it is
+      recorded here.
+
+      **The generalisable rule**, stated so a future slice can apply it without rediscovering it: a check is
+      only evidence if its input can carry the failure. When adding a guard, name the artifact that would
+      trip it and confirm some job actually supplies that artifact — otherwise the guard proves the fixture,
+      not the system. Slice 14's paired negative control and slice 15's paired control build are the two
+      places in this change where that was done properly; both were done by deliberately constructing the
+      failing input, not by trusting the existing corpus.
+
+      **Open.** The concrete remedy is one CI path that builds from an artifact produced by an ingestion
+      running the **real** `config/series/*.yaml` thresholds, so that "the production build works" stops
+      being an unmeasured claim. Verify-report pass 5 calls this CRITICAL-37's structural half and states it
+      is **recommended alongside, not blocking**, the signature. **Checked 2026-07-30 18:03 UTC and NOT yet
+      landed**: `git status --short` reported only `verify-report.md` modified, HEAD `1f856e2`, and
+      `ingest_test.go:121` still read `Validation: config.ValidationConfig{}`. Another writer was working on
+      it concurrently; per `apply-progress.md`'s own staleness rule, that is a statement about a moment, and
+      the decisive check is the content of `ineIngestConfig`.
+
+      **Superseded at 2026-07-30 18:09 UTC, six minutes later, and left visible rather than rewritten.** The
+      decisive check flipped: `Validation: config.ValidationConfig{}` no longer appears in
+      `app/internal/ingestion/ingest_test.go`, which now carries `shippedConfig` and `realValidationConfig`
+      (the latter's comment cites CRITICAL-37 by name), alongside two new files —
+      `app/internal/ingestion/e2e_blocked_export_test.go` and
+      `scripts/assert-blocked-series-fails-build.sh`. **Not upgraded beyond what was observed**: all of it
+      was uncommitted working-tree state (`git log --oneline -1` still `1f856e2`), and
+      `grep -rn assert-blocked-series-fails-build .github/` returned nothing, so no workflow yet invoked the
+      new script. The Go half exists; the CI wiring that makes a green signal able to go red for CRITICAL-37
+      was not yet observable. **This entry stays open** until a CI path demonstrably builds from an artifact
+      produced under the real thresholds — the generalisable rule above is the reason: the guard is only
+      evidence once some job supplies the failing input.
+- [ ] **New (slice 15/16) — the change cannot currently produce a deployable site, and the remedy is a human
+      signature rather than a commit (verify-report pass-5 CRITICAL-37, the one archive blocker).** The
+      chain, each link measured by the pass-5 verifier: `ocupados-epa` is blocked by `rule3-plausibility`;
+      the acknowledgement that would resolve it is unsigned and therefore inert in both layers; `export.go`
+      skips a series with zero observations, so the slug is in neither `series/` nor `manifest.series`; and
+      slice 15's frozen-route guard therefore refuses the build, emitting zero pages rather than five. Every
+      link is behaving as designed, which is precisely why no code change is the right response.
+
+      **The remedy is exactly one of two acts, both human**: a named person reviews and signs
+      `config/reconocimientos.yaml`'s one draft, following the three review steps and three edits its own
+      `todo` field already spells out; or the same person rejects it and deletes the entry whole ("un
+      registro rechazado no se deja a medias"), after which `ocupados-epa` needs a different remedy and its
+      own SDD cycle. **Do not** raise `max_delta_abs`, add a break to `config/rupturas.yaml`, weaken
+      `resolveIndicatorRouteSlugs`, or let an agent sign the record — the first two were considered and
+      correctly rejected in slice 16's reasoning, the third would reintroduce CRITICAL-27, and the fourth was
+      already attempted and caught.
+
+      This entry stays open until the signature or the deletion exists on disk. It is the only thing standing
+      between this change and archive.
+- [ ] **New (slice 16) — one acknowledgement can resolve more than one finding (verify-report pass-5
+      WARNING-38).** `Acknowledgement.covers` matches on `(series, period, rule)`, and `Rule3Plausibility`
+      emits two semantically distinct findings under that one rule name — a min/max range breach and a
+      period-over-period delta breach — which can both occur at one period. The verifier demonstrated it at
+      runtime: one signed acknowledgement, `overridden=2`, `unresolved=0`. So a human vouching for a delta
+      silently also vouches for a range breach they may never have looked at.
+
+      **Mitigated, not closed.** The pinned value constrains both findings to the same number the human
+      reviewed, so a parser bug producing a different value fails closed, and the case is not reachable in
+      the shipped config (18607.2 is well inside `[0, 30000]`). The spec's prose is finding-singular
+      throughout, and the scenario "An acknowledgement never widens beyond the finding it names" asserts only
+      that no *configuration* expresses it — which remains true. The narrow fix is to give rule 3's two
+      emission sites distinct rule names, or to key the acknowledgement scope on the finding kind as well as
+      the rule. Follow-up, not an archive blocker.
+- [ ] **New (slice 16) — the registry's only anti-forgery control is a review gate that is not enforced
+      (verify-report pass-5 WARNING-39).** The design's own claim is that authority is the human signature.
+      The enforcement is a placeholder filter: empty, whitespace, under two characters, or one of a table of
+      vacant tokens (19 of them — both the commit body and the verify-report say 18; counted on disk for
+      `apply-progress.md`). Everything else is accepted, and a record signed with a plausible full name and a
+      date passes `validate-config: ok`.
+
+      The code names four-eyes review on `/config/**` as the compensating control. That control is **not
+      enforced**: `gh api repos/:owner/:repo/branches/main/protection` returns `404 Branch not protected` at
+      `1f856e2`, and `.github/CODEOWNERS` / `.github/BRANCH_PROTECTION.md` are documentation. This is not a
+      new gap — SUGGESTION-35 carried it forward as documented-but-unenforced — but adding a mechanism that
+      **overrides a validation gate** changed its severity without anyone re-adjudicating it. It is also
+      empirically load-bearing: the fabricated signature in the first version of `bdb6cc8` was caught by a
+      human reading the diff, and nothing in this repository would have caught it. Carries WARNING-10's
+      four-eyes half, which has been open since remediation B for the same reason: it needs a second
+      maintainer, not code.
+- [ ] **New (slice 17) — "a failed rebuild raises an alert immediately" is substituted, not implemented
+      (verify-report pass-5 WARNING-41).** The `pipeline-operations` scenario reads: *"GIVEN a rebuild
+      dispatched by a successful ingestion that fails, WHEN the failure is observed, THEN an alert is raised
+      naming the ingestion run and the build failure."* Nothing observes a failed CI rebuild.
+      `alerting.DispatchFailed` fires when the **POST** fails, which is a different event; a failed
+      `rebuild.yml` run produces no callback and is caught only by `RebuildLatencyBreached` once the
+      30-minute budget elapses.
+
+      The substitution is a good one — a receiver-side callback would need a second inbound path into the
+      deployed stack, and the build-manifest comparison covers the failure with no call to GitHub, Portainer
+      or the public site — but "immediately" is not what happens, and until this entry the substitution was
+      disclosed only in a comment inside `.github/workflows/rebuild.yml`. **Open in the honest sense**:
+      either the spec's timing clause is narrowed to what budget-delayed detection actually provides, or a
+      rebuild-failure callback is built. Neither has been done, and the scenario is one of the two
+      non-compliant ones in pass 5's 159/161.

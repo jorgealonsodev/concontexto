@@ -793,3 +793,173 @@ Files: `.github/workflows/ingest-export-build.yml`, `scripts/assert-corrupt-arti
   (unchanged from this job's previous version, which already relied on it), job-level `env` expansion and
   `github.workspace` resolving at runtime (actionlint validates context availability, not runtime
   expansion), and `setup-go`/`setup-node`/`npm ci` behaviour on a clean runner.
+
+---
+
+## Slice 15 — the build refuses to drop a frozen indicator route (verify-report pass-4 CRITICAL-27)
+
+Commit `4b20ca7`, `fix(web): refuse to build rather than silently drop a frozen indicator route`.
+Files: `web/src/lib/indicator/routes.ts` (new, 201 lines), `web/src/pages/indicador/[slug].astro`,
+`web/test/indicator/routes.test.ts` (new, 180 lines), `web/test/export/missing-slug-fails-build.test.ts`
+(new, 186 lines), `web/.gitignore`.
+
+- [x] 15.1 Name the defect precisely before fixing it. `getStaticPaths` read
+  `Object.keys(INDICATOR_CONTENT).filter((slug) => seriesBySlug.has(artifactSlugFor(slug)) && …)`. Upstream,
+  `export.go` skips a series with zero observations, so a never-published or gate-blocked series is absent
+  from both `series/` and `manifest.series` — and the digest chain and the Zod loader then validate
+  perfectly. The result was a green build, five indicator pages, and a 404 on a permalink this project
+  promised to keep permanent, with nothing anywhere reporting it. Recorded as the **third** appearance of
+  "a check placed where the failure it guards cannot occur": the only all-six assertion lives in
+  `ingest-export-build.yml`, which builds from a fixture that always contains all six.
+- [x] 15.2 GREEN — route resolution extracted out of the `.astro` file into
+  `web/src/lib/indicator/routes.ts`. The move is not cosmetic: a `getStaticPaths` is reachable only through
+  a real `astro build`, so the rule could not be asserted at unit level at all while it lived there.
+- [x] 15.3 GREEN — `resolveIndicatorRouteSlugs` iterates `FROZEN_INDICATOR_SLUGS` (declared in that module,
+  six entries) rather than whatever configuration happens to exist. Deriving the routes from
+  `INDICATOR_CONTENT` is the same defect pointing the other way — deleting a content entry would silently
+  shrink the site. It returns all six verbatim or throws; there is no filter and no partial return.
+- [x] 15.4 GREEN — three failure classes worded separately, because they have different fixes. Missing from
+  the artifact is a **pipeline** problem and says so ("THIS IS A PIPELINE PROBLEM, not a problem in the web
+  tree"), naming the two causes and telling the reader not to edit the web tree to make the build pass.
+  Missing from `METHODOLOGY_CONTENT` or from `INDICATOR_CONTENT` is a **content-authoring** problem and
+  names the file and the fields. A fourth message covers a slug present in `INDICATOR_CONTENT` but not
+  frozen.
+- [x] 15.5 GREEN — `web/test/indicator/routes.test.ts`, 8 cases, including one asserting that the pipeline
+  wording does not leak into the two authoring cases. Wording is load-bearing here: the whole value of the
+  throw is that it tells the reader which of three unrelated remedies applies.
+- [x] 15.6 RED/GREEN — `web/test/export/missing-slug-fails-build.test.ts` drives a **real `npm run build`**
+  against a real artifact with one slug removed in the exact three-part shape `export.go` produces
+  (`series/{slug}.json`, the `manifest.series` entry, and the digest), **paired with an unmutated control
+  build** that must exit 0 and emit all six. The control is what makes case 1 falsifiable: without it, a
+  build failing for an unrelated reason would read as proof.
+- [x] 15.7 A fourth "no data yet" page state was considered and **rejected**: the spec separately requires
+  that the chart MUST NOT be hidden in any state, and a page for a series with zero observations has no
+  chart to show. Recorded because the rejected option is the one a later reader will propose.
+- [x] 15.8 Consequence stated, not softened: a real production build now **FAILS** while `ocupados-epa` is
+  held by the publish gate. The site was already missing that route and shipping anyway; the only change is
+  that it now says so. No env var, no allowlist, no escape hatch. This is the direct cause of verify-report
+  pass-5 CRITICAL-37, and that is the correct behaviour, not a regression.
+
+---
+
+## Slice 16 — a human, and only a human, can resolve a blocking finding (new capability); plus the Go half of the publish loop
+
+Commit `bdb6cc8`, `feat(validation): let a human resolve a blocking finding, and only a human`.
+**Recorded as it landed, not as its message describes it**: the commit body documents only the
+acknowledgement registry, but the commit also carries the entire Go half of CRITICAL-28's remedy —
+`app/cmd/concontexto/rebuild_dispatch.go` (+ 292 test lines), `app/internal/scheduler/watchdog.go`
+(+ 89 test lines), `app/internal/publishing/trigger.go` (+ 55 test lines) and `schedule.go` (+111). Verified
+with `git log --diff-filter=A -- app/cmd/concontexto/rebuild_dispatch.go` → `bdb6cc8`. Two work units in one
+commit, and the undescribed one is the larger operational change.
+
+- [x] 16.1 Name what was actually missing. `SeverityBlockRequiresSignoff` has existed since PR 4b, and
+  `rule4_revision.go` explains its purpose at length — a deep revision is either a legitimate methodology
+  revision or a parser silently rewriting history, the machine cannot tell, so the decision goes to a human.
+  **Nothing in the codebase ever resolved it**: `gate.go` treated it identically to `SeverityBlock`
+  (`blocks()` returns true for both, `gate.go:97`). The comment handed a decision to a human and gave the
+  human no way to hand it back, so every blocking finding was permanently terminal.
+- [x] 16.2 The live proof the gap was real, not theoretical: `ocupados-epa` is blocked on every real ingest
+  by `rule3-plausibility` — a period-over-period change of 1074.1 at 2020-Q2 against a `max_delta_abs` of
+  1000. Measured across the series' real history, **exactly one of 97 deltas** breaches the threshold, with
+  median 152.4, p95 503.3 and second-largest 770.9 (2009). The threshold is well calibrated; raising it
+  would blind the guard permanently to avoid looking at one number once.
+- [x] 16.3 Two remedies considered and correctly rejected, recorded because they are the obvious ones.
+  Raising the threshold: see 16.2. Recording the quarter in `config/rupturas.yaml`: that registry's own
+  header declares it holds **methodological** ruptures, and the 2020-Q2 collapse was real economics —
+  filing it there would falsify the registry and destroy the exact real-versus-methodological distinction
+  rule 3 is built on.
+- [x] 16.4 GREEN — `app/internal/ingestion/validation/acknowledgement.go` (243 lines): a record names one
+  series, one period and one rule, pins the observed value, and carries provenance. Scope is compared by
+  exact equality; there is no syntax in the schema for "all periods", "the whole series" or "all rules". A
+  mechanism that can blanket-disable a guard is worse than the gap it fills.
+- [x] 16.5 GREEN — only `rule3-plausibility` and `rule4-revision` are acknowledgeable
+  (`config.AcknowledgeableRules`), and `TestAcknowledgeableRules_AreExactlyRule3AndRule4` runs the **real
+  rules** to assert the allowlist matches what they actually emit, so it cannot drift. Those two are the
+  ones whose finding means "this number is surprising and I cannot tell legitimate from broken". Rule 2 is
+  deliberately excluded because its own requirement says the remedy is to correct the series configuration,
+  never to relax the rule.
+- [x] 16.6 GREEN — staleness is handled by **pinning the observed value**, not by an expiry date. The
+  calendar is unrelated to whether the datum changed, and an expiry would re-block correct data while still
+  covering revised data — wrong in both directions. A revised value raises its own blocking
+  `acknowledgement-stale` finding naming the record and both values, rather than letting the original
+  finding reappear unexplained.
+- [x] 16.7 GREEN — an override is never mistakable for a pass. Outcome `publish-overridden`
+  (`GatePublishOverridden`, `gate.go:47`), the log carries an `acknowledgements` attribute naming the record
+  and the signer, the level is WARN not INFO, and `ingestion_run.outcome` reads
+  `succeeded-with-acknowledgement` (`postgres/gate.go:69`).
+- [x] 16.8 **THE AUTHORITY IS THE SIGNATURE — and the first version of this faked it.** See slice 16's
+  section in `apply-progress.md`; recorded here as a task because the remedy is shipped code, not a note.
+  A record now has two mutually exclusive states, modelled on `rupturas.yaml`'s `date_status: unconfirmed`
+  discipline of never projecting an unverified fact.
+- [x] 16.9 GREEN — an unsigned record is inert in **two independent layers**, because a mechanism whose
+  safety rests on one layer never being bypassed is not safe. Layer 1, the reconcile never projects it:
+  `reconcile.go:116` routes `SignatureStatus == "unsigned" || AcknowledgedBy == ""` to
+  `PendingAcknowledgementIDs` and never to `ackInputs`. Layer 2, the pure gate refuses it again:
+  `acknowledgement.go:168`, `if !a.signed() { continue }` inside the finding-matching loop, with a second
+  `!a.signed()` guard suppressing the "unused, ready to retire" advisory — the right place to surface a
+  draft is the reconcile's pending list, which says what is actually true.
+- [x] 16.10 GREEN — `app/internal/adapters/config/acknowledgement.go` (446 lines) rejects at
+  `validate-config`: an empty, too-short (< 2 characters) or placeholder signature across a vacant-token
+  table; a signed record with no date; and a record that is both unsigned and signed at once. **Counted for
+  this record: the table holds 19 tokens, not the 18 the commit body and the verify-report both state.**
+  Small, and recorded rather than copied, because a record that repeats a figure it did not check is how the
+  next wrong figure gets in.
+- [x] 16.11 GREEN — supporting surfaces: `app/internal/adapters/postgres/acknowledgement.go` (216 lines),
+  migration `0006_validation_acknowledgement` (up 78 / down 12), `config/reconocimientos.yaml` (108 lines,
+  one record, unsigned), `config/README.md` (+25), and a new `data-validation` requirement
+  ("Acknowledged findings") with **nine** scenarios in the delta spec.
+- [x] 16.12 GREEN, undescribed in the commit message — the Go half of CRITICAL-28: `buildRebuildDispatcher`
+  and the `APP_REBUILD_DISPATCH` three-state parse (`rebuild_dispatch.go`), `RebuildLatencyBreached`
+  (`scheduler/watchdog.go:98`, consumed at `schedule.go:478`) and the `trigger.go` changes. Described under
+  slice 17, where the rest of that work landed.
+
+---
+
+## Slice 17 — the publish loop's receiver, composition and deploy-completed signal (verify-report pass-4 CRITICAL-28)
+
+Commit `1f856e2`, `fix(ops): close the publish loop, which was open at four links`.
+Files: `.github/workflows/rebuild.yml` (new, 136 lines), `.github/workflows/deploy.yml`, `Dockerfile`,
+`docker-compose.yml`, `docker-compose.override.yml.example`, `docs/deploy.md` (new, 148 lines),
+`env.example`, `.gitignore`. The Go code this depends on landed in `bdb6cc8` (see 16.12).
+
+- [x] 17.1 Name all four open links before fixing any. (L1) `design.md` planned a `repository_dispatch`
+  rebuild job; `grep -rn repository_dispatch .github/` returned nothing, at HEAD and on `origin/main`.
+  (L2) the compose `app` service passed no `GITHUB_DISPATCH_*`, so `buildDispatcher` returned nil and
+  `trigger.go` returned silently. (L3/L4) the publish-latency watchdog compares the manifest `Publish` wrote
+  seconds earlier in the same call, so it can only ever detect an export that did not run — never a dispatch
+  never sent, a rebuild that failed, or a deploy that never landed.
+- [x] 17.2 State the net effect in the deployed stack, so the severity is not inferred from the file count:
+  pre-rendered pages frozen at whatever the image was built from, `/data-derived` refreshed every fifteen
+  minutes, the two diverging silently, and the spec naming an alert — "a failed or undispatched site
+  rebuild" — that nothing could raise.
+- [x] 17.3 GREEN — L1: `.github/workflows/rebuild.yml` is the missing receiver, gated the way `deploy.yml`
+  already is: unconfigured means a visible warning and no action, never a fabricated success. It verifies
+  the origin actually serves the dispatched artifact before calling deploy, so a dispatch naming an artifact
+  the site does not have fails rather than rebuilding something else. `deploy.yml` gained `workflow_call: {}`.
+- [x] 17.4 GREEN — L2, the subtler half. The binary cannot infer whether it is deployed, but the compose
+  file is exactly that difference, so the default lives there: `APP_REBUILD_DISPATCH` defaults to `required`
+  for the `app` service and to `off` in the local override. Off means nil and one INFO record.
+  **Required-but-unconfigured returns a dispatcher that fails immediately rather than nil**, routing the
+  undispatched case down the already-tested dispatch-failure branch instead of the silent one. Unrecognised
+  values fail loud — the inverse of `scheduleDisabled`'s fail-open, because here the quiet outcome is the
+  unsafe one.
+- [x] 17.5 GREEN — L3/L4, a deploy-completed signal that cannot be faked. The image records the artifact its
+  pages were rendered from, at a path **outside `dist/`** so the export volume cannot mount over it. That
+  stamp changes by exactly one mechanism — a new image being deployed — which cannot happen unless dispatch,
+  rebuild and redeploy all succeeded, so one comparison inside the container covers the three remaining links
+  with no call to GitHub, Portainer or the public site.
+- [x] 17.6 GREEN — the watchdog declines to fire when dispatch is off, because divergence is then
+  intentional, and when there is no stamp at all, because unknown is not stale. Start-up says which, so
+  silence stays readable.
+- [x] 17.7 Disclosed and not papered over: a real dispatch round trip **cannot be proven here**. There is no
+  provisioned VPS and no `PORTAINER_WEBHOOK_URL`. The one live attempt returned a genuine 401 from a
+  deliberately invalid token, which proves the request is well formed and reaches `api.github.com` and
+  proves nothing about the receiver. `rebuild.yml` calling `deploy.yml` is actionlint-validated and never
+  dispatched.
+- [x] 17.8 Disclosed, and it is a spec gap rather than a disclosure: the `pipeline-operations` scenario "a
+  failed rebuild raises an alert **immediately**" is **substituted, not implemented**. Nothing observes a
+  failed CI rebuild; `alerting.DispatchFailed` fires when the POST fails, which is a different event. A
+  failed `rebuild.yml` run produces no callback and is caught only by `RebuildLatencyBreached` once the
+  30-minute budget elapses. That is a good substitution and it does close L3 — but "immediately" is not what
+  happens, and until this entry the substitution was disclosed only in a comment inside `rebuild.yml`.
+  Verify-report pass-5 WARNING-41; now recorded in the change's own record as well.

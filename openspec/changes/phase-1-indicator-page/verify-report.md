@@ -1,42 +1,49 @@
 ```yaml
 schema: gentle-ai.verify-result/v1
-evidence_revision: sha256:b7afc276391eaad22adc389ec3df1fa92136cf147abc08646a6a8aae96855146
+evidence_revision: sha256:58d2aaaa97ce50b699612717d9652aa0ddac9f03b5e268e219c98ea23bb51bd2
 verdict: fail
-blockers: 2
-critical_findings: 2
-requirements: 70/74
-scenarios: 146/152
-test_command: go test -race -count=1 ./... then npm --prefix web run check then npm --prefix web test then npm --prefix web run test:e2e (sequential, pristine clone of 52a2151)
+blockers: 1
+critical_findings: 1
+requirements: 73/75
+scenarios: 159/161
+test_command: cd app && go test -race -count=1 ./... && cd .. && npm --prefix web run check && npm --prefix web test && npm --prefix web run test:e2e
 test_exit_code: 0
-test_output_hash: sha256:b7afc276391eaad22adc389ec3df1fa92136cf147abc08646a6a8aae96855146
-build_command: npm --prefix web run build:fixture
-build_exit_code: 0
-build_output_hash: sha256:23f9600183cf53d575912af968a56ad1e71e23c6edab6c8fabc85ae71a87dd7a
+test_output_hash: sha256:7b593c36530e24249864abf383e7ea6f098551f009e44d42b343a8adf92a0a3a
+build_command: EXPORT_DIR=/tmp/user/1000/claude-1000/-mnt-480GB-Proyectos-Personales-20260728-concontexto-20260728-concontexto-git-concontexto/b5d27279-aa14-400b-8a04-6da53081997f/scratchpad/prodshape npm --prefix web run build -- --outDir .verify-prod
+build_exit_code: 1
+build_output_hash: sha256:e29a8bb153ec2005ab1b99afbf8f6557dd8293d5cedb305ec371f360a054cd5a
 ```
 
 # Verification Report — phase-1-indicator-page
 
-**Verifier**: `sdd-verify` (pass 4)
+**Verifier**: `sdd-verify` (pass 5)
 **Date**: 2026-07-30
 **Change**: `phase-1-indicator-page`
-**Mode**: hybrid (OpenSpec file + Engram `sdd/phase-1-indicator-page/verify-report`)
-**Artifacts read**: proposal, design, specs (12 capability deltas), tasks, apply-progress, prior verify-report
-**Verified against**: the REPOSITORY (`feat/phase-1-indicator-page` @ `52a2151`, cloned pristine) and the
-RUNNER (GitHub Actions run 30558611491 / 30558611974), not against apply-progress.md or any session summary.
+**Mode**: hybrid (OpenSpec file + Engram `sdd/phase-1-indicator-page/verify-report`), Strict TDD active
+**Artifacts read**: proposal, design, 12 capability delta specs, tasks, apply-progress, pass-4 verify-report
+**Verified against**: the REPOSITORY (`feat/phase-1-indicator-page` @ `1f856e2`, working tree clean) and the
+RUNNER (GitHub Actions runs 30566474755 / 30566474760, both at `head_sha 1f856e2`), never against a session
+summary. Every claim handed to this verifier was re-executed or re-derived from source.
 
 ---
 
 ## Verdict
 
-**FAIL.**
+**FAIL — one blocker, and it is not code.**
 
-Two CRITICAL findings block archive. Both sit on the same seam every prior pass has broken on — the boundary
-between the pipeline that produces data and the build that publishes it — and both are NEW, found by
-inspecting the repository and the deployed topology rather than by re-running the suites.
+Every engineering defect this change has produced in five passes is now closed. `CRITICAL-27` and
+`CRITICAL-28` are both closed, and closed properly: the route guard fails a real build with a paired
+control, and all four links of the publish loop have a receiver, a composition, a deploy-completed instant
+and an alert. The acknowledgement registry that `bdb6cc8` introduced survived a deliberate attempt to break
+it, in both of the layers it claims.
 
-The suites are genuinely green, on a real runner, for the first time. `CRITICAL-23` is closed and closed
-properly. What pass 3 could not see, because nothing was committed, is that the change ships a publishing
-loop with two open links.
+What blocks archive is the consequence. `ocupados-epa` is blocked by `rule3-plausibility`, the record that
+would resolve it is correctly unsigned and correctly inert, and the new route guard therefore makes a
+production build **exit 1 and emit nothing**. I executed that build. The change's own central MUST — six
+indicator routes — cannot be satisfied by any artifact this pipeline can currently produce, and no CI job
+can see it, because every CI build path is fed an artifact in which the failure cannot occur.
+
+The remedy is a human signature, not a commit. That is stated precisely in §H.
 
 ---
 
@@ -44,450 +51,444 @@ loop with two open links.
 
 | Dimension | Compliant | Total |
 |---|---|---|
-| **Requirements** | **70** | **74** |
-| **Scenarios** | **146** | **152** |
+| **Requirements** | **73** | **75** |
+| **Scenarios** | **159** | **161** |
 | Tasks checked | 191 | 191 (0 unchecked) |
 
-Authoritative counts derived by parsing `openspec/changes/phase-1-indicator-page/specs/*/spec.md`:
-data-model-vintages 4/8, data-validation 1/7, design-system 9/14, editorial-config 3/9, indicator-page 15/34,
-pipeline-operations 4/10, platform-runtime 1/2, publishing-export 11/18, series-transformations 8/14,
-source-ingestion-eurostat 3/7, source-ingestion-ine 5/13, web-accessibility-gates 10/16.
+Authoritative totals parsed from `openspec/changes/phase-1-indicator-page/specs/*/spec.md` at `1f856e2`:
+data-model-vintages 4/8, **data-validation 2/16** (was 1/7; `bdb6cc8` adds one requirement and nine
+scenarios), design-system 9/14, editorial-config 3/9, indicator-page 15/34, pipeline-operations 4/10,
+platform-runtime 1/2, publishing-export 11/18, series-transformations 8/14, source-ingestion-eurostat 3/7,
+source-ingestion-ine 5/13, web-accessibility-gates 10/16. Pass 4's totals (74/152) are superseded by the
+spec's own growth, not by a recount disagreement.
 
-Non-compliant requirements: `indicator-page` / "Six indicator routes with frozen slugs";
-`pipeline-operations` / "A successful ingestion dispatches the rebuild"; `pipeline-operations` /
-"An ingestion not followed by a rebuild alerts operators"; `pipeline-operations` / "Publish latency has a
-stated budget".
+**Non-compliant requirements (2)**
 
----
+| Capability / Requirement | Why |
+|---|---|
+| `indicator-page` / "Six indicator routes with frozen slugs" | The build produces **zero** of the six from the only artifact production can supply. CRITICAL-37. |
+| `pipeline-operations` / "An ingestion not followed by a rebuild alerts operators" | 3 of 4 scenarios pass; "A failed rebuild raises an alert **immediately**" is substituted by budget-delayed detection. WARNING-41. |
 
-## Repository state — CRITICAL-23 closed
+**Non-compliant scenarios (2)**: `indicator-page` / "All six routes exist in the build";
+`pipeline-operations` / "A failed rebuild raises an alert immediately".
 
-| Check | Result | Evidence |
-|---|---|---|
-| Change exists in the repository | **Yes** | `git status --porcelain` → 0 lines; working tree == `HEAD` == `52a2151` |
-| Branch pushed | Yes | `feat/phase-1-indicator-page` tracks `origin/feat/phase-1-indicator-page` |
-| `main` untouched | Yes | `main` @ `009168c`, unchanged |
-| Tracked file count | 444 files (233 under `app/`, 48 under `web/src/`) | `git ls-files` in a pristine clone |
-| Generated bytes excluded | Yes | `app/cmd/concontexto/web/dist/` absent and gitignored (SUGGESTION-26) |
-| PR | #1, OPEN, MERGEABLE, `feat/phase-1-indicator-page` → `main` | `gh pr list` |
+Pass 4's four non-compliant requirements resolve as: three `pipeline-operations` requirements **CLOSED**,
+one `indicator-page` requirement still open for a different reason than pass 4 recorded, and one new
+requirement added and satisfied.
 
 ---
 
-## Build & tests — re-run by this verifier in a PRISTINE CLONE of `52a2151`
+## A. Execution evidence — every number re-measured here
 
-Cloned to `/home/jorge/concontexto-verify4`, `npm ci` from `package-lock.json`. Go and Playwright run
-sequentially, never concurrently.
+Working tree clean at `1f856e2` (`git status --porcelain` → 0 lines). Go and Playwright run sequentially,
+never concurrently.
 
 | Command | Exit | Result |
 |---|---|---|
 | `go build ./...` | 0 | clean |
 | `go vet ./...` | 0 | clean |
 | `gofmt -l app/` | 0 | no output |
-| `go test -race -count=1 ./...` | **0** | 23 packages ok, zero race reports |
-| `npm run check` | 0 | 0 errors, 0 warnings, 2 hints |
-| `npm test` (Vitest) | 0 | **438 passed / 438**, 33 files |
+| `go test -race -count=1 ./...` | **0** | 22 packages ok + 2 with no test files, zero race reports |
+| `go run ./cmd/concontexto validate-config` | 0 | `validate-config: ok` |
+| `npm run check` | 0 | 97 files, **0 errors, 0 warnings**, 2 hints |
+| `npm test` (Vitest) | 0 | **448 passed / 448**, 35 files |
 | `npm run test:e2e` (Playwright) | 0 | **64 passed / 64** |
+| `npm run build` from a **production-shaped** artifact | **1** | **no `indicador/` directory emitted** — §C |
 
-Every number matches what was reported to this verifier. Nothing was taken on trust.
+Every figure reported to this verifier reproduced exactly. Nothing was taken on trust.
 
-### Runner evidence — SUGGESTION-22 discharged
+**Runner.** PR #1 is OPEN and MERGEABLE. All four jobs pass at `head_sha 1f856e2`: `Go test suite` (1m25s),
+`Frontend build and tests` (3m0s), `Container smoke test` (1m21s), `Ingest fixtures -> export -> astro
+build` (40s). Confirmed by `gh api` against the run objects, not by reading the workflow files.
 
-Workflows have now executed on real GitHub-hosted runners against `52a2151`:
-
-| Workflow / job | Conclusion | Duration |
-|---|---|---|
-| ci / Go test suite | **success** | 1m23s |
-| ci / Frontend build and tests | **success** | 2m54s |
-| ci / Container smoke test | **success** | 1m14s |
-| ingest-export-build / Ingest fixtures -> export -> astro build | **success** | 48s |
-
-Confirmed from the runner log, not from the workflow file, that the Go job executed the new command:
-
-```
-Go test suite  go test ./... -race  ##[group]Run go test -race -count=1 ./...
-```
-
-Independent corroboration of the User-Agent defect: the scheduled `probe` run on `main` (`009168c`, run
-30523361336) **failed** with `context deadline exceeded` against four INE endpoints in sequence. That is the
-exact blackholing `dd79bb8` fixes, observed on a real runner against the unfixed commit.
+**Citation.** `https://www.ine.es/daco/daco42/daco4211/epa0220.pdf` → HTTP **200**, **1,233,410 bytes**;
+`pdftotext` finds "1.074.000" and "COVID-19" across 8 lines. Independently reproduced.
 
 ---
 
-## A. NEW CRITICAL findings (block archive)
+## B. `bdb6cc8` — the acknowledgement registry, attacked as a security mechanism
 
-### CRITICAL-27 — The build silently drops a frozen slug the artifact does not carry, so a permanent permalink 404s with a green build
+It was asked to be attacked. It was. It holds, with two residuals recorded below as WARNINGs.
 
-`web/src/pages/indicador/[slug].astro`, `getStaticPaths`:
+### B.1 Can the scope be widened? No — every attempt rejected at the config gate
 
-```js
-const slugs = Object.keys(INDICATOR_CONTENT).filter(
-  (slug) => seriesBySlug.has(artifactSlugFor(slug)) && METHODOLOGY_CONTENT[slug] !== undefined,
-);
-```
+Eight mutations applied to the real `config/reconocimientos.yaml`, each run through the real
+`validate-config` against the real embedded config tree, each restored afterwards:
 
-A frozen slug absent from the export artifact is **filtered out**. No error, no warning, no non-zero exit.
-The build is green and the site simply has one fewer page.
+| Mutation | Result |
+|---|---|
+| `period: "*"` | rejected — "not a single period on series ... `Q` frequency grid ... never a whole year, a range or a wildcard" |
+| `period: "2020"` | rejected — same check; a whole year is not a quarterly label |
+| `rule: "*"` | rejected — "not acknowledgeable (only [rule3-plausibility rule4-revision] are)" |
+| `rule: rule2-continuity` | rejected — same, with the continuity remedy named |
+| `series: "*"` | rejected — "does not resolve to any configured series" |
+| `signature_status: signed` | rejected — only `""` and `"unsigned"` exist |
+| `signature_status: UNSIGNED` | rejected — fails **closed**, not silently through |
+| `value:` removed | rejected — "value is required — it pins the exact number the reviewer confirmed" |
 
-The upstream half is `app/internal/publishing/export.go:234`:
+The claim that the schema has no syntax for widening holds. `isPeriodOnFrequencyGrid` is a per-frequency
+regex over the exact `indicators.Period.String()` shapes, deliberately re-implemented rather than reusing
+`parseCadenceOrdinal` — and that reasoning is correct: the shared helper folds annual into a
+quarterly-shaped label and would have rejected `2020` for `pib-eurostat`.
 
-```go
-if len(obs) == 0 {
-    continue // never published anything -- not yet a "published series"
-}
-```
+The honest residual: N entries, one per period, each with its own pinned value and signature, would
+neutralise rule 3 across a series' history. That is not a wildcard — it is an exhaustive enumeration of
+individually-signed, individually-pinned values — but it is expressible. Its only control is review; see
+WARNING-39.
 
-A series that has never published is omitted from the artifact entirely — it is absent from
-`manifest.Series` too, so the digest chain and the Zod loader both validate cleanly. Every guard this change
-built for artifact integrity passes, because the artifact is internally consistent. It is merely incomplete.
+### B.2 Is the rule allowlist sound, and can it drift? Sound, and it cannot
 
-**Spec violated** — `indicator-page`, "Six indicator routes with frozen slugs":
+`acknowledgeableRules = {rule3-plausibility, rule4-revision}`. The stated reason is the right one: these are
+the only two findings where the machine genuinely cannot separate a legitimate cause from a broken one.
+`rule1-schema` / `source-decode` / `source-status` describe a broken parser; `rule5-metadata` describes our
+own incomplete config; `rule6-nonempty` has no datum to review; `rule2-continuity` already has a
+period-scoped editorial remedy and the delta spec says in terms that the remedy is to correct the config.
+Acknowledging any of them would be a false statement, not a lenient one.
 
-> The build MUST produce `/indicador/{slug}` for exactly these six slugs, which are **frozen by this change**
-> because permalinks are a permanent commitment (Anexo E.1)
+Anti-drift is real, not asserted: `TestAcknowledgeableRules_AreExactlyRule3AndRule4` runs the **real** rules,
+collects the rule names they actually emit and asserts set equality. A rename or a new judgement-call rule
+fails a test rather than silently producing an unmatchable acknowledgement. **The reasoning holds.**
 
-and its second scenario's closing clause:
+### B.3 Is the unsigned record inert in both layers? Verified independently, with a control
 
-> - AND no published permalink returns a not-found response
-
-**This is happening in production now.** `ocupados-epa` is blocked by `rule3-plausibility` on every ingest,
-so it has never published an observation, so it is absent from the artifact, so `/indicador/ocupados-epa/`
-404s. Pass 3's own CRITICAL-15 investigation already recorded the symptom without recognising it: *"the fresh
-image carried five indicator pages while the volume served six"*. Five, not six, was the measurement.
-
-**Why no gate caught it.** The only place all six routes are asserted is
-`.github/workflows/ingest-export-build.yml`:
-
-```
-for slug in tasa-de-paro-epa ocupados-epa ipc-general ipc-subyacente pib poblacion-residente; do
-  page="web/dist/indicador/$slug/index.html"
-  test -f "$page" || { echo "Missing built page: $page" >&2; exit 1; }
-```
-
-That job builds from a **fixture artifact containing all six**. It can never fail this way. The assertion
-exists in CI and is absent from the build that ships. This is precisely the shape of CRITICAL-2 (`details?.items ?? []`
-collapsing a broken measurement to PASS) and CRITICAL-15 (silently falling back to the synthetic fixture):
-**a check that cannot fail because it is applied where the failure cannot occur.** Third instance, same
-change, same seam.
-
-`scripts/assert-corrupt-artifact-fails-build.sh` does not close it either: all three of its scenarios corrupt
-an artifact entry that **exists** (stale sha256, wrong `schema_version`, Zod shape violation). None removes a
-series.
-
-**Adjudication of the item handed over as "deliberately still open".** The analysis of the *data* side is
-correct and I agree with it: across 97 period-over-period deltas exactly one breaches the configured
-threshold of 1000, median 152.4, p95 503.3 — the threshold is well calibrated, raising it would blind the
-guard, and recording a `methodology` break to unblock an ingest would falsify a registry whose own header
-says it holds methodological ruptures. Do not do that.
-
-But that is the wrong layer to fix. Whatever the reason a series is missing — a blocking finding, a source
-outage, a config error, a new series added to `INDICATOR_CONTENT` before its pipeline exists — the build's
-answer must not be to quietly publish a 404 at a permalink the spec calls a permanent commitment. **The
-defect is the silent drop, not the blocked series.** The blocked series is the follow-up.
-
-**Remedy (one of):** make `getStaticPaths` fail loudly when a slug in `INDICATOR_CONTENT` has no artifact
-entry; or narrow the spec's MUST and specify what a frozen slug without data renders instead (PRD §6.1.3 has
-three page states and the spec insists the chart is never hidden — a fourth "no data yet" state is a real
-design decision, not a patch). Either way the build must stop being silent.
-
-### CRITICAL-28 — The ingest-to-rebuild-to-deploy loop is open at three independent links, and nothing observes any of them
-
-`env.example` states the intended production loop verbatim:
-
-> This is the production shape: a publishing cycle writes the artifact into the container's export_artifact
-> volume, POSTs a repository_dispatch (GITHUB_DISPATCH_* above), and the rebuild fetches the artifact from
-> the site it is rebuilding.
-
-Each link was checked against the repository.
-
-**Link 1 — the dispatch lands on nothing.** `app/internal/adapters/github/dispatch.go:63` POSTs
-`event_type: "rebuild"` to `/repos/{repo}/dispatches`.
+I did not rely on the shipped tests. I loaded the **real embedded** `config/reconocimientos.yaml` through the
+real `config.Load`, and drove both layers directly:
 
 ```
-$ grep -rn 'repository_dispatch' .github/
-NO WORKFLOW SUBSCRIBES TO repository_dispatch
+shipped record: id="ocupados-epa-2020-q2-covid" series="ocupados-epa" period="2020-Q2"
+                rule="rule3-plausibility" signature_status="unsigned" acknowledged_by="" acknowledged_on=<nil>
+LAYER 1 (reconcile predicate `SignatureStatus == "unsigned" || AcknowledgedBy == ""`)  -> not projected
+LAYER 2 (pure gate, fed the record as if it HAD reached the DB) -> outcome=block overridden=0
+CONTROL (same record, By="Ada Lovelace")                        -> outcome=publish-overridden overridden=1
 ```
 
-Verified at `HEAD` and on `origin/main`. The four workflows trigger on: `ci` — push/PR; `deploy` —
-`workflow_run` on ci + `workflow_dispatch`; `ingest-export-build` — push/PR; `probe` — cron +
-`workflow_dispatch`. **None has `on: repository_dispatch`.** GitHub answers a dispatch with no subscriber
-`204 No Content`, the adapter treats any 2xx as success, `result.DispatchedAt` is set, and no alert fires.
-The POST is a well-formed message into a void.
+The control is what makes the assertion mean something: the harness can distinguish the two states, so
+"blocked" is a measurement rather than an inert setup. **Both layers are genuinely independent**, and
+`Acknowledgement.signed()`'s defence-in-depth argument (the database can be hand-edited; a future caller can
+build these values elsewhere) is correct rather than ceremonial.
 
-`design.md:611` planned exactly this job and it was never built:
+The shipped tests corroborate it at runtime against a real Postgres:
+`TestIngestSeries_AnUnsignedDraftLeavesTheCovidQuarterBlocked`,
+`TestReconcileEditorialConfig_RefusesAnUnsignedRecordEvenWhenOtherwiseProjectable`,
+`TestReconcileEditorialConfig_ReportsAnUnsignedDraftAsPendingRatherThanDroppingIt` — all pass.
 
-| `.github/workflows/` | Modify | **`repository_dispatch` rebuild job**, web tests, blocking Lighthouse, e2e ingest→build job |
+### B.4 Does `validate-config` reject placeholder signatures? Yes — and only those
 
-The other three items in that cell all shipped. Only the rebuild job is missing, and **no document in the
-change discloses its absence** — the disclosed deferral in `design.md`'s Open Questions is about
-PORTAINER_WEBHOOK_URL/VPS provisioning blocking *end-to-end deploy verification*, which is a different claim
-from the job not existing.
+`isPlaceholderSignature` trims, lowercases, rejects anything under 2 characters and 18 vacant tokens.
+Verified: `signature_status: signed` and every mixture of the two states is rejected with a message naming
+the contradicting field. This satisfies the delta spec's requirement verbatim — "a signature that is present
+but empty or **placeholder-shaped**".
 
-**Link 2 — the deployed stack configures no dispatcher at all.** `app/cmd/concontexto/ingest_cmd.go:211`:
+It does not, and cannot, reject a fabricated plausible name. I demonstrated this: replacing the three draft
+lines with `acknowledged_by: "Jorge Alonso"` and a date yields `validate-config: ok`, exit 0. The code's own
+comment says this is undecidable and names four-eyes review as the control. That is honest — and it is
+WARNING-39, because that control does not exist on this repository.
 
-```go
-func buildDispatcher() publishing.Dispatcher {
-	repo := os.Getenv("GITHUB_DISPATCH_REPO")
-	token := os.Getenv("GITHUB_DISPATCH_TOKEN")
-	if repo == "" || token == "" {
-		return nil
-	}
-```
+### B.5 Staleness — is pinning the value enough?
 
-`docker-compose.yml`'s `app` service passes `PORT`, `POSTGRES_ADDR`, `DATABASE_URL` and
-`APP_SCHEDULE_DISABLED` — and neither `GITHUB_DISPATCH_*`. Compose forwards only what is listed, so
-`buildDispatcher()` returns `nil` in the shipped topology. `publishing/trigger.go:112`:
+The three candidates (expiry date, message hash, observed value) are weighed correctly, and the observed
+value is the right choice for the stated reasons. Exact float equality is safe here and the argument for it
+is exact: both sides are the same deterministic decimal-literal parse, and any difference *is* the revision.
+A stale pin does not merely fail to apply — it raises its own blocking `acknowledgement-stale` finding naming
+the record and both values. Verified at runtime (`TestIngestSeries_AStaleAcknowledgementBlocksAgainAndSaysWhy`).
 
-```go
-if dispatch == nil {
-    return result, nil
-}
-```
+**The disclosed neighbouring-period residual is real but narrower than disclosed** — see SUGGESTION-42. I
+judge the disclosure **adequate**: it errs toward overstating the risk, which is the correct direction.
 
-Silent return. **No alert.** The MODIFIED `pipeline-operations` / "Operational alerts" requirement is
-explicit that the alert set must cover *"a failed or **undispatched** site rebuild"*. An undispatched rebuild
-is the shipped stack's behaviour on every single cycle, and it raises nothing.
+### B.6 Where it over-reaches
 
-**Link 3 — the watchdog structurally cannot observe either failure.** `publishLatencyWatchdog`
-(`schedule.go:408`) reads `STATIC_ROOT/data-derived/manifest.json` — the file `Publish` wrote seconds earlier
-in the same call — and `scheduler.PublishLatencyBreached` returns `false` whenever
-`manifestGeneratedAt >= lastIngestionSuccess`, which is always true immediately after a successful export.
-The proxy can therefore only ever detect a failed *export*, never a failed or absent *rebuild*.
-`watchdog.go`'s own doc comment concedes the substitution and conditions its validity on a premise that is
-false in production:
-
-> A manifest generated at or after lastIngestionSuccess means the export step already picked up this
-> ingestion cycle (**and, when a rebuild dispatcher is configured**, already triggered the rebuild for it)
-
-**Link 4 — the deploy-completed instant is never recorded.** `pipeline-operations` / "Publish latency has a
-stated budget" requires *"the ingestion-success instant, the rebuild-dispatch instant and the
-deploy-completed instant"* be recorded so elapsed time is measurable. `PublishResult` carries
-`IngestionSuccessAt` and `DispatchedAt`; `grep -rn 'DeployCompleted|DeployedAt' app/` returns nothing. The
-struct's comment defers the third to "the scheduler watchdog's own concern", and the watchdog reads a local
-manifest that says nothing about a deploy.
-
-**Combined, reader-visible consequence.** After `b0aad8f` the pre-rendered pages come from the image on every
-deploy while `/web/dist/data-derived` is a runtime-written volume. The scheduler now ticks immediately and
-every 15 minutes, exporting a fresh artifact into that volume. But nothing turns a fresh artifact into a
-fresh page. So between git pushes to `main`:
-
-- the page renders the values baked in at the last image build;
-- the same page's "Exportar CSV" link serves whatever the scheduler exported minutes ago;
-- the two diverge as soon as a source publishes a new period;
-- and no alert fires, because link 3 cannot see it.
-
-`b0aad8f` correctly fixed *"the volume froze the site across deploys"*. It did not create a path from *new
-data* to *a new deploy*. That path is the dispatcher, and it is nil, and it points at nothing.
-
-**Remedy:** add the `on: repository_dispatch` rebuild workflow `design.md` already planned; set
-`GITHUB_DISPATCH_*` in the `app` service (or make an unconfigured dispatcher raise the `undispatched`
-alert the spec already names, instead of returning silently); and either record a real deploy-completed
-instant or narrow the budget requirement to what is actually observable.
+One record resolves **more than one finding**, demonstrated at runtime — WARNING-38.
 
 ---
 
-## B. NEW WARNING findings
+## C. NEW CRITICAL finding
 
-### WARNING-29 — The run log claims a dispatch that did not happen
+### CRITICAL-37 — The change cannot produce a deployable site, and no green signal in this repository can see it
 
-`ingest_cmd.go:508` prints unconditionally whenever `Publish` returns no error:
+Three facts, each measured:
 
-```go
-fmt.Fprintf(stdout, "ingest: publish: exported and dispatched to %s (%s)\n", ...)
+**1. `ocupados-epa` is blocked.** Proven at runtime by
+`TestIngestSeries_WithoutAnAcknowledgementTheCovidQuarterStillBlocks`, which runs the real `IngestSeries`
+against real INE data (2019-Q4 / 2020-Q1 / 2020-Q2) with the real thresholds from
+`config/series/ocupados-epa.yaml` (`max_delta_abs: 1000`) through a real Postgres transaction. Outcome
+`block`, zero observations written. No break covers 2020-Q2 in `config/rupturas.yaml`. The acknowledgement
+that would resolve it is unsigned and inert (§B.3).
+
+**2. A blocked series is absent from the artifact, and the build now refuses.** `export.go` skips a series
+with zero observations, so the slug is in neither `series/` nor `manifest.series`. I built the real site
+against exactly that shape:
+
 ```
-
-`Publish` returns `nil` in all three cases: dispatch succeeded, dispatch was skipped (`nil` dispatcher — the
-production shape), and dispatch **failed** (best-effort alert, then `return result, nil`). So the log asserts
-"dispatched" in two cases where nothing was dispatched.
-
-`PublishResult.DispatchedAt` is precisely the field that carries the truth — correctly `nil` when skipped or
-failed, and unit-tested three ways in `trigger_test.go:56/70/121` — and its only production caller never
-reads it. Another instance of the "parsed and ignored" pattern this change's own comments name.
-
-`pipeline-operations` requires *"Dispatch MUST be recorded in the run's structured log"* and its scenario
-*"the passing run dispatches a rebuild and records the dispatch"*. A record printed in all cases records
-nothing. Both call sites asserting the literal string (`ingest_run_cmd_test.go:246`,
-`ingest_export_gate_test.go:216/247`) pass a working dispatcher stub, so no test exercises the production
-shape where the message is false.
-
-### WARNING-30 — `ine/envelope.go` carries the same nil-value crash class, disclosed only in a commit message
-
-`envelope.go:38/87` passes the wire pointer through unchanged:
-
-```go
-Valor    *float64 `json:"Valor"`
+$ EXPORT_DIR=<fixture with ocupados-epa removed> npm --prefix web run build
 ...
-observations = append(observations, Observation{Period: period, Value: d.Valor, SourceStatus: d.TipoDato})
+  - "ocupados-epa" has no series in the export artifact.
+    THIS IS A PIPELINE PROBLEM, not a problem in the web tree ...
+exit 1
+indicador/ directory emitted: NO
 ```
 
-A published `"Valor": null` with `T3_TipoDato: "Definitivo"` would hit the same
-`CHECK (value IS NOT NULL OR status = 'W')` that took every Eurostat series down. Not reachable today — all
-five configured series probed, 738 rows, zero nulls, and I accept that measurement.
+This is the correct behaviour and it is CRITICAL-27's remedy working exactly as designed. It is also the
+reason the requirement is unmet: the build produces zero of six, not six of six.
 
-The finding is the **durability of the disclosure**, not the risk. It exists in exactly one place: the body of
-commit `befa81f`. `grep` finds no code comment, no `openspec` entry, no test pinning current behaviour. A
-latent constraint-violating crash in a production write path should not depend on commit-message archaeology.
-The reasoning for why the fix must differ from the Eurostat one — INE emits an explicit row with an explicit
-null, a positive statement by the source that may mean suppressed data, so discarding it would throw away
-something INE chose to publish — is sound and worth preserving somewhere durable.
+**3. Nothing in CI can go red for this.** Every build path in the repository is fed an artifact in which the
+failure cannot occur:
 
-### WARNING-31 — `SeverityBlockRequiresSignoff` names a mechanism that does not exist
-
-Verified. `validation/gate.go:41`:
-
-```go
-return f.Severity == SeverityBlock || f.Severity == SeverityBlockRequiresSignoff
-```
-
-`pipelinelog.go:97` treats the two identically as well. Nothing anywhere resolves a signoff, so every blocking
-finding is permanently terminal, and `rule4_revision.go:15`'s comment — *"SeverityBlockRequiresSignoff hands
-the decision to a human rather than..."* — describes behaviour the codebase does not have.
-
-**Not a blocker for this change**, and not the cause of the `ocupados-epa` blockage: `rule3_plausibility.go`
-emits plain `SeverityBlock` at all three sites (lines 66, 72, 92). The signoff mechanism belongs to rule 4
-(deep revision, Fase 0 / PR 4b); no requirement in this change's delta specs demands its resolution
-— `data-model-vintages` only requires that a status-only change *does not trip* it, which is satisfiable and
-satisfied. Carried as a WARNING because the comment currently misdescribes the code.
-
----
-
-## C. Adjudication of the five previously un-adjudicated commits
-
-| Commit | Verdict | Basis |
+| CI path | Artifact it builds from | Contains all six? |
 |---|---|---|
-| `dd79bb8` explicit User-Agent | **ACCEPTED** | Shared constant `app/internal/useragent/useragent.go:85`, four call sites (ine/eurostat/xlsx/github), four wire-level `useragent_test.go` files asserting the header as an `httptest` server receives it. The UA is honest (names the project and its repository), not an impersonation. Independently corroborated: the scheduled probe on unfixed `main` failed with `context deadline exceeded` against four INE endpoints. Giving the probe its own test is the right call — a probe that reached INE while ingestion was blackholed would have reported green through the whole outage. |
-| `befa81f` valueless JSON-stat position | **ACCEPTED**, both claims checked below | See adjudication |
-| `ba2212d` `spyAlertSink` race | **ACCEPTED** | `grep -rln spyAlertSink app/` returns only `_test.go` files — test-only is a fact, not an assertion. The production reasoning holds: `runScheduler`'s maps are created inside the function and touched only by its own loop; `alerting`'s default sink is `RWMutex`-guarded (`defaultSinkMu`). The diagnosis of why the existing handshake did not cover it (the channel is sent from inside the fake op, while `Runner.Run` appends after the op returns, so no happens-before edge reaches the append) is correct. `-race` is clean in my pristine clone and on the runner. |
-| `b0aad8f` deployment topology | **ACCEPTED as far as it goes** — see CRITICAL-28 for what it does not reach | The named-volume diagnosis is correct: a Docker named volume is seeded once at creation and persists across image rebuilds, so `public_html:/web/dist` did freeze the pages. Narrowing to `/web/dist/data-derived` plus a separate `raw_hashes:/web/dist/transparencia` is the right split, and finding the second runtime-written path before it started being lost on recreation is good work. Renaming the volume rather than reusing `public_html` is correct and the reasoning is exact — the old name would have mounted the previous whole-`dist` volume under `/data-derived/`. The `migrate` one-shot gating `app` on `service_completed_successfully` does not weaken "migrations run only on explicit command"; it is the same subcommand with the same `migrate.ExecutionCount()` accounting. The `time.NewTicker` first-value diagnosis is correct. The in-process-scheduler tradeoff is stated honestly rather than dismissed. Port removal is right and the evidence cited (`scripts/smoke-test.sh` step 5 asserts no published ports and CI runs it) is real. |
-| `52a2151` CI `-race` + hermetic smoke test | **ACCEPTED** | `-race -count=1` verified on the runner. `COMPOSE_FILE` pinning is correct — compose merges `docker-compose.override.yml` automatically and the committed template exists precisely to publish `127.0.0.1:8080`, so without the pin a developer would fail the no-published-ports assertion against their own machine. See SUGGESTION-33 for the coverage the `APP_SCHEDULE_DISABLED` export gives up. |
+| `ci` / Frontend build and tests | `BUILD_WITH_SYNTHETIC_FIXTURE=1` → `web/test/fixtures/export` | Yes, always |
+| `ci` / Container smoke test | `web/data-derived`, exported by the same Go e2e test | Yes, always |
+| `ingest-export-build` | `TestEndToEndIngestExportBuild` → real ingest → real export | Yes, always |
+| Playwright / Lighthouse gates | the committed fixture | Yes, always |
 
-### `befa81f` — both claims checked against the specs
+The third row is the one that looks like it should catch this, and it is the one worth naming precisely.
+It *does* run a real `IngestSeries` for all six frozen slugs through a real Postgres — but
+`ineIngestConfig` (`app/internal/ingestion/ingest_test.go:121`) passes `Validation:
+config.ValidationConfig{}`. **No thresholds at all.** Rule 3 has no `MaxDeltaAbs`, so it cannot fire, over
+fixtures that are three periods long and do not contain 2020-Q2. The one job that exercises the real
+Go→Astro hand-off deliberately disables the guard that blocks the series in production.
 
-**Claim A: `W` means a source stopping publication of a period it previously published, so coercing an
-unpublished period to `W` would fabricate a retraction. — VERIFIED.**
+So this is the fifth consecutive appearance of the same shape — **a check placed where the failure cannot
+occur** — after CRITICAL-2 (`details?.items ?? []`), CRITICAL-15 (silent fixture fallback), CRITICAL-27's
+`dist/` loop, and now the entire CI corpus. The difference is that this instance is not a bug in a gate: the
+gate is correct. The gap is that no CI path is ever handed production's own artifact shape.
 
-`openspec/specs/data-model-vintages/spec.md:90-99`:
+**Spec violated** — `indicator-page`, "Six indicator routes with frozen slugs": *"The build MUST produce
+`/indicador/{slug}` for exactly these six slugs"*. Scenario "All six routes exist in the build" is compliant
+against a complete artifact and non-compliant against the only artifact production can supply.
 
-> ### Requirement: Source withdrawal is representable
-> #### Scenario: Withdrawn period is tombstoned, not deleted
-> - GIVEN a current observation for `(series, period)`
-> - WHEN **the source stops publishing that period** and the withdrawal is ingested
-
-The scenario is explicitly premised on a *current observation* existing first. A period never published has
-no prior version to withdraw, and there is a whole rollback/tombstone mechanism keyed to that meaning. Marking
-it `W` purely to satisfy `CHECK (value IS NOT NULL OR status = 'W')` would be the exact silent falsehood D-3
-exists to remove. **Dropping the position is the correct projection, and the reasoning is sound.**
-
-The decision to fail closed on a *flag with no value* is also right, and for the stated second reason: that
-shape is what a bug in the Horner position arithmetic would look like, and the spec has a scenario protecting
-that very alignment. Judging flag vocabulary before the value-presence branch — so an undocumented flag keeps
-its own diagnostic — is a real ordering decision, correctly made.
-
-**Claim B: this makes `source-ingestion-eurostat`'s "a zero-observation result fails the run" satisfiable for
-the first time. — SUBSTANTIALLY VERIFIED, with one overstatement.**
-
-The requirement (`openspec/specs/source-ingestion-eurostat/spec.md:74-84`) names two things: a *dead dimension
-code*, and the shape `"value": {}`. Checking the pre-fix code:
-
-- The **dead-dimension** half **did** already fire. `git show befa81f~1` shows
-  `TestDecode_DeadDimensionCodeCP00FailsAsSilentEmptyNotAsATransportError` passing against a real captured
-  `prc_hicp_minr-coicop18-cp00.json`, via a separate empty-dimension check. So it is not true that the
-  requirement "could never fire".
-- The **`"value": {}` over a populated time dimension** half genuinely could not. It decoded to N nil-valued
-  observations, so `len(observations) != 0`, Rule 6 could not fire, and the run died later at the database
-  `CHECK` — a constraint violation, not "the zero-observation failure class, distinct from a transport error"
-  the scenario demands.
-
-The new `TestDecode_AResponseWhoseEveryPositionIsValuelessIsASilentEmptyResult` (`sparse_test.go:341`) builds
-exactly that shape from a real quarterly payload and asserts `sourceerr.SilentEmpty`. **The coverage widening
-is real and the requirement is better satisfied than before.** The claim as written in the commit body
-overstates it; recorded as SUGGESTION-32.
+**Remedy**: see §H. It is a signature, not a commit.
 
 ---
 
-## D. Prior findings, re-adjudicated
+## D. NEW WARNING findings
+
+### WARNING-38 — One acknowledgement resolves more than one finding
+
+`Acknowledgement.covers` matches on `(series, period, rule)`. `Rule3Plausibility` can emit **two
+semantically distinct findings at one period** under that one rule name: a min/max range breach and a
+period-over-period delta breach. I demonstrated it:
+
+```
+rule3 emitted 2 findings at 2026-Q1:
+  "value 30500 is above the configured maximum 30000"
+  "period-over-period change of 8500 exceeds the configured threshold 1000 with no recorded break"
+one acknowledgement (2026-Q1, rule3-plausibility, value 30500, signed)
+  -> outcome=publish-overridden  overridden=2  unresolved=0
+```
+
+The spec's prose is finding-singular throughout — "a **specific** blocking validation finding", "the finding
+it names", "An acknowledgement resolving no finding". The scenario "An acknowledgement never widens beyond
+the finding it names" asserts only that *no configuration* expresses it, which is true. The runtime
+nevertheless covers two findings from one signature: a human vouching for a delta silently also vouches for
+a range breach they may never have looked at.
+
+**Mitigated, not closed.** The pinned value constrains both findings to the same number the human reviewed,
+so a parser bug producing a different value fails closed. Not reachable in the shipped config (18607.2 is
+well inside `[0, 30000]`). The narrow fix is to give rule 3's two emission sites distinct rule names, or to
+key the scope on the finding kind.
+
+### WARNING-39 — The registry's only anti-forgery control is a review gate that does not exist
+
+The design's own claim is "authority is the human signature". The enforcement is: reject empty,
+whitespace, sub-2-character and 18 known vacant tokens. Everything else is accepted. Demonstrated: a
+record signed `acknowledged_by: "Jorge Alonso"` with a date passes `validate-config: ok`.
+
+The code says so explicitly and names four-eyes review as the compensating control. That control is **not
+enforced**: `gh api repos/:owner/:repo/branches/main/protection` still returns `404 Branch not protected` at
+`1f856e2`. `.github/CODEOWNERS` and `.github/BRANCH_PROTECTION.md` are documentation.
+
+This is spec-compliant — the delta spec asks only for placeholder rejection — and it is not a new gap
+(SUGGESTION-35 carried it forward as documented-but-unenforced). It changes severity because it is now
+**load-bearing**: a mechanism that overrides a validation gate has been added, and the sole thing standing
+between it and a fabricated approval is a review gate that is off. The first version of `bdb6cc8` shipped
+exactly that fabrication (`acknowledged_by: "Jorge Alonso"` for a review nobody performed) and was caught by
+a human reading the diff, not by any check in this repository. Nothing added since would catch it either.
+
+### WARNING-40 — `apply-progress.md` records none of the three commits, and Strict TDD is active
+
+`grep` over `openspec/changes/phase-1-indicator-page/apply-progress.md` finds no `4b20ca7`, no `bdb6cc8`, no
+`1f856e2`, no "CRITICAL-27", no "CRITICAL-28", no "acknowledg" in any casing. The record ends with a lesson
+about a documentation pass drifting from an implementation pass — and has drifted again, past an entire new
+capability (`validation/acknowledgement.go`, `config/acknowledgement.go`, `postgres/acknowledgement.go`,
+migration `0006`, `config/reconocimientos.yaml`, a new delta-spec requirement) and both blocker
+remediations.
+
+Strict TDD verification is supposed to validate the TDD Cycle Evidence table against reality. There is no
+row for any of the 2,328 lines of new test code. I validated the new tests directly instead (§F), and they
+are good — but archiving now freezes a narrative that omits the three most consequential commits in the
+change.
+
+### WARNING-41 — "A failed rebuild raises an alert **immediately**" is substituted, not implemented
+
+`pipeline-operations` scenario: *"GIVEN a rebuild dispatched by a successful ingestion that fails, WHEN the
+failure is observed, THEN an alert is raised naming the ingestion run and the build failure."*
+
+Nothing observes a failed CI rebuild. `alerting.DispatchFailed` fires when the **POST** fails, which is a
+different event. A failed `rebuild.yml` run produces no callback; it is caught only by
+`RebuildLatencyBreached` once the 30-minute budget elapses. That is a good substitution and it closes
+CRITICAL-28's link 3 — but "immediately" is not what happens, and the substitution is disclosed only in a
+comment inside `.github/workflows/rebuild.yml` ("the running container's own deploy-completed watchdog keeps
+alerting until it does"), not in the spec, the design or `apply-progress.md`.
+
+### WARNING-30 — `ine/envelope.go` nil-value crash class, still disclosed only in a commit message
+
+Re-checked at `1f856e2`. `envelope.go:38/87` unchanged; `grep` finds no code comment, no test, no openspec
+entry. The reasoning for why the INE fix must differ from the Eurostat one still exists only in the body of
+commit `befa81f`. **OPEN, unchanged.**
+
+---
+
+## E. Prior findings, re-adjudicated
 
 | ID | Summary | Status this pass | Evidence |
 |---|---|---|---|
-| CRITICAL-1 | Every "Exportar CSV" link 404s | **CLOSED** | Path shape closed in pass 3; deployment presence closed by `b0aad8f`'s `export_artifact` volume + immediate first tick |
-| CRITICAL-2 | The blocking budget gate cannot fail | **CLOSED**, but see CRITICAL-27 | Same failure *shape* recurs in a different gate; this specific gate remains fixed |
-| CRITICAL-3 | 37 inlined Spanish strings | **CLOSED** | Unchanged; scan green in the pristine clone |
-| CRITICAL-4 | Export artifact carries no page-state | **CLOSED** | Unchanged |
-| CRITICAL-15 | Container publishes synthesised fixture as INE statistics | **CLOSED** | Unchanged. Its own measurement — "the fresh image carried five indicator pages" — is now recognised as CRITICAL-27's symptom |
-| CRITICAL-16 | Failed-ingestion publish path untested and self-contradictory | **CLOSED** | Unchanged |
-| CRITICAL-23 | The change does not exist in the repository | **CLOSED** | Working tree clean at `52a2151`; six commits pushed; PR #1 open; four CI jobs green on real runners |
-| WARNING-5,6,7,8,9,10,11,17,18 | (pass 2/3 warnings) | **CLOSED** | Unchanged this pass |
-| WARNING-24 | The deployed stack never runs the pipeline | **CLOSED as specified**; its deeper layer is now CRITICAL-28 | `migrate` one-shot + immediate first tick + narrowed volumes make a clean bring-up produce real CSV/JSON. What still does not exist is the path from new data to new *pages* |
-| SUGGESTION-12,13,14 | (pass 2) | **CLOSED** | Unchanged |
-| SUGGESTION-19 | Workbench CSV href layout | **OPEN** | `web/src/workbench/fixtures.ts` unchanged; workbench never ships |
-| SUGGESTION-20 | Spec silent on the dateless validation banner | **OPEN** | Unchanged; the code handles it correctly (`export.go` `SeriesPageState`, nullable `lastCorrectUpdate`) |
-| SUGGESTION-21 | No custom-range e2e on a real route | **OPEN** | Custom-range e2e still lives on `/workbench` only |
-| SUGGESTION-22 | Workflows never observed on a runner | **CLOSED** | Four jobs green on real runners; `-race` confirmed from the log |
-| SUGGESTION-25 | Copy-scan regex blind spot | **OPEN** | Unchanged; passes today, future-regression risk only |
-| SUGGESTION-26 | Test output left inside the source tree | **CLOSED** | `app/cmd/concontexto/web/dist/` removed and gitignored before staging |
+| CRITICAL-1 | Every "Exportar CSV" link 404s | **CLOSED** | Unchanged |
+| CRITICAL-2 | The blocking budget gate cannot fail | **CLOSED** | Unchanged; the *shape* recurs as CRITICAL-37 |
+| CRITICAL-3 | 37 inlined Spanish strings | **CLOSED** | Unchanged |
+| CRITICAL-4 | Export artifact carries no page-state | **CLOSED** | Unchanged; correctly extended for the new `succeeded-with-acknowledgement` outcome |
+| CRITICAL-15 | Container publishes synthesised fixture as INE statistics | **CLOSED** | Unchanged; the Dockerfile guard still refuses a source-less build |
+| CRITICAL-16 | Failed-ingestion publish path untested | **CLOSED** | Unchanged |
+| CRITICAL-23 | The change does not exist in the repository | **CLOSED** | Clean tree at `1f856e2`, PR #1 open, four jobs green at that sha |
+| **CRITICAL-27** | Build silently drops a frozen slug | **CLOSED** | `routes.ts` iterates `FROZEN_INDICATOR_SLUGS` and throws; `missing-slug-fails-build.test.ts` drives a real `npm run build` against a three-part removal with a **paired control build** (case 2, exit 0, all six pages), so case 1 cannot be green for an unrelated reason. Verified: both cases pass; a real build takes ~1.5s, so the timings are genuine. The rejected fourth page state is reasoned correctly — the spec separately forbids hiding the chart. |
+| **CRITICAL-28** | Publish loop open at four links | **CLOSED**, all four | L1: `.github/workflows/rebuild.yml` subscribes `repository_dispatch: [rebuild]` and calls `deploy.yml`, which declares `workflow_call: {}` — the seam checks out. L2: `APP_REBUILD_DISPATCH` with three states; required-but-unconfigured returns a *failing* dispatcher, taking the existing alert branch, never `nil`; compose defaults `app` to `required` and forwards `GITHUB_DISPATCH_*`. L3/L4: the Dockerfile stamps `/web/build-manifest.json` outside `dist/` (correct — the volume shadows `dist/data-derived`), and `RebuildLatencyBreached` compares it against the live artifact. Real dispatch round trip remains unprovable here; disclosed. |
+| **WARNING-29** | Run log claims a dispatch that did not happen | **CLOSED** | `publishOutcomeMessage` branches on all three states; `DispatchSkipped` added to `PublishResult` precisely because `DispatchedAt == nil` could not discriminate. |
+| **WARNING-31** | `SeverityBlockRequiresSignoff` names a mechanism that does not exist | **CLOSED** | The registry is severity-agnostic; `TestGateWithAcknowledgements_ResolvesBlockRequiresSignoffAlike` passes. Pass 4 called this a WARNING; that was the right call then and the resolving half now exists. |
+| WARNING-5,6,7,8,9,10,11,17,18,24 | (pass 2/3) | **CLOSED** | Unchanged |
+| **WARNING-30** | INE nil-value disclosure durability | **OPEN** | Re-verified above |
+| SUGGESTION-19 | Workbench CSV href layout | **OPEN** | Unchanged |
+| SUGGESTION-20 | Spec silent on the dateless validation banner | **OPEN** | Unchanged |
+| SUGGESTION-21 | No custom-range e2e on a real route | **OPEN** | Unchanged |
+| SUGGESTION-22 | Workflows never observed on a runner | **CLOSED** | Four jobs green at `1f856e2` |
+| SUGGESTION-25 | Copy-scan regex blind spot | **OPEN** | Unchanged |
+| SUGGESTION-26 | Test output inside the source tree | **CLOSED** | Unchanged |
+| SUGGESTION-32 | `befa81f` commit body overstates | **OPEN** | Unchanged |
+| SUGGESTION-33 | Container bring-up has no automated coverage | **OPEN** | Unchanged |
+| SUGGESTION-34 | Record drift | **PARTLY OPEN** | Engram/`tasks.md` count drift persists (138 vs 191); `openspec/config.yaml:92` still declares `go test ./...` while CI runs `-race -count=1`. Escalated in substance by WARNING-40. |
+| SUGGESTION-35 | Four-eyes documented, unenforced | **ESCALATED** | Now WARNING-39: still 404, and now load-bearing |
 
 ---
 
-## E. NEW SUGGESTIONS
+## F. Strict TDD
 
-**SUGGESTION-32** — `befa81f`'s commit body says the zero-observation requirement "could never fire". The
-dead-dimension half did fire before the fix, via a separate empty-dimension check. The permanent record
-overstates by a little what is otherwise a correct and well-argued fix. Worth a note in `apply-progress.md`
-so the archived narrative is exact.
+### TDD Compliance
 
-**SUGGESTION-33** — `52a2151` exports `APP_SCHEDULE_DISABLED=true` in `scripts/smoke-test.sh`. The reasoning
-is good — a smoke test that hammers three public statistical agencies on every push is neither hermetic nor
-neighbourly — but the consequence is that `b0aad8f`'s central claim ("a clean `docker compose up`, with no
-manual migrate and no manual ingest, serves real INE values") now has **no automated coverage at all**. It
-rests entirely on one manual clean-slate run. `ingest-export-build.yml` proves the Go→Astro hand-off on the
-runner, not the container bring-up. A separate, deliberately-triggered job (not on every push) against
-recorded fixtures would close it.
+| Check | Result | Details |
+|---|---|---|
+| TDD Evidence reported | ⚠️ | Table exists for the original 191 tasks; **absent for all three new commits** (WARNING-40) |
+| All tasks have tests | ✅ | 191/191 checked, 0 unchecked |
+| RED confirmed (test files exist) | ✅ | 8 new test files (2,328 lines) + 5 modified, all present |
+| GREEN confirmed (tests pass) | ✅ | Every one re-executed here; all pass |
+| Triangulation adequate | ✅ | The registry alone carries 14 gate cases, 11 config cases, 3 Postgres cases and 7 end-to-end cases |
+| Safety net for modified files | ✅ | Pre-existing suites re-run and green |
 
-**SUGGESTION-34** — Record drift, exactly the class the brief warned about. Engram
-`sdd/phase-1-indicator-page/tasks` and `apply-progress` both say **138/138 tasks**; `tasks.md` carries **191**
-checked boxes and 0 unchecked. The repository wins and there is no task blocker either way, but the summaries
-are stale. Separately, `openspec/config.yaml:92` still declares `test_command: "go test ./..."` while CI now
-runs `go test -race -count=1 ./...`.
+**TDD compliance: 5/6.**
 
-**SUGGESTION-35** — Four-eyes review on `config/**` remains documented (`.github/BRANCH_PROTECTION.md`,
-CODEOWNERS) and unenforced on the remote. **Not a finding against this change**: the delta spec is explicit
-that `platform-runtime`'s requirement is NOT modified, no substitute control is specced, and it "remains
-documented but unenforced on the remote until a second maintainer exists". The change is compliant with what
-it specified. Carried only so it is not lost at archive.
+### Test layer distribution (new work only)
+
+| Layer | Tests | Files | Tools |
+|---|---|---|---|
+| Unit (pure) | ~48 | 4 (`validation/acknowledgement_test.go`, `config/acknowledgement_validate_test.go`, `scheduler/watchdog_test.go`, `web/test/indicator/routes.test.ts`) | Go testing, Vitest |
+| Integration (real Postgres / real pipeline / real process) | ~22 | 4 (`ingestion/acknowledgement_e2e_test.go`, `postgres/acknowledgement_test.go`, `cmd/.../rebuild_dispatch_test.go`, `cmd/.../schedule_rebuild_watchdog_test.go`) | testcontainers-style tx harness |
+| Build-level (real `npm run build` subprocess) | 2 | 1 (`web/test/export/missing-slug-fails-build.test.ts`) | Vitest + `child_process` |
+| **Total (new)** | **~72** | **9** | |
+
+The build-level layer is the one that matters: it is the layer pass 4 said was missing, and it is now present
+with a control.
+
+### Assertion quality
+
+Scanned all 8 new and 5 modified test files for tautologies, orphan empty checks, type-only assertions,
+ghost loops, smoke-only tests and mock-heavy ratios. **Zero hits.** Two observations, both benign:
+
+- `routes.test.ts:87` uses a bare `.toThrow()`, immediately followed by a case that asserts the message
+  content — acceptable pairing.
+- `missing-slug-fails-build.test.ts` case 1 asserts non-zero exit **and** four distinct message properties
+  **and** the absence of the output directory, then case 2 pins the failure to the removed slug. This is the
+  opposite of a trivial assertion.
+
+**Assertion quality: ✅ All assertions verify real behaviour.**
+
+### Quality metrics
+
+**Linter/vet**: ✅ `go vet` clean, `gofmt -l` empty.
+**Type checker**: ✅ `astro check` — 0 errors, 0 warnings, 2 hints across 97 files.
+**Coverage**: ➖ no coverage threshold configured for this change; skipped, not a failure.
 
 ---
 
-## F. Correctness (static + runtime)
+## G. Correctness and coherence
 
 | Claim | Status | Evidence |
 |---|---|---|
-| Go suite is race-free | **Pass** | `-race` clean in a pristine clone and on the runner |
-| Eurostat series can be ingested at all | **Pass** | `befa81f`; live 3/3 publish (354/69/31), zero nulls |
-| INE endpoints are reachable | **Pass** | `dd79bb8`; corroborated by the probe failing on unfixed `main` |
-| A clean bring-up produces real CSV/JSON | **Pass**, manually | `b0aad8f`; no automated coverage (SUGGESTION-33) |
-| All six frozen routes exist in a production build | **FAIL** | CRITICAL-27 — five today |
-| New data reaches a reader's page | **FAIL** | CRITICAL-28 — no link from export to rebuild |
-| An undispatched rebuild alerts operators | **FAIL** | CRITICAL-28 link 2 — silent `return result, nil` |
-| The publish-latency budget is measurable end to end | **FAIL** | CRITICAL-28 link 4 — deploy-completed instant unrecorded |
+| Go suite is race-free | **Pass** | `-race -count=1` clean locally and on the runner |
+| `validate-config` accepts the shipped tree | **Pass** | exit 0 |
+| An unsigned acknowledgement moves nothing | **Pass** | Two layers, verified independently with a control (§B.3) |
+| An acknowledgement cannot be widened in configuration | **Pass** | 8 adversarial mutations, all rejected (§B.1) |
+| A stale acknowledgement fails closed and says why | **Pass** | `acknowledgement-stale` blocks and names both values |
+| An acknowledged publish is distinguishable | **Pass** | `succeeded-with-acknowledgement` outcome + `acknowledgements` log attr + no `failed_rules` |
+| One acknowledgement resolves exactly one finding | **Fail** | WARNING-38 — demonstrated resolving two |
+| A fabricated plausible signature is rejected | **Fail** | WARNING-39 — `validate-config: ok` |
+| The dispatch reaches a receiver | **Pass** | `rebuild.yml` ← `repository_dispatch`; `deploy.yml` declares `workflow_call` |
+| An undispatched rebuild alerts operators | **Pass** | failing dispatcher → existing alert branch |
+| A deploy-completed instant exists | **Pass** | `/web/build-manifest.json`, outside `dist/`, changed only by a deploy |
+| A failed rebuild alerts *immediately* | **Fail** | WARNING-41 — budget-delayed |
+| All six frozen routes exist in a production build | **Fail** | CRITICAL-37 — the build emits none |
+| New data reaches a reader's page | **Pass, unprovable end to end** | The loop is closed in code; no VPS exists to run it. Disclosed. |
 
-## G. Coherence (design)
+### Coherence (design)
 
 | Design decision | Honoured | Note |
 |---|---|---|
-| D-1 the artifact IS `/data-derived/` | Yes | `exportOutputDir` → `STATIC_ROOT/data-derived` |
-| D-2 publish-after-cycle wiring | **Partially** | Export and dispatch-call wired; the receiving rebuild job planned at `design.md:611` was never built and its absence is undisclosed |
-| D-3 unknown tokens fail closed | Yes | Extended correctly to the valueless-position case |
-| D-4 periodicity over the whole payload | Yes | Contiguity premise asserted before classification in `sparse_test.go` |
-| D-5/D-6 web layering | Yes | Unchanged |
+| D-1 the artifact IS `/data-derived/` | Yes | Unchanged |
+| D-2 publish-after-cycle wiring | **Yes** | The receiving job planned at `design.md:611` now exists; pass 4's "partially" is closed |
+| D-3 unknown tokens fail closed | Yes | Extended consistently to the unsigned-record case |
+| D-4 periodicity over the whole payload | Yes | Unchanged |
+| D-5/D-6 web layering | Yes | `routes.ts` correctly placed in `src/lib/` so the rule is directly assertable |
+| New capability not in `design.md` | **No** | The acknowledgement registry (a new table, a new config file, a new migration) has no design entry — part of WARNING-40 |
 
-## H. TDD compliance
+---
 
-| Check | Status |
-|---|---|
-| Red-first for Go publishing and pure render/transform functions | Pass |
-| Browser/budget gates written alongside (stated honestly in the spec) | Pass |
-| Runtime evidence exists in the repository | **Pass** — closed by CRITICAL-23's remedy |
-| New commits carry tests | Pass — `dd79bb8` 4 wire tests, `befa81f` 377-line `sparse_test.go`, `ba2212d` mutex + atomic + `t.Fatalf` fix, `b0aad8f` `schedule_test.go` + `schedule_composition_test.go` |
-| Gates applied where the failure can occur | **Fail** — CRITICAL-27 |
+## H. Archivability — the plain answer
+
+**No. Not archivable. One thing blocks it, and it is a human signature.**
+
+**The argument for archiving anyway**, stated fairly: every defect is closed. The unsigned draft is not an
+omission — it is the mechanism working. A pipeline that says "a human decision is pending" instead of
+manufacturing the approval is behaving exactly as designed, and refusing to archive because the design
+refused to lie creates pressure toward the fabrication that was already caught once in this very commit.
+Archiving records work; it does not deploy it.
+
+**Why that argument loses.** Archive freezes the claim that the change delivered what it specified. The
+change specified six indicator pages at six permanently frozen permalinks. At `1f856e2` the pipeline can
+produce five, and the build — correctly — refuses to ship five, so it produces none. `openspec archive`
+would move a spec into `openspec/specs/` asserting a MUST that the system demonstrably cannot satisfy, while
+every CI signal reads green because no CI path is ever handed production's artifact shape. That is a worse
+falsehood than the one the acknowledgement mechanism refuses to tell, and it is the same class of falsehood.
+
+**What must happen — exactly one of these. None of them is code.**
+
+1. **A named human reviews and signs `config/reconocimientos.yaml`.** Open
+   `https://www.ine.es/daco/daco42/daco4211/epa0220.pdf` (verified reachable, 1,233,410 bytes, both strings
+   present), confirm 2020-Q2 = 18607.2 and that the fall is COVID-19 rather than a methodology change or a
+   parser fault, then replace `signature_status` / `drafted_by` / `todo` with `acknowledged_by` (full name)
+   and `acknowledged_on`. The record's own `todo` field already spells out all three steps and the two
+   edits to `note_md`. After that: `ocupados-epa` publishes as `succeeded-with-acknowledgement`, the artifact
+   carries six series, the build emits six pages, and CRITICAL-37 closes with no commit to any Go or
+   TypeScript file.
+2. **Or the same human rejects it**, deletes the entry whole (the `todo` says so: "un registro rechazado no
+   se deja a medias"), and chooses a different remedy for `ocupados-epa` — which then needs its own SDD
+   cycle, because neither raising the threshold nor recording a false methodological break is acceptable and
+   both were correctly ruled out.
+
+**Do not**: raise `max_delta_abs`, add a break to `config/rupturas.yaml`, weaken `resolveIndicatorRouteSlugs`,
+or let an agent sign the record. Each of those was considered and correctly rejected in this change's own
+reasoning, and the last one was already attempted and caught.
+
+**Recommended alongside, but not blocking the signature**: WARNING-40 (bring `apply-progress.md` and
+`design.md` up to `1f856e2` before archiving, since archive freezes them) and CRITICAL-37's structural half
+— one CI path that builds from an artifact produced by an ingestion running the **real** `config/series/*.yaml`
+thresholds, so that "the production build works" stops being an unmeasured claim. WARNING-38 and WARNING-39
+are follow-ups, not archive blockers.
 
 ---
 
@@ -495,26 +496,29 @@ it specified. Carried only so it is not lost at archive.
 
 **FAIL. Do not archive.**
 
-What is genuinely finished: the change now exists in the repository, six commits, each independently
-building and vetting; four CI jobs green on real GitHub runners; `-race` clean; 438 Vitest, 64 Playwright,
-23 Go packages, all reproduced by this verifier in a pristine clone. `CRITICAL-23` and `SUGGESTION-22` are
-closed, and the five previously un-adjudicated commits are all sound work — the Eurostat withdrawal reasoning
-in particular is the kind of argument that is easier to get wrong than right, and it is right.
+`CRITICAL-27` and `CRITICAL-28` are closed and were closed well. The acknowledgement registry is the best
+piece of work in this change: it is scoped so narrowly that eight deliberate widening attempts all failed at
+the schema, its allowlist is pinned by a test that runs the real rules, its staleness guard is the right one
+for the right reasons, and it refused to fake the signature it was waiting for — twice, in two independent
+layers, which I verified myself with a control rather than taking the tests' word for it.
 
-What blocks archive:
+The single blocker is the consequence of that honesty, and the remedy is the act the mechanism is waiting
+for: **a named human must review and sign, or reject and delete, `config/reconocimientos.yaml`'s one draft.**
+Until then, six frozen permalinks cannot be built, and the change cannot honestly be archived as delivered.
 
-1. **CRITICAL-27** — a frozen permalink 404s on the deployed site today, the build is green about it, and the
-   one gate that asserts all six routes runs only against a fixture that always contains all six.
-2. **CRITICAL-28** — the ingest→rebuild→deploy loop documented in `env.example` and designed in `design.md`
-   is open at three independent links, none of which is observable by the watchdog built to observe it.
+1 CRITICAL, 5 WARNING (2 carried), 12 SUGGESTION (10 carried, 2 new).
 
-Both are on the seam that has now produced a finding in four consecutive passes. The brief's hypothesis was
-right: the seam is under-asserted rather than exhausted. Every defect found there has the same shape — a
-check placed where the failure cannot happen, or a link asserted at its endpoints but never end to end. The
-Go writer is tested, the TypeScript reader is tested, the dispatch POST is tested, the workflow that would
-receive it does not exist. The artifact is validated, the digest chain is validated, and a series simply
-missing from it passes every one of those validations.
+**New SUGGESTIONS**
 
-`sdd-apply` has real work: one build-level guard (or a spec narrowing plus a fourth page state), one workflow
-file, one compose environment block, and a decision about what "deploy-completed" means. That is a bounded
-slice, not a re-run of the change.
+- **SUGGESTION-42** — The neighbouring-period residual disclosed in `acknowledgement.go` is narrower than
+  stated. For a delta-based finding at period P, a revision of P-1 changes the magnitude while the pin at P
+  holds — but revising P-1 at any acknowledged period more than `max_backward_periods` (4) behind the latest
+  raises its own `rule4-revision` finding at P-1, which the P-scoped acknowledgement cannot resolve, so the
+  run blocks anyway. The residual bites only inside the revision window. Worth recording so a future reader
+  does not over-fear a case rule 4 mostly covers.
+- **SUGGESTION-43** — `scripts/smoke-test.sh`'s "Usage: ./scripts/smoke-test.sh" header does not mention
+  that step 2 (`docker compose build app`) needs `EXPORT_URL` or `EXPORT_DIR`. `ci.yml` stages
+  `web/data-derived` and sets `EXPORT_DIR: data-derived`; the script does not, so running it as documented
+  fails on the Dockerfile's CRITICAL-15 guard. The guard is right and the message is good; the script's own
+  usage line is stale. This is the seam between `52a2151`'s hermetic-smoke-test work and the artifact-source
+  guard.

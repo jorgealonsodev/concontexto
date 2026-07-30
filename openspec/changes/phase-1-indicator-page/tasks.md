@@ -963,3 +963,141 @@ Files: `.github/workflows/rebuild.yml` (new, 136 lines), `.github/workflows/depl
   30-minute budget elapses. That is a good substitution and it does close L3 — but "immediately" is not what
   happens, and until this entry the substitution was disclosed only in a comment inside `rebuild.yml`.
   Verify-report pass-5 WARNING-41; now recorded in the change's own record as well.
+
+---
+
+## Slice 18 — CI ingests with the real thresholds, so a green signal can go red (verify-report pass-5 CRITICAL-37, structural half)
+
+Commit `27cc0c9`, `test(ingest): ingest with the real thresholds, so CI can go red for this`.
+Files (`git show --numstat`): `.github/workflows/ingest-export-build.yml` (+99/−2),
+`app/internal/ingestion/e2e_blocked_export_test.go` (new, 212),
+`scripts/assert-blocked-series-fails-build.sh` (new, 197), `app/internal/ingestion/ingest_test.go` (+108/−7),
+`app/internal/ingestion/e2e_export_test.go` (+36/−29), `app/internal/ingestion/acknowledgement_e2e_test.go`
+(+18/−16), `app/internal/ingestion/population_cadence_triage_test.go` (+16/−3),
+`app/internal/ingestion/logging_alerting_test.go` (+2/−2). 688 added, 59 removed across 8 files.
+
+- [x] 18.1 Name the defect at the exact line before changing anything. `ineIngestConfig`
+  (`app/internal/ingestion/ingest_test.go`) passed `Validation: config.ValidationConfig{}` — the zero value,
+  no thresholds at all — so the one CI job that exercises the real Go→Astro hand-off ran the whole chain
+  with rule 3 unable to fire. Every CI signal stayed green while a real production build could not ship.
+  This is the **fifth** instance of the check-positioned-where-the-failure-cannot-occur pattern already
+  recorded as a design.md Open Question, and the first that is not a bug in any one gate: each gate is
+  correct, and no CI path was ever handed production's own artifact shape.
+- [x] 18.2 GREEN — `ineIngestConfig` now reads the shipped `validation:` block instead of restating it.
+  `shippedConfig` (`ingest_test.go:118`, a `sync.OnceValues`) walks `configdata.FS` → `fs.Sub` →
+  `config.Load` — the same three calls `validate-config` and every `ingest` invocation make — and
+  `realValidationConfig` (`ingest_test.go:152`) returns one slug's block from it. There is now no threshold
+  literal on the test side of this path to drift away from the YAML.
+- [x] 18.3 GREEN — the contract test that makes 18.2 non-vacuous:
+  `TestIneIngestConfig_CarriesEveryShippedThresholdForTheSixFrozenSlugs` compares all six frozen slugs
+  field-for-field against the YAML, **and checks its own fixture for vacuity first** — a slug declaring no
+  plausibility bound at all is called out rather than silently passing. Verify-report pass 6 confirmed this
+  by mutation: reverting `ineIngestConfig` to `config.ValidationConfig{}` fails it for all six slugs.
+- [x] 18.4 GREEN — the same defect one level down, found while proving 18.2 and worse than the finding as
+  written. `acknowledgement_e2e_test.go`'s `ocupadosCovidCase()` returned a hand-copied
+  `config.ValidationConfig` (`maxDelta := 1000.0`, `maxValue := 30000.0`) that `runCovidIngest` then assigned
+  over `icfg.Validation`. Raising `max_delta_abs` in `config/series/ocupados-epa.yaml` therefore left green
+  the test whose entire subject is that file. `ocupadosCovidCase()` now returns the series identity only and
+  carries no thresholds; the run reads them through `ineIngestConfig(t, sc, cod)`. A restated threshold is a
+  second source of truth, and this file exists because of what that one threshold decides.
+- [x] 18.5 GREEN — the new arm asserts the **failure** path, not a fully successful chain.
+  `TestEndToEndBlockedSeriesIsAbsentFromTheExportedArtifact` (`e2e_blocked_export_test.go`, 212 lines)
+  ingests the recorded COVID range through a real Postgres, then asserts the block by **rule name and
+  period**, asserts the export omits exactly that slug, and asserts the other five are present — so a block
+  for any other reason, or an empty export, fails it. **Why the failure path and not the success path**: a
+  job that stays red until a human signs a YAML file is a job that gets ignored within a week. This one is
+  green today for the right reason and goes red if the block stops happening.
+- [x] 18.6 GREEN — `scripts/assert-blocked-series-fails-build.sh` (197 lines) builds the blocked and the
+  honest artifact as a **matched pair**: the blocked one must exit non-zero naming `ocupados-epa`, and the
+  honest one must exit 0 with all six routes. A guard that only ever sees the failing input cannot tell a
+  real refusal from a build that was broken anyway — the same paired-control discipline slices 14 and 15
+  used, and the generalisable rule the design.md Open Question already states.
+- [x] 18.7 GREEN — the CI wiring, without which the Go half proves nothing on a runner.
+  `ingest-export-build.yml` gained a `BLOCKED_ARTIFACT_DIR`, runs both e2e exports under
+  `-run 'TestEndToEndIngestExportBuild|TestEndToEndBlockedSeriesIsAbsentFromTheExportedArtifact'`, fails
+  the step if the blocked arm produced no `manifest.json` (so an export that did not happen cannot be read
+  as a passing assertion), and invokes the script at line 262 with both artifact directories.
+- [x] 18.8 Disclosed, confirmed by verify-report pass 6, and **not closed by this commit**: the *successful*
+  arm still runs the recorded three-period fixtures, whose largest period-over-period ratio is 486.0 against
+  a threshold of 1000, so they cannot breach any shipped threshold even with validation on. CI therefore
+  proves the mechanism in **both directions** and does not prove that today's production artifact builds.
+  The commit body's "goes red the day one bites there" is true for a *lowered* threshold, not for new data —
+  the fixtures are frozen files. Recorded here as a narrowing, not as a false claim.
+
+---
+
+## Slice 19 — the published directory contains exactly what the manifest declares (found on the running stack)
+
+Commit `5310586`, `fix(export): the published directory now contains exactly what the manifest declares`.
+Files (`git show --numstat`): `app/internal/publishing/export.go` (+155),
+`app/internal/publishing/export_prune_test.go` (new, 263), `app/internal/publishing/artifact.go` (+32),
+`app/cmd/concontexto/export_cmd.go` (+34), `app/cmd/concontexto/export_cmd_test.go` (+96),
+`app/cmd/concontexto/ingest_cmd.go` (+7), and the `publishing-export` delta spec (+51). 638 added, 0
+removed across 7 files. **This is the only commit in the change to add a delta-spec requirement after the
+spec phase closed**, which is why it carries its own task rows rather than a note.
+
+- [x] 19.1 The defect, and how it was found — **by running the deployed stack and reading the served site,
+  not by a test**. `ocupados-epa` was blocked by the publish gate, so `Export` skipped it and the manifest
+  came out with nine series and nine digests, none of them that slug. The container nevertheless served
+  `GET /data-derived/csv/ocupados-epa.csv` and `GET /data-derived/series/ocupados-epa.json` at 200, from
+  bytes an earlier export wrote while the series was still published. `Export` only ever wrote;
+  `writeFileAtomic` replaces and never deletes. Data reachable at a URL the indicator page still links to,
+  carrying no digest, absent from the manifest, indistinguishable to a reader from current data — this
+  project's founding principle inverted.
+- [x] 19.2 Confirm no existing requirement covered it before writing a new one. The closest, "`/data-derived`
+  is generated from the same artifact", governs how each written file is **derived** so the CSV and site
+  projections cannot disagree; it says nothing about files the export stops writing, and nothing at all
+  about the JSON side. Verify-report pass 6 independently re-checked this and agreed the gap was real. New
+  requirement "The published directory contains exactly what the manifest declares", three scenarios, with
+  a parenthetical in the spec itself stating exactly what it does and does not weaken.
+- [x] 19.3 GREEN — `pruneUnpublishedFiles` (`export.go:411`) removes, from the two subdirectories the export
+  owns, every regular file whose base name the current export's own document set does not declare. All three
+  scenarios have tests in `export_prune_test.go` (263 lines):
+  `TestExport_ASeriesThatDropsOutOfALaterExportLeavesNothingBehind` asserts the invariant as **one set
+  comparison against the manifest**, not two hand-listed filenames, so a future third projection cannot
+  satisfy it while going stale.
+- [x] 19.4 GREEN — the prune runs **last**, after the manifest's rename, and the choice is reasoned in
+  `export.go:226-247` (line numbers as of `5310586`; that comment is being rewritten — see 19.8) because
+  neither ordering is atomic. Pruning first opens a window where the manifest a
+  reader currently holds declares a series whose files are gone — a 404 on a declared path and a digest that
+  can never verify. Pruning last leaves a window where the directory holds *more* than the manifest
+  declares, which is this bug's own steady state. Second window degrades to an unreferenced file; first
+  degrades to a live 404. **The reasoning is sound inside one `Export` call and does not survive the build
+  boundary — see 19.8.**
+- [x] 19.5 GREEN — an export declaring **no series at all** removes nothing and reports `Skipped`
+  (`export.go:413`). "What should exist" is derived from one export's own output, so an export producing
+  nothing would otherwise delete the entire published artifact — a recoverable stale-file bug converted into
+  unrecoverable data loss. `TestExport_RefusesToPruneWhenTheExportDeclaresNoSeries` goes RED when the guard
+  is removed (verify-report pass 6, by mutation). The **partial** case is deliberately unguarded: five docs
+  where nine were expected is indistinguishable, from inside `Export`, from a legitimate retirement of four,
+  and any ratio floor eventually errs in the direction that loses data.
+- [x] 19.6 GREEN — scope cannot escape. Only `<outDir>/series/*.json` and `<outDir>/csv/*.csv`, only regular
+  files, base names from `os.ReadDir` so no traversal is expressible, and every non-regular entry skipped —
+  a symlink named `x.json` is not followed, let alone removed. `.tmp-*` is never matched, which is
+  load-bearing because `writeFileAtomic` creates `os.CreateTemp(dir, ".tmp-*")` in the destination directory
+  on every write. `TestExport_LeavesEveryFileItDoesNotOwnUntouched` goes RED on `series/README.md` when the
+  extension filter is removed (verify-report pass 6, by mutation).
+- [x] 19.7 GREEN — a removal is never silent. `PruneOutcome` (`artifact.go:115`) carries `Removed` and
+  `Skipped` and is `json:"-"` — deliberately not artifact content, because it describes what the run did
+  rather than what the artifact contains. `pruneOutcomeMessage` (`export_cmd.go`) names each removed path
+  **individually rather than counting them**, because "removed 2 files" gives an operator investigating a
+  missing page nothing to correlate against, and is shared by `runExport` and the in-cycle publish so the
+  two paths cannot report the same fact differently. `Skipped` is reported loudly for the reason it exists:
+  an empty `Removed` cannot discriminate "nothing stale" from "the guard refused".
+- [x] 19.8 Disclosed here rather than left in the verify-report, because all three are corrections to this
+  commit's **record** and two of them contradict claims made in its own comments. Verify-report pass 6:
+  **WARNING-44** — the ordering rationale's "bounded to milliseconds and unreachable through any
+  manifest-driven path" is false across the build boundary. Measured by the verifier on the running stack at
+  `5310586`: `/indicador/ocupados-epa/` serves 200 while both `href`s it emits unconditionally from
+  `doc.slug` (`IndicatorPage.astro:199-200`) return 404, and the frozen-route guard *guarantees* no rebuild
+  while the series is blocked, so this is the steady state rather than a window. Judged defensible under P4
+  (a 404 is honest, stale bytes presented as current are not) and not a spec violation, but undisclosed.
+  **WARNING-45** — the ordering is untested and the stated reason for the gap is a category error: a
+  read-only directory is what the *unlink-failure* path needs, which is a different claim. The verifier
+  proved the ordering testable in 25 lines and showed that moving the prune before the writes leaves the
+  whole `publishing` package green. **WARNING-46** — both outer defences cited for leaving the partial case
+  unguarded fail to cover it: the ingest gate is batch-scoped (`ingest_cmd.go:487`, one series learning
+  anything arms the export for all ten) and `concontexto export` bypasses it entirely, and retention's
+  snapshot is taken *after* the prune (`trigger.go:128-135`), so the first bad export's own snapshot already
+  lacks the removed files. Neither observation changes the decision; both change what the record claims
+  about why it is safe.

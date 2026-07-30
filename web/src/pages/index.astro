@@ -33,6 +33,12 @@ const indicators = homeIndicatorListing(seriesBySlug);
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{SITE_NAME}</title>
+    {/* Every document with a head declares this; a head that does not makes
+        the browser fall back to requesting `/favicon.ico`, which this site
+        does not serve, and every page load ends in a 404 in the console.
+        `test/pages/favicon.test.ts` scans for `<html>` rather than listing
+        the three routes, so a fourth one cannot quietly ship without it. */}
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="canonical" href="/" />
   </head>
   <body class="bg-bg text-ink font-sans">

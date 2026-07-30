@@ -15,7 +15,8 @@ import { fileURLToPath } from "node:url";
 import IndicatorPage, { type RelatedCardData } from "../../src/templates/IndicatorPage.astro";
 import { loadExportArtifact } from "../../src/lib/export/loader";
 import { INDICATOR_CONTENT } from "../../src/content/indicators";
-import { METHODOLOGY_CONTENT } from "../../src/content/indicators/methodology";
+import { METHODOLOGY_CONTENT, type MethodologyContent } from "../../src/content/indicators/methodology";
+import { formatExtractionInstant } from "../../src/lib/format/date";
 import type { SeriesDoc } from "../../src/lib/export/schema";
 import { es } from "../../src/i18n/es";
 
@@ -440,8 +441,12 @@ describe("IndicatorPage — three page states (task 9a.7/9a.8, rewired to the ar
       lastCorrectUpdate: "2026-07-29",
       successorSlug: null,
     });
+    // The date is Spanish prose now, not the artifact's bare `2026-07-29`
+    // (see `lib/format/date.ts`). The SENTENCE is still the spec's own
+    // verbatim string — only what is substituted into `{fecha}` changed, so
+    // this assertion still pins the wording character for character.
     expect(html).toContain(
-      "Última actualización correcta: 2026-07-29. La fuente ha publicado un dato que no ha superado nuestra validación automática; estamos revisándolo",
+      "Última actualización correcta: 29 de julio de 2026. La fuente ha publicado un dato que no ha superado nuestra validación automática; estamos revisándolo",
     );
     expect(html).toContain('data-testid="page-banner-validation-failure"');
     expect(html).toContain('data-testid="page-chart-section"');
@@ -1018,5 +1023,126 @@ describe("IndicatorPage — the way back (milestone 1.2)", () => {
         `${slug}: back link does not point at "/"`,
       ).toBe(true);
     }
+  });
+});
+
+describe("IndicatorPage — the methodology sheet reads as Spanish prose, not as pipeline output", () => {
+  // TWO defects observed together on the real rendered sheet at
+  // /indicador/tasa-de-paro-epa, both of them presentation-only: nothing
+  // about WHICH facts the sheet discloses changes here.
+  //
+  //   Última extracción
+  //   2026-07-29T12:00:00Z
+  //
+  //   Próxima publicación
+  //   Consultar el calendario de publicaciones de la fuente
+  //   (https://www.ine.es/dyngs/INEbase/es/calendario.htm)
+  //
+  // The first is a machine instant in a Spanish sentence (see
+  // `lib/format/date.ts` for what precision a reader is given and why). The
+  // second is a URL pasted into visible copy on a sheet where four other
+  // fields — Fuente, Identificador de origen, historial de revisiones, Ver
+  // script de ingesta — already render as real links, so the pattern to
+  // match already existed.
+  async function renderSheet(slug: string): Promise<{ html: string; doc: SeriesDoc; methodology: MethodologyContent }> {
+    const { seriesBySlug } = await loadFixtureArtifact();
+    const doc = docFor(slug, seriesBySlug);
+    const container = await AstroContainer.create({ renderers: [{ name: "@astrojs/svelte", ssr: svelteServerRenderer }] });
+    const html = await container.renderToString(IndicatorPage, {
+      props: {
+        doc,
+        content: INDICATOR_CONTENT[slug],
+        methodology: METHODOLOGY_CONTENT[slug],
+        relatedCards: [],
+        canonicalPath: `/indicador/${slug}`,
+      },
+    });
+    return { html, doc, methodology: METHODOLOGY_CONTENT[slug] };
+  }
+
+  it.each(ALL_SIX_SLUGS)(
+    "%s: the extraction instant is Spanish prose, and the ISO instant survives in the markup for machines",
+    async (slug) => {
+      const { html, doc } = await renderSheet(slug);
+      const iso = doc.vintage.extractedAt;
+
+      // The reader's half.
+      expect(html, `${slug}: the sheet does not carry the formatted instant`).toContain(
+        formatExtractionInstant(iso),
+      );
+
+      // The machines' half — the whole reason this is a `<time>` element and
+      // not a rewritten string. A citation tool, a scraper or a future
+      // structured-data emitter reads exactly the value it read before this
+      // change; the ISO instant is relocated from the text node to the
+      // attribute, never deleted.
+      expect(html, `${slug}: the ISO instant is no longer anywhere in the markup`).toContain(
+        `<time datetime="${iso}"`,
+      );
+
+      // ...and it is no longer loose in the prose. Counting rather than
+      // asserting a single occurrence, because `MethodologySheet.astro`
+      // renders its fields TWICE on purpose (the mobile `<details>` body and
+      // the desktop always-visible body, one of which CSS hides per
+      // viewport). The invariant that actually matters survives that: every
+      // occurrence of the ISO instant in the whole document must be an
+      // attribute value, so none of them is text a reader can see.
+      const total = html.split(iso).length - 1;
+      const asAttribute = html.split(`datetime="${iso}"`).length - 1;
+      expect(asAttribute, `${slug}: no datetime attribute carries the instant`).toBeGreaterThan(0);
+      expect(
+        total,
+        `${slug}: "${iso}" appears ${total} times but only ${asAttribute} of those are datetime attributes — the rest are visible text`,
+      ).toBe(asAttribute);
+    },
+  );
+
+  it.each(ALL_SIX_SLUGS)(
+    "%s: the next-publication field is a real link, and no bare URL is left in the visible copy",
+    async (slug) => {
+      const { html, methodology } = await renderSheet(slug);
+
+      // The disclosure itself is UNCHANGED and must stay unchanged: no
+      // per-series next-publication date exists anywhere in this project (a
+      // documented permanent gap — see `content/indicators/methodology.ts`),
+      // so the copy still sends the reader to the source's own calendar
+      // rather than inventing a date. Only its presentation is fixed.
+      expect(html, `${slug}: the honest disclosure was rewritten, not relinked`).toContain(
+        es.page.nextPublicationFallback,
+      );
+
+      // The link, matching the pattern the sheet's other four links use.
+      expect(html, `${slug}: the calendar href is not a link`).toContain(
+        `<a href="${methodology.nextPublicationHref}"`,
+      );
+
+      // The defect: the URL rendered as visible text, in parentheses.
+      expect(html, `${slug}: the URL is still pasted into the visible copy`).not.toContain(
+        `(${methodology.nextPublicationHref})`,
+      );
+    },
+  );
+
+  it("the page-state banner names its date in Spanish, never as a bare YYYY-MM-DD", async () => {
+    const { seriesBySlug } = await loadFixtureArtifact();
+    const container = await AstroContainer.create({ renderers: [{ name: "@astrojs/svelte", ssr: svelteServerRenderer }] });
+    const html = await container.renderToString(IndicatorPage, {
+      props: {
+        doc: {
+          ...docFor("tasa-de-paro-epa", seriesBySlug),
+          pageState: { kind: "validation-failure", lastCorrectUpdate: "2026-07-29", successorSlug: null },
+        },
+        content: INDICATOR_CONTENT["tasa-de-paro-epa"],
+        methodology: METHODOLOGY_CONTENT["tasa-de-paro-epa"],
+        relatedCards: [],
+        canonicalPath: "/indicador/tasa-de-paro-epa",
+      },
+    });
+    // The same defect one field over, in a sentence rather than a
+    // definition list. `pageState.ts` printed the artifact's calendar date
+    // verbatim and said so, giving the reason: the codebase had no
+    // locale-formatting vocabulary for dates. It has one now.
+    expect(html).toContain("Última actualización correcta: 29 de julio de 2026.");
+    expect(html).not.toContain("Última actualización correcta: 2026-07-29");
   });
 });

@@ -33,6 +33,9 @@ export interface Props {
   originHref: string;
   periodicity: string;
   nextPublicationLabel: string;
+  /** See `MethodologySheetFields.astro` — the calendar URL travels beside
+   * its label, never composed into it. */
+  nextPublicationHref: string;
   extractedAt: string;
   unit: string;
   base: string | null;

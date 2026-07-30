@@ -5,6 +5,7 @@
 // the workbench actually renders. Values are illustrative, drawn from the real
 // shape of the slice-3 golden export fixture (`web/test/fixtures/export/`), not
 // invented field names.
+import { es } from "../i18n/es";
 import type { Props as IndicatorCardProps } from "../components/IndicatorCard.astro";
 import type { Props as MethodologySheetProps } from "../components/MethodologySheet.astro";
 import type { Props as BreakBandProps } from "../components/BreakBand.astro";
@@ -51,7 +52,13 @@ export const methodologySheet: MethodologySheetProps = {
   originLabel: "EPA453100",
   originHref: "https://servicios.ine.es/wstempus/js/ES/DATOS_SERIE/EPA453100",
   periodicity: "Trimestral",
-  nextPublicationLabel: "2026-10-29",
+  // The workbench showed a bare `2026-10-29` here, which was a second
+  // instance of the same defect the real pages carried: a machine date
+  // standing in for reader-facing copy. The fixture now mirrors what a real
+  // page passes — the honest generic disclosure plus the source's own
+  // calendar URL, rendered by the sheet as one link.
+  nextPublicationLabel: es.page.nextPublicationFallback,
+  nextPublicationHref: "https://www.ine.es/dyngs/INEbase/es/calendario.htm",
   extractedAt: "2026-07-29T06:10:00Z",
   unit: "% población activa",
   base: null,

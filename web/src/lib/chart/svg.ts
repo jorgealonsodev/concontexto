@@ -15,10 +15,14 @@
 // layer to omit.
 import {
   DEFAULT_DIMENSIONS,
+  NARROW_MAX_X_TICKS,
+  NARROW_TICK_FONT_SIZE,
+  NARROW_X_TICK_LABEL_OFFSET,
   buildBreakBands,
   buildLineSegments,
   buildXTicks,
   buildYTicks,
+  narrowDimensions,
   plotArea,
   projectPoints,
   valueDomain,
@@ -47,6 +51,43 @@ export interface RenderChartSVGInput {
   descriptionId: string;
   tableId: string;
   dims?: ChartDimensions;
+  /** Tick type size in user units. Defaults to the value this function has
+   * always emitted, so an omitting caller gets byte-identical output. */
+  tickFontSize?: number;
+  /** Distance from the plot area's bottom edge down to the x-label baseline,
+   * in user units. Same defaulting contract as `tickFontSize`: it scales
+   * with the type, so a variant that enlarges one must move the other. */
+  xTickLabelOffset?: number;
+  /** Ceiling on x-axis ticks. `buildXTicks` may still append one more to
+   * guarantee the final period is labelled. */
+  maxXTicks?: number;
+  /** Distinguishes this rendering from the other one on the same page.
+   *
+   * Both variants are emitted into a single document (CSS shows one), which
+   * would otherwise duplicate every `data-testid` and every `class` in the
+   * drawing. `"narrow"` suffixes every test id and adds a modifier class;
+   * omitting it — the wide variant — changes nothing, which is why every
+   * locator written before this variant existed still matches exactly the
+   * node it always matched. */
+  variant?: "narrow";
+}
+
+/** Everything `renderChartSVG` needs to draw the narrow-viewport variant of
+ * one series, spread into a call beside the shared inputs:
+ *
+ *     renderChartSVG({ ...common, titleId: narrowTitleId, ...narrowChartVariant(points, decimals) })
+ *
+ * Lives here rather than in `geometry.ts` because `variant` is a rendering
+ * concern (test ids and class names), while the box it wraps is a geometric
+ * one — `narrowDimensions` stays where the rest of the geometry is. */
+export function narrowChartVariant(points: ChartPoint[], decimals: number) {
+  return {
+    dims: narrowDimensions(points.map((p) => p.period), points, decimals),
+    tickFontSize: NARROW_TICK_FONT_SIZE,
+    xTickLabelOffset: NARROW_X_TICK_LABEL_OFFSET,
+    maxXTicks: NARROW_MAX_X_TICKS,
+    variant: "narrow" as const,
+  };
 }
 
 function escapeXml(value: string): string {
@@ -59,19 +100,26 @@ function escapeXml(value: string): string {
 
 export function renderChartSVG(input: RenderChartSVGInput): string {
   const dims = input.dims ?? DEFAULT_DIMENSIONS;
+  const tickFontSize = input.tickFontSize ?? 10;
+  const xTickLabelOffset = input.xTickLabelOffset ?? 16;
+  const maxXTicks = input.maxXTicks ?? 6;
+  // The empty default is load-bearing: it is what makes every existing test
+  // id, and the committed golden fixture, byte-for-byte unchanged.
+  const idSuffix = input.variant ? `-${input.variant}` : "";
+  const variantClass = input.variant ? ` indicator-chart-svg--${input.variant}` : "";
   const area = plotArea(dims);
   const periods = input.points.map((p) => p.period);
   const projected = projectPoints(input.points, dims);
   const segments = buildLineSegments(projected);
   const bands = buildBreakBands(input.breaks, periods, input.frequency, dims);
   const domain = valueDomain(input.points);
-  const xTicks = buildXTicks(periods, dims);
+  const xTicks = buildXTicks(periods, dims, maxXTicks);
   const yTicks = buildYTicks(domain, dims, input.decimals);
 
   const bandRects = bands
     .map(
       (b) =>
-        `<rect class="chart-break-band" data-testid="chart-break-band" data-break-key="${escapeXml(b.key)}" ` +
+        `<rect class="chart-break-band" data-testid="chart-break-band${idSuffix}" data-break-key="${escapeXml(b.key)}" ` +
         `x="${b.x.toFixed(2)}" y="${area.y0.toFixed(2)}" width="${b.width.toFixed(2)}" height="${area.height.toFixed(2)}" ` +
         `fill="var(--color-break-band)" fill-opacity="0.35" />`,
     )
@@ -97,13 +145,13 @@ export function renderChartSVG(input: RenderChartSVGInput): string {
           const stroke = isProvisional ? "var(--color-provisional)" : "var(--color-accent)";
           const dash = isProvisional ? ' stroke-dasharray="4 3"' : "";
           return (
-            `<path class="chart-line" data-testid="chart-line-edge-${segIndex}-${i}" ` +
+            `<path class="chart-line" data-testid="chart-line-edge-${segIndex}-${i}${idSuffix}" ` +
             `d="M${a.x.toFixed(2)},${(a.y as number).toFixed(2)} L${b.x.toFixed(2)},${(b.y as number).toFixed(2)}" ` +
             `fill="none" stroke="${stroke}" stroke-width="2"${dash} />`
           );
         })
         .join("");
-      return `<g class="chart-line-segment" data-testid="chart-line-segment-${segIndex}">${edges}</g>`;
+      return `<g class="chart-line-segment" data-testid="chart-line-segment-${segIndex}${idSuffix}">${edges}</g>`;
     })
     .join("");
 
@@ -116,13 +164,13 @@ export function renderChartSVG(input: RenderChartSVGInput): string {
       const fill = isProvisional ? "var(--color-provisional)" : "var(--color-accent)";
       if (isProvisional) {
         return (
-          `<rect class="chart-marker chart-marker--provisional" data-testid="chart-marker-provisional" ` +
+          `<rect class="chart-marker chart-marker--provisional" data-testid="chart-marker-provisional${idSuffix}" ` +
           `x="${(p.x - 3).toFixed(2)}" y="${(p.y - 3).toFixed(2)}" width="6" height="6" ` +
           `transform="rotate(45 ${p.x.toFixed(2)} ${p.y.toFixed(2)})" fill="${fill}" />`
         );
       }
       return (
-        `<circle class="chart-marker chart-marker--definitive" data-testid="chart-marker-definitive" ` +
+        `<circle class="chart-marker chart-marker--definitive" data-testid="chart-marker-definitive${idSuffix}" ` +
         `cx="${p.x.toFixed(2)}" cy="${p.y.toFixed(2)}" r="3" fill="${fill}" />`
       );
     })
@@ -131,8 +179,8 @@ export function renderChartSVG(input: RenderChartSVGInput): string {
   const xTickMarks = xTicks
     .map(
       (t) =>
-        `<text class="chart-tick chart-tick--x" x="${t.x.toFixed(2)}" y="${(dims.height - dims.marginBottom + 16).toFixed(2)}" ` +
-        `text-anchor="middle" font-size="10" fill="var(--color-ink-muted)">${escapeXml(t.label)}</text>`,
+        `<text class="chart-tick chart-tick--x" x="${t.x.toFixed(2)}" y="${(dims.height - dims.marginBottom + xTickLabelOffset).toFixed(2)}" ` +
+        `text-anchor="middle" font-size="${tickFontSize}" fill="var(--color-ink-muted)">${escapeXml(t.label)}</text>`,
     )
     .join("");
 
@@ -140,7 +188,7 @@ export function renderChartSVG(input: RenderChartSVGInput): string {
     .map(
       (t) =>
         `<text class="chart-tick chart-tick--y" x="${(dims.marginLeft - 8).toFixed(2)}" y="${t.y.toFixed(2)}" ` +
-        `text-anchor="end" dominant-baseline="middle" font-size="10" fill="var(--color-ink-muted)">${escapeXml(t.label)}</text>`,
+        `text-anchor="end" dominant-baseline="middle" font-size="${tickFontSize}" fill="var(--color-ink-muted)">${escapeXml(t.label)}</text>`,
     )
     .join("");
 
@@ -149,7 +197,7 @@ export function renderChartSVG(input: RenderChartSVGInput): string {
     `x2="${area.x1.toFixed(2)}" y2="${area.y1.toFixed(2)}" stroke="var(--color-ink-muted)" stroke-width="1" />`;
 
   return (
-    `<svg class="indicator-chart-svg" data-testid="indicator-chart-svg" viewBox="0 0 ${dims.width} ${dims.height}" ` +
+    `<svg class="indicator-chart-svg${variantClass}" data-testid="indicator-chart-svg${idSuffix}" viewBox="0 0 ${dims.width} ${dims.height}" ` +
     `preserveAspectRatio="xMidYMid meet" role="img" aria-labelledby="${input.titleId}" ` +
     `aria-describedby="${input.descriptionId} ${input.tableId}" xmlns="http://www.w3.org/2000/svg">` +
     `<title id="${input.titleId}">Evolución de la serie (${escapeXml(input.unit)})</title>` +

@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="ConContexto">
+  <style>
+    /*
+     * The site's smallest reproduction of itself (ADR-6: "visual identity
+     * remains a product requirement" — recognition is a feature, not
+     * decoration; ADR-8: hue is a free design choice, accessibility is not).
+     *
+     * WHY THE RATIONALE LIVES IN A CSS COMMENT AND NOT AN XML ONE. XML
+     * forbids a double hyphen inside `<!-- -->`, and every interesting thing
+     * there is to say about this file names a design token: `--color-accent`,
+     * `--color-bg`, `--radius-card`. Written as an XML comment, those token
+     * names made the document not well-formed, and a browser silently
+     * refused to render it — the exact symptom of having no favicon at all,
+     * which is the defect this file exists to fix. `test/pages/favicon.test.ts`
+     * now fails on a double hyphen in an XML comment so it cannot recur.
+     *
+     * WHY THIS DRAWING. The one thing every page of this portal has in
+     * common is a line chart of a Spanish economic series, so the icon is
+     * that chart reduced to what survives a 16x16 rasterisation: a single
+     * polyline with one emphasised latest point. It deliberately reuses the
+     * chart's OWN visual grammar — an accent-coloured line, a filled
+     * circular marker for a definitive observation (`lib/chart/svg.ts` draws
+     * exactly that; a diamond means provisional) — rather than inventing a
+     * logo the product does not have.
+     *
+     * WHY A SOLID TILE AND NOT A BARE GLYPH. A favicon is composited onto
+     * browser chrome this document has no control over: a tab strip, a
+     * bookmark bar, a phone home screen, each with its own background. A
+     * bare stroke would disappear against whichever of those happens to
+     * match it. The tile guarantees the glyph always has its own known
+     * background, so the mark's contrast is a property of the file rather
+     * than of the host.
+     *
+     * WHY THE MEDIA QUERY, GIVEN THE TILE. `prefers-color-scheme` is the
+     * ONLY theme signal that reaches here: `theme.css`'s `[data-theme]`
+     * attribute lives on the document, and the document is not what paints
+     * this file. The two schemes swap to the palette's own light/dark accent
+     * pair, so the icon tracks the same two-theme decision every other
+     * surface makes:
+     *
+     *   light chrome: #1d5fae tile (--color-accent), #ffffff glyph
+     *   dark chrome:  #6fa8ea tile (--color-accent, dark), #14171c glyph
+     *
+     * Both pairs are authored in `theme.css` and both clear 4.5:1 against
+     * each other, so the glyph stays legible either way. A browser that
+     * ignores the query gets the light pair, which is a readable default
+     * rather than a blank tile.
+     */
+    .tile { fill: #1d5fae; }
+    .mark { fill: none; stroke: #ffffff; }
+    .point { fill: #ffffff; }
+
+    @media (prefers-color-scheme: dark) {
+      .tile { fill: #6fa8ea; }
+      .mark { stroke: #14171c; }
+      .point { fill: #14171c; }
+    }
+  </style>
+
+  <!-- The tile. `rx` is the card radius token's own proportion, scaled to
+       this 32-unit box, so the icon is cut from the same geometry as every
+       panel on the site. -->
+  <rect class="tile" x="0" y="0" width="32" height="32" rx="7" />
+
+  <!-- Four points, three edges: enough to read as "a series over time"
+       (down, up, up) at 16x16, where a longer line would collapse into a
+       smudge. Round caps and joins so no segment end reads as a notch when
+       the whole mark is three device pixels wide. -->
+  <path
+    class="mark"
+    d="M7 21.5 L13 23.5 L19 14 L25.5 9.5"
+    stroke-width="3"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <circle class="point" cx="25.5" cy="9.5" r="3.4" />
+</svg>

@@ -52,8 +52,13 @@
 
 /** The one locale this site publishes in. Hoisted to a constant so the
  * places that format text and the `<html lang="es">` the pages declare are
- * visibly the same decision rather than two independent ones. */
-const LOCALE = "es-ES";
+ * visibly the same decision rather than two independent ones.
+ *
+ * EXPORTED so `./date.ts` consumes this exact value instead of re-typing
+ * `"es-ES"` beside it. Two literals in two files are two decisions that can
+ * drift; one exported constant is the single decision this comment already
+ * claimed it was. */
+export const LOCALE = "es-ES";
 
 /** `Intl.NumberFormat` construction is the expensive part, and these
  * formatters are re-created per observation when a 294-point series renders

@@ -30,6 +30,7 @@
 // data and a data change never rewrites reader-facing prose.
 import type { ArtifactPageState } from "../export/schema";
 import { es } from "../../i18n/es";
+import { formatCalendarDate } from "../format/date";
 
 /** The presentation-layer view of the artifact's page state: the same three
  * states, with each arm carrying ONLY the field that applies to it.
@@ -71,12 +72,26 @@ export function pageStateFromArtifact(artifactPageState: ArtifactPageState): Pag
 /** The banner text for a page state, or `null` for the fresh (normal) state
  * — a page renders no banner at all in that case.
  *
- * The date, when there is one, is printed VERBATIM as the artifact's own
- * `YYYY-MM-DD` calendar date (the schema enforces that shape). This matches
- * the convention `MethodologySheetFields.astro` already applies to
- * `extractedAt`: a machine date is rendered as the fact it is, rather than
- * reformatted into prose this codebase has no locale-formatting vocabulary
- * for. */
+ * The date, when there is one, is rendered as Spanish prose ("29 de julio de
+ * 2026"), not as the artifact's bare `YYYY-MM-DD`. This comment previously
+ * justified printing it verbatim by saying it matched what
+ * `MethodologySheetFields.astro` did with `extractedAt`, and named the real
+ * reason for both: "prose this codebase has no locale-formatting vocabulary
+ * for". `lib/format/date.ts` is that vocabulary, and both surfaces now use
+ * it — the convention still holds, it just points somewhere better.
+ *
+ * The DATE is what changes; the sentence does not. The spec fixes this
+ * banner's wording verbatim ("Última actualización correcta: {fecha}. ..."),
+ * so `{fecha}` is substituted differently and nothing else moves.
+ *
+ * DISCLOSED, not overlooked: unlike the methodology sheet's extraction
+ * instant, this date does NOT keep a machine-readable twin in the markup.
+ * The banner is one Spanish sentence, and there is no honest place to put a
+ * `<time datetime>` inside a string the spec fixes verbatim without either
+ * splitting that sentence into fragments or emitting raw HTML from a copy
+ * module. The machine-readable value is not lost to consumers: it is
+ * `pageState.lastCorrectUpdate` in the published artifact, which the action
+ * bar links to from the same page. */
 export function pageStateBannerCopy(state: PageState): string | null {
   switch (state.kind) {
     case "fresh":
@@ -88,7 +103,7 @@ export function pageStateBannerCopy(state: PageState): string | null {
       // correct update.
       return state.lastCorrectUpdate === null
         ? es.page.validationFailureBannerNoDate
-        : es.page.validationFailureBanner(state.lastCorrectUpdate);
+        : es.page.validationFailureBanner(formatCalendarDate(state.lastCorrectUpdate));
     case "discontinued":
       // The successor LINK is composed by the page template, not folded into
       // this string: the banner sentence is identical whether or not a

@@ -4,6 +4,13 @@
 // JS) — NOT one of the design-system spec's eight catalog components and not
 // independently workbench-instantiated.
 import { es } from "../i18n/es";
+// The extraction instant is read by a person, so it is formatted like every
+// other reader-facing value on the page. Before this, the sheet printed the
+// pipeline's own `2026-07-29T12:00:00Z` into a Spanish definition list. The
+// ISO instant is not lost — it moves into the `<time datetime>` attribute
+// below, which is what that element exists for; see `lib/format/date.ts`
+// for the precision/timezone reasoning.
+import { formatExtractionInstant } from "../lib/format/date";
 
 export interface MethodologySheetBreak {
   date: string;
@@ -20,6 +27,11 @@ export interface Props {
   originHref: string;
   periodicity: string;
   nextPublicationLabel: string;
+  /** The SOURCE's own release-calendar URL. Passed alongside the label
+   * rather than pre-composed into it: the caller used to build
+   * `` `${label} (${href})` ``, which is how the raw URL ended up rendered
+   * as visible copy in parentheses. */
+  nextPublicationHref: string;
   extractedAt: string;
   unit: string;
   base: string | null;
@@ -40,6 +52,7 @@ const {
   originHref,
   periodicity,
   nextPublicationLabel,
+  nextPublicationHref,
   extractedAt,
   unit,
   base,
@@ -79,11 +92,33 @@ const {
     </div>
     <div>
       <dt class="text-caption text-ink-muted">{es.methodologySheet.nextPublicationLabel}</dt>
-      <dd>{nextPublicationLabel}</dd>
+      {/*
+        A DISCLOSURE, presented as a link — not a next-publication date.
+        No per-series publication calendar exists anywhere in this project
+        (a documented permanent gap; see `content/indicators/methodology.ts`),
+        so the copy deliberately says "consult the source's calendar" rather
+        than inventing a date, and that meaning is unchanged here. What is
+        fixed is only that the URL used to be pasted into the visible text
+        in parentheses. The sentence IS the link text, which is what makes
+        the link's destination self-describing when a screen reader lists
+        the page's links out of context — and it matches the four links this
+        same sheet already renders (Fuente, Identificador de origen,
+        historial de revisiones, Ver script de ingesta), rather than
+        inventing a fifth pattern.
+      */}
+      <dd><a href={nextPublicationHref} class="underline">{nextPublicationLabel}</a></dd>
     </div>
     <div>
       <dt class="text-caption text-ink-muted">{es.methodologySheet.extractedAtLabel}</dt>
-      <dd class="font-numeric tabular-nums">{extractedAt}</dd>
+      {/* `<time>`, so the two audiences are served by one element rather
+          than by a compromise between them: the reader gets Spanish prose,
+          and `datetime` keeps the unambiguous machine instant in the markup
+          exactly as it was. `tabular-nums` still earns its place — the
+          formatter pads the hour and the minute, so a column of instants
+          stays aligned. */}
+      <dd class="font-numeric tabular-nums">
+        <time datetime={extractedAt}>{formatExtractionInstant(extractedAt)}</time>
+      </dd>
     </div>
     <div>
       <dt class="text-caption text-ink-muted">{es.methodologySheet.unitLabel}</dt>

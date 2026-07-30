@@ -244,7 +244,15 @@ const perCapitaAttribution = content.transforms.perCapita ? es.chart.perCapita.a
        with certainty as a prop.
 
        `doc.slug` is still the right one for `ActionBar`'s two hrefs just
-       above, which must name real published FILES. */
+       above, which must name real published FILES.
+
+       `nextPublicationLabel` and `nextPublicationHref` travel SEPARATELY.
+       This call site used to compose them — `` `${label} (${href})` `` —
+       which is how a raw URL ended up rendered as visible copy in
+       parentheses; the sheet now turns the label into the link's own text.
+       The DISCLOSURE is untouched: still the source's generic calendar,
+       because no per-series publication date exists anywhere in this
+       project. */
   }
   <MethodologySheet
     slug={content.slug}
@@ -256,7 +264,8 @@ const perCapitaAttribution = content.transforms.perCapita ? es.chart.perCapita.a
     originLabel={doc.origin.ref}
     originHref={doc.origin.requestUrl}
     periodicity={es.page.periodicityLabel[doc.frequency]}
-    nextPublicationLabel={`${es.page.nextPublicationFallback} (${methodology.nextPublicationHref})`}
+    nextPublicationLabel={es.page.nextPublicationFallback}
+    nextPublicationHref={methodology.nextPublicationHref}
     extractedAt={doc.vintage.extractedAt}
     unit={doc.unit}
     base={doc.base}

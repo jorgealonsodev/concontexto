@@ -137,3 +137,65 @@ describe("IndicatorChart", () => {
     expect(html).not.toContain('data-testid="chart-annotations"');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Responsive geometry: both variants are in the markup, CSS picks one.
+//
+// A static build cannot know the reader's viewport, so the chart uses the
+// device this codebase already uses for exactly that problem —
+// `MethodologySheet.astro` renders its fields twice and lets Tailwind's
+// `md:hidden` / `hidden md:block` show one at the browser's own media-query
+// evaluation. The same breakpoint is reused rather than a second one
+// invented, so the site has ONE responsive boundary.
+describe("IndicatorChart — responsive geometry", () => {
+  it("renders BOTH the wide and the narrow drawing", async () => {
+    const container = await AstroContainer.create();
+    const html = await container.renderToString(IndicatorChart, { props: { ...fx.indicatorChart } });
+    expect(html).toContain('data-testid="indicator-chart-svg"');
+    expect(html).toContain('data-testid="indicator-chart-svg-narrow"');
+  });
+
+  it("shows exactly one of them at any viewport, via the md breakpoint", async () => {
+    const container = await AstroContainer.create();
+    const html = await container.renderToString(IndicatorChart, { props: { ...fx.indicatorChart } });
+    // The narrow figure is hidden from `md` up; the wide one is hidden below
+    // it. Neither is `display: none` in both states, and neither is visible
+    // in both.
+    expect(html).toMatch(/class="[^"]*indicator-chart__figure--narrow[^"]*md:hidden[^"]*"/);
+    expect(html).toMatch(/class="[^"]*indicator-chart__figure--wide[^"]*hidden md:block[^"]*"/);
+  });
+
+  it("gives the narrow drawing its own title id, so no DOM id is duplicated", async () => {
+    // Both variants carry `<title id=...>` referenced by `aria-labelledby`.
+    // A shared id would be a duplicate in the document and an axe
+    // `duplicate-id-aria` violation — on a page whose accessibility gate is
+    // blocking.
+    const container = await AstroContainer.create();
+    const html = await container.renderToString(IndicatorChart, { props: { ...fx.indicatorChart } });
+    const ids = [...html.matchAll(/<title id="([^"]+)"/g)].map((m) => m[1]);
+    expect(ids.length).toBe(2);
+    expect(new Set(ids).size).toBe(2);
+  });
+
+  it("describes both drawings with the SAME description and table, which exist once", async () => {
+    // `aria-describedby` REFERENCES shared nodes; that is not duplication.
+    // The textual description and the accessible data table are the chart's
+    // textual equivalent and there is exactly one of each on the page.
+    const container = await AstroContainer.create();
+    const html = await container.renderToString(IndicatorChart, { props: { ...fx.indicatorChart } });
+    // Scoped to the two `<svg>` roots: `BreakBand.astro` also uses
+    // `aria-describedby` for its own tooltip, which is a different element
+    // and a different relationship.
+    const described = [...html.matchAll(/<svg[^>]*aria-describedby="([^"]+)"/g)].map((m) => m[1]);
+    expect(described.length).toBe(2);
+    expect(new Set(described).size).toBe(1);
+    expect((html.match(/data-testid="chart-description"/g) ?? []).length).toBe(1);
+    expect((html.match(/data-testid="accessible-data-table"/g) ?? []).length).toBe(1);
+  });
+
+  it("keeps the break bands in the narrow drawing too (P4 holds in the variant a phone sees)", async () => {
+    const container = await AstroContainer.create();
+    const html = await container.renderToString(IndicatorChart, { props: { ...fx.indicatorChart } });
+    expect((html.match(/data-testid="chart-break-band-narrow"/g) ?? []).length).toBe(1);
+  });
+});

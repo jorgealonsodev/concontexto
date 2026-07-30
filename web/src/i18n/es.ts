@@ -222,6 +222,26 @@ export const es = {
      * touch target without padding invented for its own sake. */
     backToHomeLabel: "Volver al inicio",
   },
+  /** Date vocabulary. `lib/format/date.ts` produces the date and the clock
+   * through `Intl` (the `es-ES` convention `lib/format/number.ts` already
+   * established for numerals); the CONNECTOR and the timezone attribution
+   * are copy, so they live here.
+   *
+   * NEW reader-facing copy — flagged for editorial sign-off, per this
+   * project's established convention.
+   *
+   * "(hora peninsular)" rather than `Intl`'s own `timeZoneName`: that option
+   * emits "CEST"/"CET" or "GMT+2"/"GMT+1", both of which are machine
+   * vocabulary, and both of which CHANGE TWICE A YEAR — a reader who saw
+   * "GMT+2" in July and "GMT+1" in January would reasonably wonder which of
+   * the two the site had got wrong. The phrase below is true in both halves
+   * of the year because the formatter resolves in `Europe/Madrid`, which IS
+   * peninsular time. It is deliberately an attribution and not a
+   * disclaimer: naming the clock is what lets a reader in the Canary
+   * Islands subtract the hour they already know they have to subtract. */
+  dates: {
+    instant: (date: string, time: string) => `${date} a las ${time} (hora peninsular)`,
+  },
   /** verify-report CRITICAL-3 remediation: the shared column-header
    * vocabulary for every rendered data table (`AccessibleDataTable.astro`'s
    * own table AND `ChartIsland.svelte`'s island-rendered copy of the same

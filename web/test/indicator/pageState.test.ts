@@ -62,10 +62,23 @@ describe("pageStateBannerCopy", () => {
   });
 
   it("renders the EXACT spec-mandated validation-failure banner naming the last correct update date", () => {
+    // The SENTENCE is the spec's own verbatim string and is still pinned
+    // character for character. What changed is only the value substituted
+    // into `{fecha}`: the artifact's bare `2026-07-29` was a machine date
+    // sitting in a Spanish sentence, and `lib/format/date.ts` now names the
+    // day the way the rest of the site names one.
     const copy = pageStateBannerCopy({ kind: "validation-failure", lastCorrectUpdate: "2026-07-29" });
     expect(copy).toBe(
-      "Última actualización correcta: 2026-07-29. La fuente ha publicado un dato que no ha superado nuestra validación automática; estamos revisándolo",
+      "Última actualización correcta: 29 de julio de 2026. La fuente ha publicado un dato que no ha superado nuestra validación automática; estamos revisándolo",
     );
+  });
+
+  it("leaves the artifact's own calendar date untouched in the STATE, formatting only the copy", () => {
+    // The boundary this change must not cross: `pageStateFromArtifact` still
+    // carries the machine value verbatim, so anything that consumes the
+    // state rather than the sentence keeps reading `2026-07-29`.
+    const state = pageStateFromArtifact({ kind: "validation-failure", lastCorrectUpdate: "2026-07-29", successorSlug: null });
+    expect(state).toEqual({ kind: "validation-failure", lastCorrectUpdate: "2026-07-29" });
   });
 
   // Same recorded fact, different sentence: with no correct update to name,

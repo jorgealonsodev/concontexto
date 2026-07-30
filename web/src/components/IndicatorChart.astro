@@ -32,7 +32,7 @@ import AccessibleDataTable, { type AccessibleDataTablePoint } from "./Accessible
 import BreakBand from "./BreakBand.astro";
 import AnnotationChip from "./AnnotationChip.astro";
 import { describeSeries } from "../lib/chart/description";
-import { renderChartSVG } from "../lib/chart/svg";
+import { narrowChartVariant, renderChartSVG } from "../lib/chart/svg";
 import { periodFromCalendarDate, type Frequency } from "../lib/chart/periods";
 import { es } from "../i18n/es";
 import type { ObservationStatus } from "../lib/export/schema";
@@ -91,20 +91,37 @@ const {
 
 const idBase = idSuffix ? `${slug}-${idSuffix}` : slug;
 const titleId = `chart-title-${idBase}`;
+// Its own id, not a shared one: both drawings carry a `<title>` referenced
+// by `aria-labelledby`, and two nodes with one id is a duplicate in the
+// document (axe `duplicate-id-aria`) even while CSS hides one of them.
+const narrowTitleId = `chart-title-${idBase}-narrow`;
 const descriptionId = `chart-description-${idBase}`;
 const tableId = `chart-table-${idBase}`;
 
 const description = describeSeries({ points, unit, decimals });
 
-const svgMarkup = renderChartSVG({
+const chartInput = {
   points,
   breaks: breaks.map((b) => ({ key: b.key, date: b.date })),
   frequency,
   decimals,
   unit,
-  titleId,
   descriptionId,
   tableId,
+};
+
+const svgMarkup = renderChartSVG({ ...chartInput, titleId });
+
+// The SAME renderer, the same series, a different box — see
+// `lib/chart/geometry.ts` for why a phone cannot read the wide one (at a
+// 375 px viewport its tick labels land at 3.25 CSS px) and why the fix has
+// to be geometry rather than type size. Both drawings reference the SAME
+// description and data table: `aria-describedby` points at shared nodes,
+// which is a reference, not a duplication.
+const narrowSvgMarkup = renderChartSVG({
+  ...chartInput,
+  titleId: narrowTitleId,
+  ...narrowChartVariant(points, decimals),
 });
 
 const tablePoints: AccessibleDataTablePoint[] = points.map((p) => ({
@@ -140,7 +157,20 @@ const breakDisplay = breaks.map((b) => ({
 ---
 
 <div class="indicator-chart" data-testid="indicator-chart" data-slug={slug}>
-  <div class="indicator-chart__figure">
+  {/*
+    Two drawings, one shown. A static build cannot know the reader's
+    viewport, so this uses the device `MethodologySheet.astro` already uses
+    for exactly that problem: render both and let Tailwind's responsive
+    utilities resolve it at the browser's own media-query evaluation, with
+    zero JavaScript. The breakpoint is `md` — deliberately the SAME one the
+    methodology sheet toggles on, so the site has one responsive boundary
+    rather than two, and the same one `NARROW_VIEWPORT_QUERY` encodes for
+    the island's interactive overlay.
+  */}
+  <div class="indicator-chart__figure indicator-chart__figure--narrow md:hidden">
+    <Fragment set:html={narrowSvgMarkup} />
+  </div>
+  <div class="indicator-chart__figure indicator-chart__figure--wide hidden md:block">
     <Fragment set:html={svgMarkup} />
   </div>
 

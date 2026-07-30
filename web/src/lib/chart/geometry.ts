@@ -198,11 +198,166 @@ export function buildYTicks(
   decimals: number,
   count = 4,
 ): ValueTick[] {
-  const [lo, hi] = domain;
-  const ticks: ValueTick[] = [];
-  for (let i = 0; i < count; i++) {
+  return yTickLabels(domain, decimals, count).map((label, i) => {
+    const [lo, hi] = domain;
     const value = lo + ((hi - lo) * i) / (count - 1);
-    ticks.push({ y: yForValue(value, domain, dims), label: formatNumber(value, decimals) });
+    return { y: yForValue(value, domain, dims), label };
+  });
+}
+
+/** The y-axis tick LABELS alone, with no geometry attached.
+ *
+ * Extracted from `buildYTicks` because the narrow layout has a
+ * chicken-and-egg problem the wide one does not: its left margin has to be
+ * wide enough for the labels, and the labels are what `buildYTicks` needs a
+ * `ChartDimensions` to produce. The label text depends only on the domain
+ * and the series' decimal count, never on the box — so it can be asked for
+ * first, and `buildYTicks` keeps producing exactly what it always did by
+ * calling through here. */
+export function yTickLabels(domain: [number, number], decimals: number, count = 4): string[] {
+  const [lo, hi] = domain;
+  const labels: string[] = [];
+  for (let i = 0; i < count; i++) {
+    labels.push(formatNumber(lo + ((hi - lo) * i) / (count - 1), decimals));
   }
-  return ticks;
+  return labels;
+}
+
+// ---------------------------------------------------------------------------
+// Narrow-viewport geometry (phones).
+//
+// THE PROBLEM, measured in a real browser rather than estimated. At a 375 px
+// viewport an indicator page gives the chart a 312.3 px column, so the
+// 960-unit viewBox above is drawn at a scale of 0.325 and its `font-size="10"`
+// tick labels land at 3.25 CSS px. Everything in the drawing shrinks by that
+// same factor, which is why this is a geometry problem and not a font-size
+// one.
+//
+// WHY A SECOND SET OF DIMENSIONS RATHER THAN A BIGGER FONT IN THIS ONE.
+// The same browser measurement rules the simple fix out. `poblacion-residente`
+// renders y-axis labels like "49.477.903" 55.3 units wide, into the 48 units
+// `DEFAULT_DIMENSIONS` leaves between the viewBox edge and the label anchor:
+// they are ALREADY clipped today, at every viewport, at font-size 10. Type and
+// margins are one decision, not two, and the margins live here.
+//
+// WHY THE MARGINS ARE DERIVED AND NOT CONSTANTS. Sizing every page's left
+// gutter for `poblacion-residente`'s ten-glyph labels would spend a fifth of
+// a phone's screen width on empty space for the five series whose labels are
+// three or four glyphs long. The gutter is computed from the labels the
+// series really produces, so each page pays only for what it prints.
+//
+// WHAT THIS COSTS, stated plainly. One viewBox cannot serve a 312 px column
+// and an 848 px one: the ratio between them is 2.7, so anything legible in
+// the first is oversized in the second, and vice versa. A second geometry is
+// the price of that arithmetic — the chart is rendered twice into the page
+// and CSS shows exactly one (see `IndicatorChart.astro`). Measured on the
+// heaviest page (`poblacion-residente`, 294 points), the second copy adds
+// 3.7 KB gzipped to a 17.4 KB document, against a 300 KB budget. The residual
+// imprecision is at the WIDE end of this band: the same viewBox is scaled up
+// as the viewport approaches 768 px, so tick labels there render larger than
+// they strictly need to be. Generous is a defect an order of magnitude
+// smaller than illegible, and it is the one this trade buys.
+
+/** Advance width of one glyph, as a fraction of the font size, for the two
+ * alphabets the axes actually print: digits with `.` and `,` separators, and
+ * period labels like `2026-Q2`.
+ *
+ * MEASURED, not guessed: at font-size 10 in the shipped typeface, Chromium
+ * reports 55.3 units for the ten-glyph "49.477.903" (0.553/glyph) and 44.8
+ * units for the seven-glyph "2025-Q4" (0.640/glyph). The larger of the two is
+ * used for both, so the margins this drives are conservative for numerals
+ * rather than tight for letters. A ratio is enough here because the only
+ * thing it protects is a margin: over-reserving costs a few units of gutter,
+ * under-reserving clips a label. */
+export const GLYPH_ADVANCE_RATIO = 0.64;
+
+/** Tick type size for the narrow variant, in user units.
+ *
+ * Chosen from the column a phone really gives the chart, not from taste:
+ * 20 units in a 560-unit viewBox drawn into 312.3 px renders at 11.2 CSS px,
+ * which is ordinary small-print size. The wide variant's 10 units renders at
+ * 3.25 px in that same column. */
+export const NARROW_TICK_FONT_SIZE = 20;
+
+/** Distance from the plot area's bottom edge to the x-label baseline. Scaled
+ * with the type (the wide variant uses 16 for a 10-unit font) so the labels
+ * clear the axis line rather than sitting on it. */
+export const NARROW_X_TICK_LABEL_OFFSET = 28;
+
+/** Three x-axis ticks, not six. Six seven-glyph labels at the narrow tick
+ * size need more width than the narrow plot area has, so they would overlap
+ * into an unreadable bar; `buildXTicks` always keeps the first and the last
+ * period, which are the two a reader needs to know what span they are
+ * looking at. */
+export const NARROW_MAX_X_TICKS = 3;
+
+/** The viewport below which the narrow geometry applies.
+ *
+ * This MUST stay equal to Tailwind's own `md` breakpoint (48rem), because
+ * the two rendered variants are shown and hidden with `md:hidden` /
+ * `hidden md:block`, and `ChartIsland.svelte` reads this same string through
+ * `matchMedia` to decide which geometry its interactive overlay must align
+ * to. One constant, so the CSS boundary and the JS boundary cannot drift and
+ * leave the hit targets sitting where the chart is not.
+ *
+ * `md` rather than `sm` deliberately: at a 767 px viewport the wide geometry
+ * still renders its ticks at about 7 CSS px, so stopping the narrow variant
+ * at 640 px would leave a band of tablet widths unreadable. */
+export const NARROW_VIEWPORT_QUERY = "(max-width: 47.999rem)";
+
+const NARROW_WIDTH = 560;
+/** 560x420 is exactly 4:3, against the wide variant's 2.67:1. At 312 px wide
+ * that is a 234 px-tall chart instead of a 117 px one — the difference
+ * between a series whose movement you can read and a horizontal smear. A
+ * first draft used 400 (1.4:1) and was pulled back to 4:3 by this module's
+ * own test, which fixes that ceiling: vertical resolution is the whole point
+ * of reshaping the chart, and 4:3 is where a time series stops reading as a
+ * strip. */
+const NARROW_HEIGHT = 420;
+const NARROW_MARGIN_TOP = 20;
+/** `svg.ts` anchors each y label's right edge this far left of the plot
+ * area, so the gutter must hold the label PLUS this gap. */
+const Y_LABEL_ANCHOR_GAP = 8;
+/** A little air beyond the computed label width, so a glyph slightly wider
+ * than the average ratio still lands inside the box. */
+const LABEL_SAFETY_MARGIN = 4;
+
+function widestLabelWidth(labels: string[]): number {
+  const glyphs = labels.reduce((max, label) => Math.max(max, label.length), 0);
+  return glyphs * GLYPH_ADVANCE_RATIO * NARROW_TICK_FONT_SIZE;
+}
+
+/**
+ * The narrow-viewport box for one series, with its margins sized from the
+ * labels that series really prints.
+ *
+ * `periods` sizes the RIGHT margin: the last x tick is centred on the plot
+ * area's right edge, so half a label has to fit beyond it or the final period
+ * — the one a reader looks for first — is clipped. (The wide geometry does
+ * clip it: "2026-Q2" centred on x=944 runs to 965.5 in a 960-unit box.)
+ *
+ * `points` and `decimals` size the LEFT margin, through the real y-tick
+ * labels rather than through an assumption about magnitude.
+ */
+export function narrowDimensions(
+  periods: string[],
+  points: ChartPoint[],
+  decimals: number,
+): ChartDimensions {
+  const marginLeft =
+    Math.ceil(widestLabelWidth(yTickLabels(valueDomain(points), decimals))) +
+    Y_LABEL_ANCHOR_GAP +
+    LABEL_SAFETY_MARGIN;
+  const marginRight = Math.ceil(widestLabelWidth(periods) / 2) + LABEL_SAFETY_MARGIN;
+  // Baseline offset, plus a full em for the type itself, plus air: enough
+  // that a descender never reaches the viewBox edge and gets clipped.
+  const marginBottom = NARROW_X_TICK_LABEL_OFFSET + NARROW_TICK_FONT_SIZE + 8;
+  return {
+    width: NARROW_WIDTH,
+    height: NARROW_HEIGHT,
+    marginTop: NARROW_MARGIN_TOP,
+    marginRight,
+    marginBottom,
+    marginLeft,
+  };
 }

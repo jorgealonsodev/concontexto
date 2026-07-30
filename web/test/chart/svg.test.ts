@@ -5,8 +5,14 @@
 // to: slice 8's own island-parity test (task 8.12) re-asserts the SAME
 // golden fixture against the island's initial client-side render.
 import { describe, expect, it } from "vitest";
-import { renderChartSVG } from "../../src/lib/chart/svg";
-import type { ChartPoint } from "../../src/lib/chart/geometry";
+import { narrowChartVariant, renderChartSVG } from "../../src/lib/chart/svg";
+import {
+  GLYPH_ADVANCE_RATIO,
+  NARROW_MAX_X_TICKS,
+  NARROW_TICK_FONT_SIZE,
+  narrowDimensions,
+  type ChartPoint,
+} from "../../src/lib/chart/geometry";
 
 const GOLDEN_POINTS: ChartPoint[] = [
   { period: "2019-Q1", value: 10.2, status: "D" },
@@ -104,5 +110,114 @@ describe("renderChartSVG", () => {
     });
     const segments = svg.match(/data-testid="chart-line-segment-\d+"/g) ?? [];
     expect(segments).toHaveLength(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The narrow-viewport variant.
+//
+// One renderer, two boxes. `renderChartSVG` gains four optional inputs, all
+// defaulted to exactly what it emitted before — which is what the golden
+// fixture above is now ALSO proving: if any default drifted, that snapshot
+// moves. The narrow variant is that same function called with the narrow
+// geometry (see `geometry.ts` for why the phone needs its own box at all).
+describe("renderChartSVG — narrow-viewport variant", () => {
+  const NARROW_INPUT = { ...GOLDEN_INPUT, titleId: "golden-title-narrow", ...narrowChartVariant(GOLDEN_POINTS, 1) };
+
+  it("leaves the wide variant byte-identical when the new inputs are omitted", () => {
+    // Belt and braces alongside the golden snapshot: passing the defaults
+    // explicitly must produce the same string as passing nothing, so a
+    // future change to a default value cannot hide behind a call site that
+    // happens to pass it.
+    expect(
+      renderChartSVG({ ...GOLDEN_INPUT, tickFontSize: 10, xTickLabelOffset: 16, maxXTicks: 6 }),
+    ).toBe(renderChartSVG(GOLDEN_INPUT));
+  });
+
+  it("draws its tick labels at the narrow type size", () => {
+    expect(renderChartSVG(NARROW_INPUT)).toContain(`font-size="${NARROW_TICK_FONT_SIZE}"`);
+    expect(renderChartSVG(NARROW_INPUT)).not.toContain('font-size="10"');
+  });
+
+  it("carries the narrow viewBox, so the two variants are genuinely different drawings", () => {
+    const narrowDims = narrowDimensions(
+      GOLDEN_POINTS.map((p) => p.period),
+      GOLDEN_POINTS,
+      1,
+    );
+    expect(renderChartSVG(NARROW_INPUT)).toContain(`viewBox="0 0 ${narrowDims.width} ${narrowDims.height}"`);
+    expect(renderChartSVG(GOLDEN_INPUT)).toContain('viewBox="0 0 960 360"');
+  });
+
+  it("thins the x axis to the narrow tick count", () => {
+    const narrowTicks = renderChartSVG(NARROW_INPUT).match(/class="chart-tick chart-tick--x"/g) ?? [];
+    const wideTicks = renderChartSVG(GOLDEN_INPUT).match(/class="chart-tick chart-tick--x"/g) ?? [];
+    expect(narrowTicks.length).toBeLessThan(wideTicks.length);
+    // `buildXTicks` always appends the final period if the stride missed it,
+    // so the count can be the cap plus one — never more.
+    expect(narrowTicks.length).toBeLessThanOrEqual(NARROW_MAX_X_TICKS + 1);
+  });
+
+  it("suffixes EVERY test id, so the two variants never collide in one document", () => {
+    // Both variants are rendered into the same page and CSS shows one. If
+    // they shared test ids, every existing `[data-testid=...]` locator and
+    // every `toHaveCount(1)` in this suite would start matching two nodes —
+    // a strict-mode failure at best, a silently doubled count at worst. The
+    // suffix is what keeps this change invisible to locators that predate it.
+    const narrow = renderChartSVG(NARROW_INPUT);
+    const wide = renderChartSVG(GOLDEN_INPUT);
+    for (const id of wide.match(/data-testid="([^"]+)"/g) ?? []) {
+      const value = id.slice('data-testid="'.length, -1);
+      expect(narrow, `${value} is not suffixed in the narrow variant`).not.toContain(`data-testid="${value}"`);
+      expect(narrow).toContain(`data-testid="${value}-narrow"`);
+    }
+  });
+
+  it("keeps its own class, so stylesheets can target one variant without the other", () => {
+    expect(renderChartSVG(NARROW_INPUT)).toContain('class="indicator-chart-svg indicator-chart-svg--narrow"');
+    expect(renderChartSVG(GOLDEN_INPUT)).toContain('class="indicator-chart-svg"');
+  });
+
+  it("draws every tick label INSIDE the viewBox, which is the whole point of the narrow margins", () => {
+    // The assertion that would have caught the pre-existing clipping: no
+    // y label may start left of x=0, and no x label may end right of the
+    // viewBox width. Widths are estimated with the same measured glyph
+    // ratio `geometry.ts` sizes the margins from, so this test and that
+    // code disagree only if one of them is wrong.
+    const svg = renderChartSVG(NARROW_INPUT);
+    const dims = narrowDimensions(
+      GOLDEN_POINTS.map((p) => p.period),
+      GOLDEN_POINTS,
+      1,
+    );
+
+    for (const [, x, label] of svg.matchAll(
+      /class="chart-tick chart-tick--y"[^>]*x="([\d.]+)"[^>]*>([^<]+)</g,
+    )) {
+      const width = label.length * GLYPH_ADVANCE_RATIO * NARROW_TICK_FONT_SIZE;
+      expect(Number(x) - width, `y label "${label}" starts left of the viewBox`).toBeGreaterThan(0);
+    }
+
+    for (const [, x, label] of svg.matchAll(
+      /class="chart-tick chart-tick--x"[^>]*x="([\d.]+)"[^>]*>([^<]+)</g,
+    )) {
+      const half = (label.length * GLYPH_ADVANCE_RATIO * NARROW_TICK_FONT_SIZE) / 2;
+      expect(Number(x) - half, `x label "${label}" starts left of the viewBox`).toBeGreaterThanOrEqual(0);
+      expect(Number(x) + half, `x label "${label}" runs past the viewBox`).toBeLessThanOrEqual(dims.width);
+    }
+  });
+
+  it("still consumes design tokens and never a hardcoded hex, exactly like the wide variant", () => {
+    const svg = renderChartSVG(NARROW_INPUT);
+    expect(svg).toContain("var(--color-accent)");
+    expect(svg).not.toMatch(/#[0-9a-fA-F]{6}/);
+  });
+
+  it("still bakes in the break bands, so P4 holds in the variant a phone actually sees", () => {
+    // indicator-page spec, "Series breaks are always visible and never
+    // dismissible". A second variant is a second chance to lose them.
+    const svg = renderChartSVG(NARROW_INPUT);
+    expect(svg.match(/data-testid="chart-break-band-narrow"/g) ?? []).toHaveLength(1);
+    expect(svg).toContain('data-break-key="covid-2020"');
   });
 });

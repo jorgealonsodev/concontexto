@@ -22,11 +22,13 @@
   // drop a break that genuinely falls inside the new visible window.
   import {
     DEFAULT_DIMENSIONS,
+    NARROW_VIEWPORT_QUERY,
     projectPoints,
+    type ChartDimensions,
     type ChartPoint,
     type ObservationStatus,
   } from "../lib/chart/geometry";
-  import { renderChartSVG } from "../lib/chart/svg";
+  import { narrowChartVariant, renderChartSVG } from "../lib/chart/svg";
   import { describeSeries } from "../lib/chart/description";
   import { periodFromCalendarDate, periodOrdinalIndex, type Frequency } from "../lib/chart/periods";
   import { computeIntraPeriodRate, computeYoY } from "../lib/transform/yoy";
@@ -134,6 +136,10 @@
 
   const idBase = $derived(idSuffix ? `${slug}-${idSuffix}` : slug);
   const titleId = $derived(titleIdOverride ?? `chart-title-${idBase}`);
+  /** The narrow drawing's own `<title>` id. Both variants are in the
+   * document at once (CSS shows one), and two nodes sharing an id is a
+   * duplicate whether or not one of them is displayed. */
+  const narrowTitleId = $derived(`${titleId}-narrow`);
   const descriptionId = $derived(descriptionIdOverride ?? `chart-description-${idBase}`);
   const tableId = $derived(tableIdOverride ?? `chart-table-${idBase}`);
 
@@ -312,22 +318,61 @@
     }),
   );
 
-  const svgMarkup = $derived(
-    renderChartSVG({
-      points: rangedPoints,
-      breaks: visibleBreaks.map((b) => ({ key: b.key, date: b.date })),
-      frequency,
-      decimals: viewDecimals,
-      unit: viewUnit,
-      titleId,
-      descriptionId,
-      tableId,
-    }),
+  const chartInput = $derived({
+    points: rangedPoints,
+    breaks: visibleBreaks.map((b) => ({ key: b.key, date: b.date })),
+    frequency,
+    decimals: viewDecimals,
+    unit: viewUnit,
+    descriptionId,
+    tableId,
+  });
+
+  const svgMarkup = $derived(renderChartSVG({ ...chartInput, titleId }));
+
+  /** The SAME renderer and the SAME series in a phone-shaped box. A real
+   * `/indicador/{slug}` page composes THIS component, not
+   * `IndicatorChart.astro`, so this is the drawing a reader on a phone
+   * actually receives — including a reader with JavaScript disabled, who
+   * gets this server-rendered markup and nothing else. See
+   * `lib/chart/geometry.ts` for why the wide box cannot be made legible by
+   * enlarging its type. */
+  const narrowVariant = $derived(narrowChartVariant(rangedPoints, viewDecimals));
+  const narrowSvgMarkup = $derived(
+    renderChartSVG({ ...chartInput, titleId: narrowTitleId, ...narrowVariant }),
   );
+
+  /** Which drawing the reader is currently looking at.
+   *
+   * CSS decides which SVG is VISIBLE with zero JavaScript, and that is the
+   * whole no-JS story. This flag exists only for the interactive layer on
+   * top: the hover overlay, the roving-tabindex point buttons and the
+   * tooltip are HTML positioned in percentages of the figure box, and those
+   * percentages are computed from the plot area's margins — which differ
+   * between the two boxes. Reading the SAME `NARROW_VIEWPORT_QUERY` the
+   * markup toggles on is what keeps the hit targets on top of the points
+   * rather than beside them.
+   *
+   * `false` during SSR (there is no viewport to ask), corrected on mount.
+   * Nothing shifts when it flips: the interactive layer is invisible and
+   * inert until hydration anyway, so its coordinates were never observable
+   * before this runs. */
+  let narrowViewport = $state(false);
+  onMount(() => {
+    const query = window.matchMedia(NARROW_VIEWPORT_QUERY);
+    const sync = () => {
+      narrowViewport = query.matches;
+    };
+    sync();
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  });
+
+  const activeDims: ChartDimensions = $derived(narrowViewport ? narrowVariant.dims : DEFAULT_DIMENSIONS);
 
   const description = $derived(describeSeries({ points: rangedPoints, unit: viewUnit, decimals: viewDecimals }));
 
-  const projected = $derived(projectPoints(rangedPoints, DEFAULT_DIMENSIONS));
+  const projected = $derived(projectPoints(rangedPoints, activeDims));
   const interactivePoints = $derived(
     projected
       .map((p, i) => ({ ...p, i }))
@@ -335,10 +380,10 @@
   );
 
   function xPercent(x: number): number {
-    return (x / DEFAULT_DIMENSIONS.width) * 100;
+    return (x / activeDims.width) * 100;
   }
   function yPercent(y: number): number {
-    return (y / DEFAULT_DIMENSIONS.height) * 100;
+    return (y / activeDims.height) * 100;
   }
 
   function pointId(i: number): string {
@@ -381,8 +426,8 @@
   function onOverlayPointerMove(e: PointerEvent) {
     const target = e.currentTarget as HTMLElement;
     const rect = target.getBoundingClientRect();
-    const localX = ((e.clientX - rect.left) / rect.width) * DEFAULT_DIMENSIONS.width;
-    const nearest = nearestPointIndexForX(localX, interactivePoints.length, DEFAULT_DIMENSIONS);
+    const localX = ((e.clientX - rect.left) / rect.width) * activeDims.width;
+    const nearest = nearestPointIndexForX(localX, interactivePoints.length, activeDims);
     hoverIndex = nearest === -1 ? null : nearest;
   }
   function onOverlayPointerLeave() {
@@ -503,11 +548,21 @@
 </script>
 
 <div class="indicator-chart-island" data-testid="indicator-chart-island" data-slug={slug}>
-  <div
-    class="indicator-chart-island__figure relative w-full"
-    style={`aspect-ratio: ${DEFAULT_DIMENSIONS.width} / ${DEFAULT_DIMENSIONS.height};`}
-  >
-    <div class="pointer-events-none absolute inset-0">
+  <!--
+    The box's SHAPE is chosen by CSS, not by the `narrowViewport` flag in
+    the script above, and that ordering is deliberate: the aspect ratio is
+    what reserves the chart's space in the layout, so making it depend on
+    hydration would move everything below the chart the moment the island
+    woke up — and would leave a no-JavaScript reader with a box that never
+    matched its drawing at all. See this component's `<style>` block.
+  -->
+  <div class="indicator-chart-island__figure relative w-full">
+    <!-- Two drawings, one shown — same `md` breakpoint, and same
+         reasoning, as `IndicatorChart.astro`. -->
+    <div class="indicator-chart-island__figure--narrow pointer-events-none absolute inset-0 md:hidden">
+      {@html narrowSvgMarkup}
+    </div>
+    <div class="indicator-chart-island__figure--wide pointer-events-none absolute inset-0 hidden md:block">
       {@html svgMarkup}
     </div>
     <div
@@ -794,6 +849,27 @@
 </div>
 
 <style>
+  /* The figure reserves the WIDE box by default and the NARROW box below
+     the `md` breakpoint. Kept in CSS rather than in the inline style the
+     component used to compute, because this is the one thing that must be
+     right on the very first paint: it is what stops the page reflowing when
+     the island hydrates, and what stops it reflowing at all for a reader
+     who never runs the script.
+
+     The two ratios are the two `ChartDimensions` this component renders
+     (960x360 and 560x420). They are literals here because a Svelte
+     `<style>` block cannot read a module constant; `test/chart/island-ssr`
+     and `geometry.test.ts` pin the numbers on the other side. */
+  .indicator-chart-island__figure {
+    aspect-ratio: 560 / 420;
+  }
+
+  @media (min-width: 48rem) {
+    .indicator-chart-island__figure {
+      aspect-ratio: 960 / 360;
+    }
+  }
+
   .indicator-chart-island__figure :global(svg.indicator-chart-svg) {
     width: 100%;
     height: 100%;

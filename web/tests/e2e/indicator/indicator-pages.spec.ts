@@ -218,5 +218,67 @@ for (const slug of SLUGS) {
         expect(undersized, `controls under the 44x44 CSS px minimum: ${undersized.join(", ")}`).toEqual([]);
       },
     );
+
+    // The chart is the centrepiece of every indicator page, and a 375 px
+    // phone is where most readers meet it. Measured in a real browser at
+    // that width before this change:
+    //
+    //   svg box 312.3 x 117.1 CSS px, scale 0.325, tick labels 3.25 CSS px
+    //
+    // The unit tests pin the geometry; only a browser can prove what the
+    // geometry actually RENDERS at, because the answer depends on the page's
+    // own column width, the scrollbar and the media query all agreeing.
+    test(
+      "the chart's axis labels are legible at a 375px viewport",
+      { tag: ["@indicator-page", "@a11y", "@chart"] },
+      async ({ page }) => {
+        await page.setViewportSize({ width: 375, height: 900 });
+        const indicator = new IndicatorPage(page, slug);
+        await indicator.goto();
+
+        // The narrow drawing is the one CSS shows at this width; the wide
+        // one must be hidden, or both are in the accessibility tree and the
+        // reader sees two charts.
+        const narrow = indicator.chartSection.locator('[data-testid="indicator-chart-svg-narrow"]');
+        const wide = indicator.chartSection.locator('[data-testid="indicator-chart-svg"]');
+        await expect(narrow).toBeVisible();
+        await expect(wide).toBeHidden();
+
+        const measured = await narrow.evaluate((svg) => {
+          const box = svg.getBoundingClientRect();
+          const viewBox = (svg.getAttribute("viewBox") ?? "0 0 1 1").split(" ").map(Number);
+          const scale = box.width / viewBox[2];
+          const ticks = [...svg.querySelectorAll(".chart-tick")];
+          return {
+            height: box.height,
+            renderedTickPx: ticks.map((t) => parseFloat(getComputedStyle(t).fontSize) * scale),
+            // Anything drawn outside the viewBox is clipped by the SVG's own
+            // overflow, so a label that starts left of 0 or ends past the
+            // width is a label the reader cannot fully read.
+            clipped: ticks
+              .map((t) => {
+                const b = (t as SVGGraphicsElement).getBBox();
+                return { text: t.textContent ?? "", left: b.x, right: b.x + b.width };
+              })
+              .filter((t) => t.left < 0 || t.right > viewBox[2])
+              .map((t) => t.text),
+          };
+        });
+
+        // Small print, not a smudge. 10 CSS px is the floor; the measured
+        // value here is about 11.
+        const smallest = Math.min(...measured.renderedTickPx);
+        expect(smallest, `smallest rendered tick label is ${smallest.toFixed(2)} CSS px`).toBeGreaterThanOrEqual(10);
+
+        // ...and tall enough that the series' vertical movement is readable
+        // rather than compressed into a band.
+        expect(measured.height).toBeGreaterThan(180);
+
+        // No axis label is cut off by the viewBox edge — the failure the
+        // derived margins exist to prevent, and one the wide drawing still
+        // exhibits for ten-glyph labels.
+        expect(measured.clipped, `axis labels clipped by the viewBox: ${measured.clipped.join(", ")}`).toEqual([]);
+      },
+    );
   });
 }

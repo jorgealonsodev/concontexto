@@ -27,6 +27,10 @@ const title = "Workbench de componentes — ConContexto";
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title}</title>
+    {/* See `src/pages/index.astro`. The workbench never reaches production,
+        but it is a real document a reviewer loads in a real browser, and a
+        404 in its console is the same noise there as anywhere else. */}
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   </head>
   <body class="font-sans">
     <main class="mx-auto max-w-4xl p-6">

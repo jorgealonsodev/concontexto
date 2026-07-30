@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { render } from "svelte/server";
 import ChartIsland from "../../src/components/ChartIsland.svelte";
+import { narrowChartVariant, renderChartSVG } from "../../src/lib/chart/svg";
 import type { ChartPoint } from "../../src/lib/chart/geometry";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -31,9 +32,17 @@ const GOLDEN_POINTS: ChartPoint[] = [
 ];
 const GOLDEN_BREAKS = [{ key: "covid-2020", date: "2020-04-01", kind: "metodológica", noteMd: "n/a", sourceUrl: null }];
 
-function extractSvg(html: string): string {
-  const match = /<svg[\s\S]*?<\/svg>/.exec(html);
-  if (!match) throw new Error("no <svg> found in rendered island HTML");
+/** One of the island's two rendered drawings, by its own test id.
+ *
+ * This used to take the FIRST `<svg>` in the markup, which was
+ * unambiguous while there was only one. The island now emits a narrow and a
+ * wide variant (CSS shows one — see `geometry.ts` for why a phone needs its
+ * own box), and the narrow one comes first in source order, so "the first
+ * svg" silently became "the mobile chart". Selecting by test id says which
+ * drawing is being asserted instead of depending on where it sits. */
+function extractSvg(html: string, testId = "indicator-chart-svg"): string {
+  const match = new RegExp(`<svg[^>]*data-testid="${testId}"[\\s\\S]*?</svg>`).exec(html);
+  if (!match) throw new Error(`no <svg data-testid="${testId}"> found in rendered island HTML`);
   return match[0];
 }
 
@@ -57,6 +66,44 @@ describe("ChartIsland — island-parity golden test (task 8.12)", () => {
 
     const golden = readFileSync(path.join(__dirname, "../fixtures/chart/golden-indicator-chart.svg"), "utf-8").trim();
     expect(extractSvg(body)).toBe(golden);
+  });
+
+  it("the island's NARROW drawing is byte-identical to the static component's, so the second box did not create a second renderer", () => {
+    // D-5's anti-divergence device, extended to the variant it now has to
+    // cover. The golden fixture pins the wide drawing; nothing pinned the
+    // narrow one, and a second box is exactly the kind of thing that grows
+    // a second implementation. Both sides are asserted against the SAME
+    // `renderChartSVG` call rather than against a committed second fixture,
+    // because the point is that there is only one renderer — not that its
+    // output happens to match a file.
+    const { body } = render(ChartIsland, {
+      props: {
+        slug: "golden",
+        name: "Golden fixture",
+        unit: "% población activa",
+        frequency: "Q" as const,
+        decimals: 1,
+        points: GOLDEN_POINTS,
+        breaks: GOLDEN_BREAKS,
+        transforms: { yoy: false, qoq: false, perCapita: false },
+        titleId: "golden-title",
+        descriptionId: "golden-description",
+        tableId: "golden-table",
+      },
+    });
+
+    const expected = renderChartSVG({
+      points: GOLDEN_POINTS,
+      breaks: GOLDEN_BREAKS.map((b) => ({ key: b.key, date: b.date })),
+      frequency: "Q",
+      decimals: 1,
+      unit: "% población activa",
+      titleId: "golden-title-narrow",
+      descriptionId: "golden-description",
+      tableId: "golden-table",
+      ...narrowChartVariant(GOLDEN_POINTS, 1),
+    });
+    expect(extractSvg(body, "indicator-chart-svg-narrow")).toBe(expected);
   });
 
   it("the default (unhydrated) view is raw/full — no transform or range is pre-selected", () => {
@@ -125,5 +172,50 @@ describe("ChartIsland — island-parity golden test (task 8.12)", () => {
     });
     expect(body).not.toContain("fetch(");
     expect(body).not.toContain("XMLHttpRequest");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The island carries the same two variants the static component does.
+//
+// This matters more here than there: `IndicatorChart.astro` is the
+// workbench's catalog entry, but a real `/indicador/{slug}` page composes
+// `ChartIsland.svelte`, so THIS is the markup a reader on a phone actually
+// receives — including a reader with JavaScript disabled, who gets this
+// server-rendered string and nothing else.
+describe("ChartIsland — responsive geometry", () => {
+  function renderIsland() {
+    const { body } = render(ChartIsland, {
+      props: {
+        slug: "golden",
+        name: "Golden fixture",
+        unit: "% población activa",
+        frequency: "Q" as const,
+        decimals: 1,
+        points: GOLDEN_POINTS,
+        breaks: GOLDEN_BREAKS,
+        annotations: [],
+        transforms: { yoy: false, qoq: false, perCapita: false },
+      },
+    });
+    return body;
+  }
+
+  it("server-renders BOTH drawings, so the no-JavaScript phone reader gets the narrow one", () => {
+    const body = renderIsland();
+    expect(body).toContain('data-testid="indicator-chart-svg"');
+    expect(body).toContain('data-testid="indicator-chart-svg-narrow"');
+  });
+
+  it("shows exactly one of them at any viewport, at the same breakpoint the static component uses", () => {
+    const body = renderIsland();
+    expect(body).toMatch(/class="[^"]*indicator-chart-island__figure--narrow[^"]*md:hidden[^"]*"/);
+    expect(body).toMatch(/class="[^"]*indicator-chart-island__figure--wide[^"]*hidden md:block[^"]*"/);
+  });
+
+  it("gives the narrow drawing its own title id", () => {
+    const ids = [...renderIsland().matchAll(/<title id="([^"]+)"/g)].map((m) => m[1]);
+    expect(ids.length).toBe(2);
+    expect(new Set(ids).size).toBe(2);
   });
 });

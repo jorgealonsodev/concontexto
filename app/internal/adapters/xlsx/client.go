@@ -24,6 +24,7 @@ import (
 	"github.com/jorgealonsodev/concontexto/app/internal/adapters/config"
 	"github.com/jorgealonsodev/concontexto/app/internal/indicators"
 	"github.com/jorgealonsodev/concontexto/app/internal/ingestion/sourceerr"
+	"github.com/jorgealonsodev/concontexto/app/internal/useragent"
 )
 
 // defaultMaxAttempts mirrors adapters/ine and adapters/eurostat's shared
@@ -164,11 +165,24 @@ func (c *Client) waitBeforeRetry(attempt int) {
 	}
 }
 
+// doRequest is the ONE place every workbook request -- including every
+// retry attempt -- is built, which is why the User-Agent is attached here
+// (mirrors adapters/ine.Client.doRequest).
+//
+// The User-Agent is not optional politeness. INE's edge BLACKHOLES Go's
+// default "Go-http-client/1.1" token -- no response, no error, no status,
+// just a hung connection until the client timeout fires, in production
+// only (app/internal/useragent carries the measured evidence). This
+// adapter is if anything MORE exposed to that class of failure than the
+// API adapters: it pulls a published workbook off an ordinary web server,
+// which sits behind whatever generic bot filtering its operator enabled,
+// and a default library User-Agent is precisely what such filters score.
 func (c *Client) doRequest(ctx context.Context, url string) ([]byte, int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, 0, err
 	}
+	req.Header.Set("User-Agent", useragent.UserAgent)
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, 0, err

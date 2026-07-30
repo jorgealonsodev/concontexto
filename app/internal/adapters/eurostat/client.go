@@ -49,6 +49,7 @@ import (
 
 	"github.com/jorgealonsodev/concontexto/app/internal/indicators"
 	"github.com/jorgealonsodev/concontexto/app/internal/ingestion/sourceerr"
+	"github.com/jorgealonsodev/concontexto/app/internal/useragent"
 )
 
 // defaultMaxAttempts mirrors adapters/ine's retry budget (spec
@@ -264,11 +265,23 @@ func (c *Client) waitBeforeRetry(attempt int) {
 	}
 }
 
+// doRequest is the ONE place every Eurostat request -- ingestion
+// (FetchRaw), probe (FetchProbe) and every retry attempt alike -- is
+// built, which is why the User-Agent is attached here rather than at the
+// call sites (mirrors adapters/ine.Client.doRequest).
+//
+// The User-Agent is not optional politeness. Eurostat has not been
+// observed refusing Go's default token, but INE's edge BLACKHOLES it --
+// no response, no error, no status, just a hung connection until the
+// client timeout fires, in production only -- and one identified adapter
+// beside two anonymous ones is not something a source operator can
+// correlate. app/internal/useragent carries the measured evidence.
 func (c *Client) doRequest(ctx context.Context, requestURL string) ([]byte, int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
 	if err != nil {
 		return nil, 0, err
 	}
+	req.Header.Set("User-Agent", useragent.UserAgent)
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, 0, err

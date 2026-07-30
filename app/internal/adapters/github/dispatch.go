@@ -14,6 +14,8 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/jorgealonsodev/concontexto/app/internal/useragent"
 )
 
 const defaultBaseURL = "https://api.github.com"
@@ -76,6 +78,16 @@ func (c *Client) Dispatch(ctx context.Context, generatedAt time.Time, manifestDi
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("Authorization", "Bearer "+c.Token)
 	req.Header.Set("Content-Type", "application/json")
+	// The GitHub REST API documents a User-Agent as REQUIRED and answers a
+	// request without one with HTTP 403 ("Request forbidden by
+	// administrative rules"). That is a hard blocker here, not a warning:
+	// this dispatch is what triggers the site rebuild, and design D-2 makes
+	// a dispatch failure an alert and NEVER a retry loop -- so a request
+	// refused on a header technicality means the published artifact simply
+	// never reaches the site, with no second attempt. The same constant
+	// also fixes INE, whose edge blackholes Go's default token outright;
+	// app/internal/useragent carries the measured evidence for both.
+	req.Header.Set("User-Agent", useragent.UserAgent)
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {

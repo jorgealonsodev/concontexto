@@ -31,6 +31,7 @@ import (
 
 	"github.com/jorgealonsodev/concontexto/app/internal/indicators"
 	"github.com/jorgealonsodev/concontexto/app/internal/ingestion/sourceerr"
+	"github.com/jorgealonsodev/concontexto/app/internal/useragent"
 )
 
 // defaultMaxAttempts bounds the retry loop so a permanent, non-retryable
@@ -343,11 +344,26 @@ func (c *Client) waitBeforeRetry(attempt int) {
 	}
 }
 
+// doRequest is the ONE place every INE request -- ingestion (FetchRaw),
+// probe (FetchProbe) and every retry attempt alike -- is built, which is
+// why the User-Agent is attached here and not at the three call sites.
+//
+// DO NOT REMOVE THE User-Agent HEADER. INE's edge blackholes Go's default
+// "Go-http-client/1.1" token specifically: no response, no error, no
+// status -- the connection simply hangs until the client timeout fires,
+// on every request, in production only (an httptest server in CI answers
+// anything). This adapter shipped without it and every series failed with
+// "context deadline exceeded (Client.Timeout exceeded while awaiting
+// headers)", a message that points at timeouts and networking rather than
+// at the header. Raising the timeout does not help; the response never
+// comes. The full bisection, the ruled-out causes and the measured
+// per-User-Agent result table live in app/internal/useragent.
 func (c *Client) doRequest(ctx context.Context, url string) ([]byte, int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, 0, err
 	}
+	req.Header.Set("User-Agent", useragent.UserAgent)
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, 0, err

@@ -225,26 +225,55 @@ func runKey(ingestionRunID int64) string { return strconv.FormatInt(ingestionRun
 //
 // WHY THE PRUNE COMES AFTER THE MANIFEST, not before the writes. Neither
 // ordering is atomic -- see the per-file boundary above -- so the choice
-// is between two transient windows, and they are not equally bad:
+// is between two windows, and they are not equally bad:
 //
-//   - Prune FIRST: between the removal and the new manifest's rename,
-//     the manifest a reader currently holds still DECLARES a series whose
+//   - Prune FIRST: between the removal and the new manifest's rename, the
+//     manifest a reader currently holds still DECLARES a series whose
 //     files no longer exist. That reader gets a 404 for a declared file
 //     and a digest it can never verify -- a currently-published series
 //     broken for real, and broken exactly for the readers who follow the
 //     manifest correctly.
 //   - Prune LAST: between the manifest's rename and the last removal, the
-//     directory holds MORE than the manifest declares. That is the
-//     pre-existing steady state of this bug, now bounded to milliseconds,
-//     and it is unreachable through any manifest-driven path: the Astro
-//     build reads the manifest, and every reader-facing link is generated
-//     from it, so no route offers the extra file.
+//     directory holds MORE than the manifest declares. Within this call
+//     that window is milliseconds, and nothing THIS export generates
+//     points at the extra file: the manifest already on disk does not
+//     name it.
 //
-// The second window degrades to "a stale file exists but nothing links to
-// it"; the first degrades to "a live series is 404". Pruning last is the
-// lesser evil, and it additionally guarantees that if a removal fails, the
-// artifact on disk is already complete, valid and self-consistent -- the
-// error names a cleanup failure, never a half-written artifact.
+// WHAT THE ORDERING DOES AND DOES NOT GUARANTEE, stated exactly, because
+// an earlier version of this comment claimed more than the system
+// delivers. It guarantees two things, both inside one Export call:
+//
+//   - Nothing is removed until the manifest justifying the removal is on
+//     disk. If any write or the manifest's own rename fails, the export
+//     aborts with the previous, self-consistent artifact intact -- never
+//     a manifest declaring a series whose files this run already deleted.
+//     Covered by TestExport_PrunesOnlyAfterTheManifestIsInPlace, which is
+//     RED when the prune moves above the writes.
+//   - If a REMOVAL fails, the artifact on disk is already complete and
+//     valid, so the error names a cleanup failure and never a
+//     half-written artifact.
+//
+// It does NOT guarantee that no reader-facing path points at a removed
+// file. That claim would have to hold across the BUILD boundary, and it
+// does not. The Astro build reads the manifest and freezes one page per
+// declared slug, each emitting /data-derived/series/{slug}.json and
+// /data-derived/csv/{slug}.csv hrefs. A later export that stops publishing
+// that slug removes both files but does not rebuild the page that links to
+// them -- and no rebuild WILL land, because the frozen-route guard
+// (web/src/lib/indicator/routes.ts) fails the build outright rather than
+// ship a site missing a permalink, so the previously built page stays
+// deployed exactly as it was. The built page therefore outlives the
+// artifact it links to: observed on the deployed stack for `ocupados-epa`,
+// where /indicador/ocupados-epa/ answers 200 and renders while both of its
+// download hrefs answer 404. That is the steady state for as long as the
+// series stays blocked, not a transient window.
+//
+// The ordering is NOT changed to chase it, because the alternative is
+// worse on the project's own terms: a 404 states honestly that the file is
+// not there, while the bytes this prune removes were undeclared,
+// digest-less data being served as current (principle P4 inverted, which
+// is the defect this whole function exists to end). The condition clears
+// on its own the moment the series publishes again and the site rebuilds.
 func Export(ctx context.Context, deps Deps, asOf time.Time, outDir string) (Artifact, error) {
 	// Composition check before any read and any write (verify-report
 	// WARNING-17). Only this one port is checked explicitly, because it is
@@ -397,12 +426,43 @@ var exportOwnedFiles = []struct{ dir, ext string }{
 // were expected is indistinguishable, from here, from a legitimate
 // retirement of four, and any ratio-based floor would either fail to catch
 // a real truncation or block a real retirement -- an arbitrary rule that
-// would eventually be wrong in the direction that loses data. The defences
-// against that case sit outside this function and already exist: the
-// ingest gate ("a cycle that learned nothing MUST NOT export", spec
-// publishing-export), which is what stops an empty or degraded read from
-// reaching an export at all, and artifact retention (retention.go), which
-// keeps the last N artifacts for rollback.
+// would eventually be wrong in the direction that loses data.
+//
+// TWO OUTER DEFENCES WERE ONCE CITED HERE FOR THAT DECISION, and neither
+// covers the partial case. Recorded rather than deleted, because a future
+// reader would otherwise reach for the same two:
+//
+//   - The ingest gate ("a cycle that learned nothing MUST NOT export") is
+//     `(published || failedValidation) && outDir != ""` in runIngest
+//     (app/cmd/concontexto/ingest_cmd.go), evaluated over the WHOLE batch.
+//     One series learning anything arms the export for all of them. It is
+//     a fact about what the CYCLE learned, while this function's input is
+//     an independent read of the database performed inside Export, so the
+//     gate is structurally incapable of seeing a degraded read. The
+//     standalone `concontexto export` command bypasses it entirely.
+//   - Artifact retention (retention.go) keeps the last N artifacts, but
+//     Publish (trigger.go) calls Export -- which prunes -- and only THEN
+//     ArchiveArtifact, so the first bad export's own snapshot already
+//     lacks whatever it removed. At DefaultRetainedArtifacts = 5 and a
+//     24h cadence, recovery is the five preceding snapshots and is fully
+//     evicted after five further exports. Pruning before archiving is
+//     what stops snapshots carrying stale files forward; it also shortens
+//     this defence, and both halves are true at once.
+//
+// WHAT ACTUALLY MAKES THE PARTIAL CASE SAFE is the read side, not an outer
+// gate. A series with published history cannot silently drop out of it:
+// ListPublishedObservations (postgres/published_series.go) joins
+// ingestion_run and raw_file on a hash written at INSERT and never
+// backfilled, and nothing deletes either row, so a validation block leaves
+// the history intact. The realistic ways a series leaves
+// ListPublishedSeries -- a retired mapping, a retired series -- are
+// precisely the legitimate retirement above. If a partial-loss path ever
+// does appear, its damage is also bounded differently from the zero case:
+// the next export that reads correctly rewrites the removed files from the
+// database, whereas an unguarded zero-doc export empties the served
+// directory completely at the exact moment the read proving it wrong has
+// just failed. Detectable and total is worth a guard; undetectable and
+// self-repairing is not.
 //
 // The refusal knowingly leaves the directory holding MORE than the
 // manifest declares -- the very state this function exists to end -- and

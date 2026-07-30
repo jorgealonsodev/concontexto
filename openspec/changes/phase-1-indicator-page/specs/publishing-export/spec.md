@@ -143,6 +143,16 @@ a stale file is recoverable by the next good export and a deleted artifact is no
 deliberately leaves the directory holding more than the manifest declares, which is why it must be
 reported rather than passed over in silence.
 
+**An already-built page can outlive the files it links to, and that is accepted.** The site build freezes
+one page per slug the manifest declared at build time, each linking that slug's JSON and CSV. When a later
+export stops declaring the slug and removes both files, the built page is not rebuilt — the frozen-route
+guard fails any build that cannot produce all six permalinks, so the previously built page stays deployed
+and its two download links answer 404 until the series publishes again and the site rebuilds. This is a
+direct consequence of the requirement above and is recorded here rather than left to a code comment,
+because the obvious "fix" — keeping the files so the links resolve — is exactly what this requirement
+forbids: a 404 states honestly that the file is not there, while a file that appears in no manifest and
+carries no digest is served as though it were current. No requirement obliges those hrefs to resolve.
+
 (This does not weaken "`/data-derived` is generated from the same artifact". That requirement governs how
 each published file is DERIVED — one in-memory artifact, two projections, so CSV and site can never
 disagree — and its scenario compares the rows of the files the export writes. It says nothing about files

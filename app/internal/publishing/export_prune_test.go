@@ -212,6 +212,65 @@ func TestExport_LeavesEveryFileItDoesNotOwnUntouched(t *testing.T) {
 	}
 }
 
+// TestExport_PrunesOnlyAfterTheManifestIsInPlace guards the ORDERING --
+// the single most-reasoned decision in this change, and until this test
+// existed the only one nothing checked: moving pruneUnpublishedFiles above
+// the series/CSV writes left the whole publishing package green.
+//
+// The property under test is not "the prune runs at some point"; it is
+// "nothing is removed until the manifest that justifies the removal is
+// actually on disk". A prune that ran first would delete a series' files
+// and then, if the manifest write failed, leave the PREVIOUS manifest
+// standing -- a manifest declaring a series whose files are gone, which is
+// a 404 on a declared path and a digest no reader can ever verify. That is
+// the strictly worse of the two failure modes Export's doc comment weighs.
+//
+// The discriminator is a manifest.json that is a DIRECTORY. Every
+// series/{slug}.json and csv/{slug}.csv write still succeeds; only
+// writeFileAtomic's final rename onto manifest.json fails (EISDIR). No
+// read-only directory is involved -- that would be the setup for the
+// unlink-failure path, which is a different claim about a different line,
+// and it would block the writes that must succeed for this test to
+// discriminate at all.
+//
+// The second export publishes a slug the first one did not, so the
+// assertion that the writes succeeded rests on a file that could only have
+// come from this run.
+func TestExport_PrunesOnlyAfterTheManifestIsInPlace(t *testing.T) {
+	outDir := t.TempDir()
+	ctx := context.Background()
+	asOf := time.Date(2026, 7, 30, 6, 0, 0, 0, time.UTC)
+
+	if _, err := publishing.Export(ctx, prunableDeps(t, "ipc-general", "ocupados-epa"), asOf, outDir); err != nil {
+		t.Fatalf("seeding the published artifact: %v", err)
+	}
+
+	manifestPath := filepath.Join(outDir, "manifest.json")
+	if err := os.Remove(manifestPath); err != nil {
+		t.Fatalf("removing the seeded manifest: %v", err)
+	}
+	if err := os.Mkdir(manifestPath, 0o755); err != nil {
+		t.Fatalf("replacing manifest.json with a directory: %v", err)
+	}
+
+	if _, err := publishing.Export(ctx, prunableDeps(t, "ipc-general", "pib-cvi"), asOf.Add(time.Hour), outDir); err == nil {
+		t.Fatal("expected the export to fail: manifest.json is a directory, so no rename can land on it")
+	}
+
+	// Proves the failure is the MANIFEST's and not an earlier one: without
+	// this, an Export that aborted before writing anything would satisfy
+	// the assertion below for entirely the wrong reason.
+	if _, err := os.Stat(filepath.Join(outDir, "series", "pib-cvi.json")); err != nil {
+		t.Fatalf("expected every write preceding the manifest to have succeeded, so the manifest is the only thing that failed: %v", err)
+	}
+
+	for _, path := range []string{"series/ocupados-epa.json", "csv/ocupados-epa.csv"} {
+		if _, err := os.Stat(filepath.Join(outDir, filepath.FromSlash(path))); err != nil {
+			t.Fatalf("PRUNE RAN BEFORE THE MANIFEST: %s was removed by an export whose manifest never landed, so the manifest on disk now declares a series with no files: %v", path, err)
+		}
+	}
+}
+
 // TestExport_RefusesToPruneWhenTheExportDeclaresNoSeries is the guard
 // against turning a stale-file bug into DATA LOSS.
 //
@@ -225,10 +284,13 @@ func TestExport_LeavesEveryFileItDoesNotOwnUntouched(t *testing.T) {
 // Zero documents is the one failure of that family that is both
 // DETECTABLE from inside Export and CATASTROPHIC, so it is the one that is
 // refused. A PARTIAL list (five of nine, say) is indistinguishable from a
-// legitimate retirement of four series and is not guessed at here; the
-// outer defences against that are the ingest gate's "a cycle that learned
-// nothing MUST NOT export" (spec publishing-export) and artifact
-// retention (retention.go), not a made-up ratio inside this function.
+// legitimate retirement of four series and is not guessed at here. What
+// keeps THAT case safe is the read side -- a series with published history
+// cannot silently drop out of it -- and not, as this comment once claimed,
+// the ingest gate or artifact retention: the gate is batch-scoped and
+// blind to a degraded read, and retention's snapshot is taken after the
+// prune. pruneUnpublishedFiles' own doc comment carries the full
+// correction.
 //
 // The refusal deliberately leaves the directory holding MORE than the
 // manifest declares -- the very state this change exists to end -- and

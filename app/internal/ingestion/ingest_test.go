@@ -16,16 +16,20 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 
+	configdata "github.com/jorgealonsodev/concontexto"
 	"github.com/jorgealonsodev/concontexto/app/internal/adapters/config"
 	"github.com/jorgealonsodev/concontexto/app/internal/adapters/filestore"
 	"github.com/jorgealonsodev/concontexto/app/internal/adapters/ine"
@@ -106,9 +110,64 @@ func seedDimensions(t *testing.T, ctx context.Context, tx pgx.Tx, sc sixSeriesCa
 		VALUES ($1, 'ine-series-cod', $2, '2026-07-28', 'digest1')`, sc.slug, cod)
 }
 
+// shippedConfig loads the /config tree exactly as production does --
+// configdata.FS -> fs.Sub -> config.Load, the same three calls
+// `validate-config` and every `ingest` invocation make. Loaded once for
+// the whole package: it is read-only, and every caller below wants the
+// same bytes.
+var shippedConfig = sync.OnceValues(func() (*config.Config, error) {
+	sub, err := fs.Sub(configdata.FS, "config")
+	if err != nil {
+		return nil, err
+	}
+	return config.Load(sub)
+})
+
+// realValidationConfig returns the `validation:` block
+// config/series/{slug}.yaml actually ships, or the zero value for a slug
+// the shipped config does not define.
+//
+// verify-report CRITICAL-37. Every IngestSeries call in this package used
+// to pass `config.ValidationConfig{}` -- literally no thresholds --
+// INCLUDING the end-to-end export test that
+// .github/workflows/ingest-export-build.yml runs. So the one CI job
+// proving the Go->Astro hand-off ran the pipeline with the guard that
+// blocks a series in production switched off, and no fixture in this
+// repository could have made it red: with no thresholds there is no
+// finding, and with the last-3-period fixtures there would have been no
+// breach even if there had been thresholds. A rule that cannot be shown
+// failing is not a check.
+//
+// Reading the block from the shipped YAML rather than restating it as Go
+// literals is the load-bearing half. A restated threshold is a second
+// source of truth: raising `max_delta_abs` in config/series/*.yaml would
+// leave every restating test green while the production guard went blind,
+// which is the same defect one level down.
+//
+// THE ZERO-VALUE BRANCH IS FOR SYNTHETIC SLUGS ONLY (`test-break-wiring`,
+// `test-e2e-export` and friends), which have no shipped configuration and
+// legitimately have no thresholds. It is not a quiet fallback for the six:
+// TestIneIngestConfig_CarriesEveryShippedThresholdForTheSixFrozenSlugs
+// pins that none of them ever takes it.
+func realValidationConfig(t *testing.T, slug string) config.ValidationConfig {
+	t.Helper()
+	cfg, err := shippedConfig()
+	if err != nil {
+		t.Fatalf("loading the shipped /config tree: %v", err)
+	}
+	for _, s := range cfg.Series {
+		if s.Slug == slug {
+			return s.Validation
+		}
+	}
+	return config.ValidationConfig{}
+}
+
 // ineIngestConfig builds the SeriesIngestConfig ReconcileEditorialConfig
-// would eventually resolve for sc.
-func ineIngestConfig(sc sixSeriesCase, cod string) ingestion.SeriesIngestConfig {
+// would eventually resolve for sc -- including, since CRITICAL-37, the
+// real shipped validation thresholds (see realValidationConfig).
+func ineIngestConfig(t *testing.T, sc sixSeriesCase, cod string) ingestion.SeriesIngestConfig {
+	t.Helper()
 	return ingestion.SeriesIngestConfig{
 		SourceID:  "ine",
 		DatasetID: sc.datasetID,
@@ -118,7 +177,49 @@ func ineIngestConfig(sc sixSeriesCase, cod string) ingestion.SeriesIngestConfig 
 			Slug: sc.slug, Unit: sc.unit, Frequency: sc.frequency, Decimals: sc.decimals,
 			Source: "ine", Licence: "Reutilización con atribución (condiciones INE)",
 		},
-		Validation: config.ValidationConfig{},
+		Validation: realValidationConfig(t, sc.slug),
+	}
+}
+
+// TestIneIngestConfig_CarriesEveryShippedThresholdForTheSixFrozenSlugs is
+// the structural half of CRITICAL-37, and it is deliberately blunt: for
+// each of the six frozen slugs, the config every IngestSeries test in this
+// package hands the pipeline must equal the `validation:` block the YAML
+// ships, field for field.
+//
+// It exists because the behavioural proof
+// (e2e_blocked_export_test.go) can only demonstrate ONE series' threshold
+// biting on ONE quarter. Five of the six could quietly revert to
+// `config.ValidationConfig{}` and that test would still pass. This one
+// notices.
+func TestIneIngestConfig_CarriesEveryShippedThresholdForTheSixFrozenSlugs(t *testing.T) {
+	cfg, err := shippedConfig()
+	if err != nil {
+		t.Fatalf("loading the shipped /config tree: %v", err)
+	}
+	shipped := map[string]config.ValidationConfig{}
+	for _, s := range cfg.Series {
+		shipped[s.Slug] = s.Validation
+	}
+
+	for _, sc := range sixSeries {
+		want, ok := shipped[sc.slug]
+		if !ok {
+			t.Errorf("frozen slug %q has no config/series/%s.yaml entry in the shipped tree", sc.slug, sc.slug)
+			continue
+		}
+		// A shipped series with NO plausibility bound would make the
+		// comparison below vacuously true, so the fixture of this test --
+		// the shipped config itself -- is checked first.
+		if want.Plausibility.MaxDeltaAbs == nil && want.Plausibility.Min == nil && want.Plausibility.Max == nil {
+			t.Errorf("config/series/%s.yaml declares no plausibility bound at all; this test would pass vacuously for it", sc.slug)
+		}
+
+		got := ineIngestConfig(t, sc, "irrelevant-for-this-assertion").Validation
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("ineIngestConfig(%s).Validation must be the block config/series/%s.yaml ships.\n got: %+v\nwant: %+v",
+				sc.slug, sc.slug, got, want)
+		}
 	}
 }
 
@@ -156,7 +257,7 @@ func TestIngestSeries_AllSixSeriesLoadTheirTrimmedFixtureHistoryAndValidate(t *t
 			store := filestore.NewStore(t.TempDir())
 			now := time.Date(2026, 7, 28, 12, 0, 0, 0, time.UTC)
 
-			result, err := ingestion.IngestSeries(ctx, tx, store, client, ineIngestConfig(sc, cod), now)
+			result, err := ingestion.IngestSeries(ctx, tx, store, client, ineIngestConfig(t, sc, cod), now)
 			if err != nil {
 				t.Fatalf("IngestSeries(%s): %v", sc.slug, err)
 			}
@@ -220,7 +321,7 @@ func TestIngestSeries_TransportFailureRecordsDownloadAttemptAndWritesNothing(t *
 	store := filestore.NewStore(t.TempDir())
 	now := time.Date(2026, 7, 28, 12, 0, 0, 0, time.UTC)
 
-	_, err := ingestion.IngestSeries(ctx, tx, store, client, ineIngestConfig(sc, "test-transport-failure"), now)
+	_, err := ingestion.IngestSeries(ctx, tx, store, client, ineIngestConfig(t, sc, "test-transport-failure"), now)
 	if err == nil {
 		t.Fatal("expected an exhausted-retry transport failure to fail IngestSeries")
 	}
@@ -295,7 +396,7 @@ func TestIngestSeries_RefusalEnvelopeArchivesButBlocksPublication(t *testing.T) 
 	store := filestore.NewStore(t.TempDir())
 	now := time.Date(2026, 7, 28, 12, 0, 0, 0, time.UTC)
 
-	result, err := ingestion.IngestSeries(ctx, tx, store, client, ineIngestConfig(sc, "test-refused-series"), now)
+	result, err := ingestion.IngestSeries(ctx, tx, store, client, ineIngestConfig(t, sc, "test-refused-series"), now)
 	if err == nil {
 		t.Fatal("expected the volume-restriction refusal to fail IngestSeries")
 	}
@@ -441,7 +542,7 @@ func TestIngestSeries_PublishesTheRawFileHashListingWhenPathsAreConfigured(t *te
 	archivePath := filepath.Join(root, "app_data", "raw_files.sha256")
 	publicPath := filepath.Join(root, "public", "transparencia", "raw-files.sha256")
 
-	cfg := ineIngestConfig(sc, cod)
+	cfg := ineIngestConfig(t, sc, cod)
 	cfg.HashListingArchivePath = archivePath
 	cfg.HashListingPublicPath = publicPath
 

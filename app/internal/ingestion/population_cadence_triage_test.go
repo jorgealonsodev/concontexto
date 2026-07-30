@@ -56,9 +56,22 @@ func populationFullHistoryFixture(cod string) []byte {
 	// quarterly era begins at 2023-Q3 -- 2023-Q2 is never observed under
 	// either regime, exactly matching config/series/poblacion-residente.yaml's
 	// declared segment boundary (semiannual segment's "to": 2023-Q2).
-	rows = append(rows, `{"Anyo": 2023, "T3_Periodo": "1 de enero de", "T3_TipoDato": "Definitivo", "Valor": 47023000}`)
+	//
+	// The values below continue the same arithmetic ramp as the semiannual
+	// rows above, and that continuity is now load-bearing (verify-report
+	// CRITICAL-37). This fixture used to step from 32,022,500 to 47,023,000
+	// across the era boundary -- a 15-million jump, an artefact of the
+	// generator that nothing in this file ever asserted on. It was harmless
+	// only for as long as ineIngestConfig passed NO thresholds; under
+	// config/series/poblacion-residente.yaml's real max_delta_abs of
+	// 500,000 that step is a rule3-plausibility block, and this cadence test
+	// would fail for a reason that has nothing to do with cadence. Making
+	// the synthetic history plausible is the honest fix; suppressing the
+	// series' real thresholds here to keep the old numbers would reinstate
+	// exactly the blindness CRITICAL-37 is about.
+	rows = append(rows, fmt.Sprintf(`{"Anyo": 2023, "T3_Periodo": "1 de enero de", "T3_TipoDato": "Definitivo", "Valor": %d}`, 30000000+2023*1000))
 	for y, q := 2023, 3; ; {
-		rows = append(rows, fmt.Sprintf(`{"Anyo": %d, "T3_Periodo": "T%d", "T3_TipoDato": "Definitivo", "Valor": %d}`, y, q, 47000000+y))
+		rows = append(rows, fmt.Sprintf(`{"Anyo": %d, "T3_Periodo": "T%d", "T3_TipoDato": "Definitivo", "Valor": %d}`, y, q, 30000000+y*1000+q*100))
 		if y == 2026 && q == 2 {
 			break
 		}
@@ -112,7 +125,7 @@ func runPopulationIngest(t *testing.T, cadenceSegments []indicators.CadenceSegme
 	store := filestore.NewStore(t.TempDir())
 	now := time.Date(2026, 7, 29, 12, 0, 0, 0, time.UTC)
 
-	icfg := ineIngestConfig(sc, cod)
+	icfg := ineIngestConfig(t, sc, cod)
 	icfg.Series.CadenceSegments = cadenceSegments
 
 	return ingestion.IngestSeries(ctx, tx, store, client, icfg, now)

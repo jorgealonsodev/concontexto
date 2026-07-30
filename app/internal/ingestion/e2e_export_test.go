@@ -101,34 +101,7 @@ func TestEndToEndIngestExportBuild(t *testing.T) {
 	ingestSixFrozenSlugs(t, ctx, tx, store, now)
 
 	outDir := exportOutputDir(t)
-	deps := publishing.Deps{
-		ListPublishedSeries: func(ctx context.Context) ([]postgres.PublishedSeries, error) {
-			return postgres.ListPublishedSeries(ctx, tx)
-		},
-		ListObservations: func(ctx context.Context, seriesID string) ([]postgres.PublishedObservation, error) {
-			return postgres.ListPublishedObservations(ctx, tx, seriesID)
-		},
-		SeriesFreshness: func(ctx context.Context, seriesID string, asOf time.Time) (freshness.State, error) {
-			return postgres.SeriesFreshness(ctx, tx, seriesID, asOf)
-		},
-		ResolveActiveBreaksForSeries: func(ctx context.Context, seriesID string) ([]postgres.SeriesBreak, error) {
-			return postgres.ResolveActiveBreaksForSeries(ctx, tx, seriesID)
-		},
-		ListActiveEvents: func(ctx context.Context, seriesID string) ([]postgres.Event, error) {
-			return postgres.ListActiveEvents(ctx, tx, seriesID)
-		},
-		// Bound here for the same reason buildExportDeps
-		// (app/cmd/concontexto/export_cmd.go) binds it in production: an
-		// artifact exported without this port reports every series as
-		// "fresh" regardless of its real validation outcome. The bytes the
-		// Astro build reads downstream must be the bytes production would
-		// have written, not a thinner test-only variant.
-		SeriesValidationOutcome: func(ctx context.Context, seriesID string) (postgres.ValidationOutcome, error) {
-			return postgres.SeriesValidationOutcome(ctx, tx, seriesID)
-		},
-	}
-
-	artifact, err := publishing.Export(ctx, deps, now, outDir)
+	artifact, err := publishing.Export(ctx, exportDeps(tx), now, outDir)
 	if err != nil {
 		t.Fatalf("Export: %v", err)
 	}
@@ -181,6 +154,40 @@ func TestEndToEndIngestExportBuild(t *testing.T) {
 	}
 }
 
+// exportDeps binds every publishing port against tx, exactly as
+// buildExportDeps (app/cmd/concontexto/export_cmd.go) binds them in
+// production.
+//
+// Shared by both end-to-end export tests rather than restated in each,
+// because the point of an end-to-end test here is that the exporter is the
+// production one: two hand-written Deps literals drift, and a thinner one
+// silently changes what the artifact says. SeriesValidationOutcome is the
+// concrete example -- an artifact exported without that port reports every
+// series as "fresh" regardless of its real validation outcome, so the
+// bytes the Astro build reads would not be the bytes production writes.
+func exportDeps(tx pgx.Tx) publishing.Deps {
+	return publishing.Deps{
+		ListPublishedSeries: func(ctx context.Context) ([]postgres.PublishedSeries, error) {
+			return postgres.ListPublishedSeries(ctx, tx)
+		},
+		ListObservations: func(ctx context.Context, seriesID string) ([]postgres.PublishedObservation, error) {
+			return postgres.ListPublishedObservations(ctx, tx, seriesID)
+		},
+		SeriesFreshness: func(ctx context.Context, seriesID string, asOf time.Time) (freshness.State, error) {
+			return postgres.SeriesFreshness(ctx, tx, seriesID, asOf)
+		},
+		ResolveActiveBreaksForSeries: func(ctx context.Context, seriesID string) ([]postgres.SeriesBreak, error) {
+			return postgres.ResolveActiveBreaksForSeries(ctx, tx, seriesID)
+		},
+		ListActiveEvents: func(ctx context.Context, seriesID string) ([]postgres.Event, error) {
+			return postgres.ListActiveEvents(ctx, tx, seriesID)
+		},
+		SeriesValidationOutcome: func(ctx context.Context, seriesID string) (postgres.ValidationOutcome, error) {
+			return postgres.SeriesValidationOutcome(ctx, tx, seriesID)
+		},
+	}
+}
+
 // exportOutputDir resolves where publishing.Export writes.
 //
 // Unset (every ordinary `go test ./...` run) means a t.TempDir() that Go
@@ -221,7 +228,7 @@ func ingestSixFrozenSlugs(t *testing.T, ctx context.Context, tx pgx.Tx, store *f
 
 		server := serveFixture(fixture)
 		client := ine.NewClient(server.URL, server.Client())
-		result, err := ingestion.IngestSeries(ctx, tx, store, client, ineIngestConfig(sc, cod), now)
+		result, err := ingestion.IngestSeries(ctx, tx, store, client, ineIngestConfig(t, sc, cod), now)
 		server.Close()
 		if err != nil {
 			t.Fatalf("IngestSeries(%s): %v", sc.slug, err)

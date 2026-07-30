@@ -25,6 +25,54 @@ name: ingest-export-build
 #      asserted to appear in the rendered HTML.
 #   3. A CORRUPTED artifact FAILS the build, non-zero, three ways (stale
 #      sha256, wrong schema_version, Zod shape violation).
+#   4. A series a REAL validation rule BLOCKED fails the build too, and the
+#      ingest that produces that block runs with the REAL per-series
+#      thresholds from config/series/*.yaml. See below.
+#
+# WHAT THIS JOB PROVES, ADDED BY VERIFY-REPORT CRITICAL-37.
+# Point 1 above was true and still is, but the ingest behind it was running
+# with `config.ValidationConfig{}` -- no thresholds at all -- over
+# three-period fixtures. The one job proving the Go->Astro hand-off had the
+# guard that blocks a series in production switched OFF, and no input this
+# repository can produce could have turned it red for a validation failure.
+# That is the FIFTH time a check has been found positioned where its failure
+# cannot occur; the previous four were in gates, this one was in the entire
+# CI corpus.
+#
+# The failure it could not see is live right now. `ocupados-epa` breaches
+# `config/series/ocupados-epa.yaml`'s `max_delta_abs: 1000` at 2020-Q2 (a
+# fall of 1074.1 thousand employed persons -- the COVID-19 lockdown
+# quarter), `config/reconocimientos.yaml` carries the resolving record
+# UNSIGNED, so every real ingest blocks the series, the export omits it, and
+# a production `astro build` fails on the frozen-route guard.
+#
+# TWO SHAPES WERE POSSIBLE HERE, AND THE CHOICE IS DELIBERATE.
+#   (b) rejected: ingest the COVID range with real thresholds and require
+#       the whole chain to SUCCEED. That job is red TODAY and stays red
+#       until a human signs a YAML file. CI would be reporting a pending
+#       editorial decision rather than a fact about the code, and a
+#       permanently-red job is an ignored job within a week.
+#   (a) chosen: prove the FAILURE path. The blocked arm below asserts that
+#       the pipeline blocks the series it should block, that the export
+#       omits it, and that `astro build` then exits non-zero naming the
+#       frozen route. Green today, for the right reason.
+# The successful arm is unchanged and still runs over the recorded
+# last-3-period fixtures -- now with the real thresholds applied, which is
+# (b) kept where it can be honestly green.
+#
+# WHAT WOULD HAVE TO BREAK FOR THE NEW ARM TO GO RED, AND CAN IT?
+#   - `ineIngestConfig` stops carrying the real `validation:` block: the
+#     COVID quarter publishes, the artifact carries all six, the blocked
+#     build SUCCEEDS -> red. This is a revert of a change in this very
+#     commit, so it is the most likely of the four.
+#   - `config/series/ocupados-epa.yaml` raises `max_delta_abs` above 1074.1
+#     (the "blind the guard permanently" remedy the acknowledgement
+#     registry exists to avoid): same.
+#   - `publishing.Export` stops skipping zero-observation series: same.
+#   - `resolveIndicatorRouteSlugs` goes back to filtering rather than
+#     throwing: the build emits five pages, exits 0 -> red.
+# All four are ordinary edits, and each is caught here rather than by a
+# reader hitting a 404 on a permalink this project promised to keep.
 #
 # Superseded rationale, named here on purpose rather than quietly deleted:
 # this job used to disclose that the corruption half could not be proven
@@ -62,6 +110,14 @@ jobs:
       # available in job-level `env`.
       EXPORT_ARTIFACT_DIR: ${{ github.workspace }}/.e2e-export-artifact
 
+      # The second artifact, and deliberately a SEPARATE directory rather
+      # than a reused one: this job now produces two artifacts in a single
+      # `go test` invocation and hands them to two opposite assertions --
+      # one requiring a green build, one requiring a red one. One directory
+      # would let the second export overwrite the first and make the pair
+      # meaningless.
+      BLOCKED_ARTIFACT_DIR: ${{ github.workspace }}/.e2e-blocked-artifact
+
     steps:
       - uses: actions/checkout@v4
 
@@ -85,10 +141,26 @@ jobs:
       # If the export writer and its own postgres reader ever stop
       # agreeing, this step fails here -- before the build step below ever
       # runs -- rather than in production.
-      - name: Ingest fixtures -> export (Go end-to-end test)
+      #
+      # BOTH artifacts come out of ONE invocation (CRITICAL-37): the honest
+      # one from TestEndToEndIngestExportBuild, and the blocked one from
+      # TestEndToEndBlockedSeriesIsAbsentFromTheExportedArtifact, which
+      # ingests the same six series with `ocupados-epa` served its recorded
+      # COVID-quarter payload so the shipped `max_delta_abs` genuinely
+      # fires. One invocation because they share the testcontainers
+      # Postgres; two directories because they feed opposite assertions.
+      #
+      # Both tests now ingest with the REAL per-series `validation:` blocks
+      # read out of config/series/*.yaml (ineIngestConfig ->
+      # realValidationConfig), not the zero-valued ValidationConfig this
+      # step used to run with.
+      - name: Ingest fixtures with the REAL config thresholds -> export (Go end-to-end tests)
         run: |
           E2E_EXPORT_DIR="$EXPORT_ARTIFACT_DIR" \
-            go test -count=1 -run TestEndToEndIngestExportBuild -v ./app/internal/ingestion/...
+          E2E_BLOCKED_EXPORT_DIR="$BLOCKED_ARTIFACT_DIR" \
+            go test -count=1 \
+              -run 'TestEndToEndIngestExportBuild|TestEndToEndBlockedSeriesIsAbsentFromTheExportedArtifact' \
+              -v ./app/internal/ingestion/...
 
       # Fails loudly if the hand-off broke -- a renamed environment
       # variable, a skipped test, an export that wrote elsewhere.
@@ -110,6 +182,14 @@ jobs:
           echo "The astro build will read these exact bytes:"
           find "$EXPORT_ARTIFACT_DIR" -type f | sort
           sha256sum "$EXPORT_ARTIFACT_DIR/manifest.json"
+
+          test -f "$BLOCKED_ARTIFACT_DIR/manifest.json" || {
+            echo "No manifest.json in $BLOCKED_ARTIFACT_DIR: the blocked-arm export did not happen." >&2
+            echo "Without it the failure-path assertion below has nothing to build from." >&2
+            exit 1
+          }
+          echo "The blocked artifact the failure-path assertion will build from:"
+          find "$BLOCKED_ARTIFACT_DIR" -type f | sort
 
       - uses: actions/setup-node@v4
         with:
@@ -163,6 +243,23 @@ jobs:
             exit 1
           }
           echo "The rendered page shows the value that was ingested."
+
+      # THE FAILURE PATH, end to end, for the first time (CRITICAL-37).
+      # The steps above prove the chain works when nothing is blocked. This
+      # one proves the chain still SPEAKS when something is: a series a real
+      # validation rule refused, ingested with the real shipped thresholds,
+      # must make `astro build` exit non-zero on the frozen-route guard
+      # rather than quietly shipping a site with a 404 on a permalink.
+      #
+      # The script takes BOTH artifacts and builds both: the blocked one
+      # must fail naming ocupados-epa, the honest one must still exit 0.
+      # Without that second build, an unrelatedly broken build would read as
+      # proof that validation blocking reaches the build. See the script's
+      # own header for the full "what would have to break" list.
+      #
+      # Must run AFTER the assertions above: it overwrites web/dist.
+      - name: Assert a validation-blocked series fails the build
+        run: scripts/assert-blocked-series-fails-build.sh "$BLOCKED_ARTIFACT_DIR" "$EXPORT_ARTIFACT_DIR"
 
       # The half that had never been proven in CI. Runs `astro build` three
       # more times, each against its own corrupted COPY of the artifact

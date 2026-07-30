@@ -74,20 +74,23 @@ func ocupadosCovidFixture(t *testing.T) (cod string, body []byte) {
 	return wire.COD, body
 }
 
-// ocupadosCovidCase mirrors config/series/ocupados-epa.yaml, including its
-// real max_delta_abs of 1000 -- the threshold the acknowledgement exists
-// to resolve one single breach of.
-func ocupadosCovidCase() (sixSeriesCase, config.ValidationConfig) {
-	maxDelta := 1000.0
-	minValue := 0.0
-	maxValue := 30000.0
+// ocupadosCovidCase is the series identity for the run below. Its
+// thresholds are NOT stated here: ineIngestConfig reads them out of
+// config/series/ocupados-epa.yaml itself (realValidationConfig).
+//
+// They used to be restated as Go literals right here -- `maxDelta :=
+// 1000.0`, matching the YAML by hand. That made every test in this file
+// insensitive to the very file they are about: raising max_delta_abs in
+// config/series/ocupados-epa.yaml above 1074.1 would blind the production
+// guard permanently and leave TestIngestSeries_WithoutAnAcknowledgement-
+// TheCovidQuarterStillBlocks green, still "proving" a block that no longer
+// happens. A restated threshold is a second source of truth, and this
+// whole file exists because of what that one threshold decides.
+func ocupadosCovidCase() sixSeriesCase {
 	return sixSeriesCase{
-			slug: "ocupados-epa", datasetID: "ine-epa",
-			unit: "miles de personas", frequency: indicators.FrequencyQuarterly, decimals: 1,
-		}, config.ValidationConfig{
-			Plausibility: config.PlausibilityConfig{Min: &minValue, Max: &maxValue, MaxDeltaAbs: &maxDelta},
-			Revision:     config.RevisionConfig{MaxBackwardPeriods: 4},
-		}
+		slug: "ocupados-epa", datasetID: "ine-epa",
+		unit: "miles de personas", frequency: indicators.FrequencyQuarterly, decimals: 1,
+	}
 }
 
 // covidAcknowledgementConfig is the editorial entry as it would look ONCE A
@@ -128,7 +131,7 @@ func covidDraftConfig() config.AcknowledgementConfig {
 func runCovidIngest(t *testing.T, ctx context.Context, tx pgx.Tx, acks []config.AcknowledgementConfig) (ingestion.Result, *capturingHandler) {
 	t.Helper()
 
-	sc, validationCfg := ocupadosCovidCase()
+	sc := ocupadosCovidCase()
 	cod, fixture := ocupadosCovidFixture(t)
 	seedDimensions(t, ctx, tx, sc, cod)
 
@@ -143,8 +146,7 @@ func runCovidIngest(t *testing.T, ctx context.Context, tx pgx.Tx, acks []config.
 	}))
 	defer server.Close()
 
-	icfg := ineIngestConfig(sc, cod)
-	icfg.Validation = validationCfg
+	icfg := ineIngestConfig(t, sc, cod)
 
 	handler := &capturingHandler{}
 	prior := slog.Default()

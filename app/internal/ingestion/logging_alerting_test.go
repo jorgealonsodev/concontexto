@@ -89,7 +89,7 @@ func TestIngestSeries_CompletedRunLogsRunIDSourceDatasetSeriesOutcomeVerdictsHas
 	slog.SetDefault(slog.New(handler))
 	defer slog.SetDefault(prior)
 
-	result, err := ingestion.IngestSeries(ctx, tx, store, client, ineIngestConfig(sc, cod), now)
+	result, err := ingestion.IngestSeries(ctx, tx, store, client, ineIngestConfig(t, sc, cod), now)
 	if err != nil {
 		t.Fatalf("IngestSeries: %v", err)
 	}
@@ -150,7 +150,7 @@ func TestIngestSeries_FailedRunLogsWhichRulesFailedAndAlerts(t *testing.T) {
 	store := filestore.NewStore(t.TempDir())
 	now := time.Date(2026, 7, 28, 12, 0, 0, 0, time.UTC)
 
-	cfg := ineIngestConfig(sc, cod)
+	cfg := ineIngestConfig(t, sc, cod)
 	belowEveryRealValue := -1.0
 	cfg.Validation = config.ValidationConfig{
 		Plausibility: config.PlausibilityConfig{Max: &belowEveryRealValue},

@@ -48,6 +48,26 @@ export POSTGRES_PASSWORD="smoke-test-$(date +%s)"
 export POSTGRES_DB="${POSTGRES_DB:-concontexto}"
 export POSTGRES_USER="${POSTGRES_USER:-concontexto}"
 
+# Pin the compose file set explicitly. `docker compose` merges
+# docker-compose.override.yml automatically when one is present, and the
+# committed docker-compose.override.yml.example exists precisely so a
+# developer can publish 127.0.0.1:8080 locally. Step 5 below asserts that
+# NEITHER service publishes a host port, so a developer with that override in
+# place would fail this script against their own machine rather than against
+# the topology it is meant to verify. Naming the file makes this run test the
+# committed production topology, whoever runs it.
+export COMPOSE_FILE="docker-compose.yml"
+
+# The scheduler runs in-process inside `serve` and, since its first tick was
+# made immediate, would start fetching from INE, Eurostat and Seguridad Social
+# the moment this stack comes up -- on every push, from CI. This script
+# verifies the CONTAINER topology (health, ports, restart, backup/restore);
+# none of its assertions need real source data, and a smoke test that hammers
+# three public statistical agencies on every commit is neither hermetic nor
+# neighbourly. The pipeline's own end-to-end proof lives in
+# `.github/workflows/ingest-export-build.yml`, which exercises it deliberately.
+export APP_SCHEDULE_DISABLED="true"
+
 CURL_IMAGE="curlimages/curl:8.11.1"
 PROXY_NETWORK_CREATED=0
 SMOKE_BACKUP_DIR=""

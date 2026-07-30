@@ -23,8 +23,17 @@ jobs:
 
       # Full suite from the repository root (ADR-5: module and //go:embed
       # config both live at root, not under /app).
-      - name: go test ./...
-        run: go test ./...
+      #
+      # `-race` is not decoration here. `serve` runs the ingestion scheduler
+      # in-process, in a goroutine, for the life of the container, so anything
+      # it shares with the HTTP server is genuinely concurrent in production.
+      # Without this flag a real data race in `spyAlertSink` survived every CI
+      # run of the scheduler's own tests and was only found by someone running
+      # `-race` by hand. `-count=1` is deliberate: the testcontainers-backed
+      # tests under ./app/cmd/concontexto take ~170s at -count=5 under the
+      # detector, and repetition is a local debugging tool, not a CI budget.
+      - name: go test ./... -race
+        run: go test -race -count=1 ./...
 
       # Explicit step for the golden-rule import-graph guard (spec
       # platform-runtime): httpserver must never transitively import

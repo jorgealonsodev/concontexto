@@ -14,7 +14,19 @@
 // RESERVED dotted-grey encoding via the `provisional` token PLUS a dotted
 // border pattern — never colour alone (design-system spec, "Colour is never
 // the sole channel").
+//
+// VALUES ARE LOCALE-FORMATTED HERE, and that is a deliberate answer to a
+// real question: this table is the accessible equivalent of the chart, so is
+// it a reader surface or a data surface? It is a reader surface. A screen
+// reader announcing "cuatro nueve seis ocho siete uno dos cero" is exactly
+// the failure this table exists to prevent, whereas `49.687.120` is
+// announced as a quantity. The machine-readable projection of the same
+// observations already exists and is untouched: `ActionBar` links to the
+// pipeline's own CSV and JSON, whose bytes this component never produces.
+// The chart's own tooltip/point announcements are formatted the same way, so
+// hearing a value and reading it give the same number.
 import type { ObservationStatus } from "../lib/export/schema";
+import { formatNumber } from "../lib/format/number";
 import { es } from "../i18n/es";
 
 export interface AccessibleDataTablePoint {
@@ -55,7 +67,7 @@ const { id, caption, unit, decimals = 1, points } = Astro.props;
             ]}
             data-testid={`table-value-${point.status}`}
           >
-            {point.value === null ? "—" : point.value.toFixed(decimals)}
+            {point.value === null ? "—" : formatNumber(point.value, decimals)}
           </td>
           <td class="px-2 py-1">{es.chart.statusLabel[point.status]}</td>
         </tr>

@@ -10,6 +10,7 @@
 // `tabular-nums` utility.
 import FreshnessSemaphore from "./FreshnessSemaphore.astro";
 import type { ArtifactFreshness } from "../lib/export/schema";
+import { formatNumber } from "../lib/format/number";
 import { es } from "../i18n/es";
 
 export interface Props {
@@ -43,7 +44,12 @@ export interface Props {
 
 const { slug, name, latestValue, latestPeriod, unit, freshness, decimals = 1, headingLevel } = Astro.props;
 
-const formattedValue = latestValue === null ? "—" : latestValue.toFixed(decimals);
+// `formatNumber`, not `toFixed`: this card is the first and often the only
+// number a reader sees, and `toFixed` published `49687120 personas` on the
+// homepage — a figure with no grouping separators, on a page served as
+// `lang="es"`. See `lib/format/number.ts` for where that boundary is drawn
+// and why the CSV and JSON stay on the other side of it.
+const formattedValue = latestValue === null ? "—" : formatNumber(latestValue, decimals);
 
 // Astro renders a capitalised variable as a dynamic tag name. The union is
 // spelled out rather than inferred from the template literal so `astro check`

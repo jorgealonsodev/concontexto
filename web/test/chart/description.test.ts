@@ -17,16 +17,20 @@ describe("describeSeries", () => {
 
   it("describes a single-point series without inventing a trend", () => {
     const text = describeSeries({ points: points([10]), unit: "%", decimals: 1 });
-    expect(text).toContain("10.0 %");
+    // `10,0`, with the Spanish decimal comma: this description is prose a
+    // reader reads and a screen reader speaks, so it goes through the same
+    // `lib/format/number.ts` every other reader-facing numeral does.
+    expect(text).toContain("10,0 %");
+    expect(text).not.toContain("10.0 %");
     expect(text).toContain("2020-Q1");
   });
 
   it("names start, end and a monotonic rise", () => {
     const text = describeSeries({ points: points([10, 11, 12, 15]), unit: "%", decimals: 1 });
     expect(text).toContain("sube");
-    expect(text).toContain("10.0 %");
+    expect(text).toContain("10,0 %");
     expect(text).toContain("2020-Q1");
-    expect(text).toContain("15.0 %");
+    expect(text).toContain("15,0 %");
   });
 
   it("names start, end and a monotonic fall", () => {
@@ -39,7 +43,7 @@ describe("describeSeries", () => {
     const text = describeSeries({ points: points([10, 15, 20, 12]), unit: "%", decimals: 1 });
     expect(text).toContain("sube");
     expect(text).toContain("y después desciende");
-    expect(text).toContain("20.0 %"); // the peak/turning value
+    expect(text).toContain("20,0 %"); // the peak/turning value
   });
 
   it("describes a genuine reversal the other way (fall then rise)", () => {
@@ -66,8 +70,8 @@ describe("describeSeries", () => {
       unit: "%",
       decimals: 1,
     });
-    expect(text).toContain("5.0 %");
-    expect(text).toContain("8.0 %");
+    expect(text).toContain("5,0 %");
+    expect(text).toContain("8,0 %");
   });
 
   it("produces a different description for a different series (differs between series)", () => {

@@ -100,7 +100,7 @@ describe("IndicatorChart", () => {
     const container = await AstroContainer.create();
     const html = await container.renderToString(IndicatorChart, { props: { ...fx.indicatorChart } });
     expect(html).toContain('data-testid="chart-description"');
-    expect(html).toContain("10.2"); // start value
+    expect(html).toContain("10,2"); // start value, Spanish decimal comma
   });
 
   it("composes the accessible data table with one row per observation", async () => {

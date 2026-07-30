@@ -122,7 +122,7 @@ describe("IndicatorPage — page anatomy (task 9a.3)", () => {
     expect(headerHtml).toContain('data-testid="page-yoy-variation"');
     expect(headerHtml).toContain('data-testid="page-intra-annual-variation"');
     expect(headerHtml).toContain("2026-Q2"); // this fixture's latest period
-    expect(headerHtml).toContain("9.87"); // this fixture's latest value
+    expect(headerHtml).toContain("9,87"); // this fixture's latest value, Spanish-formatted
     // The latest value and period above are REAL published INE figures —
     // the newest three observations of every series in the fixture are
     // verbatim copies of the live-verified response (see
@@ -153,7 +153,10 @@ describe("IndicatorPage — page anatomy (task 9a.3)", () => {
         const rendered = renderedText(html, testId);
         expect(rendered, `${slug}: no <dd data-testid="${testId}"> found`).not.toBeNull();
         expect(rendered, `${slug}: ${testId} rendered the not-available dash`).not.toBe("—");
-        expect(rendered, `${slug}: ${testId} is not a signed percentage`).toMatch(/^[+-]\d+(\.\d+)?%$/);
+        // A Spanish decimal COMMA, and a grouping point only if the rate
+        // ever reached five digits. Written as one pattern rather than
+        // loosened to `[.,]` so a regression back to `toFixed` fails here.
+        expect(rendered, `${slug}: ${testId} is not a signed percentage`).toMatch(/^[+-]\d+(?:\.\d{3})*(?:,\d+)?%$/);
       }
     }
   });
@@ -783,8 +786,8 @@ describe("IndicatorPage — slice 9b: page anatomy repeated for the remaining th
     // carries pib-cvi's full 125-quarter span (1995-Q1..2026-Q1), so the
     // year-on-year rate — which a 3-period history could never produce —
     // resolves here too (verify-report WARNING-6).
-    expect(renderedText(html, "page-intra-annual-variation")).toMatch(/^[+-]\d+(\.\d+)?%$/);
-    expect(renderedText(html, "page-yoy-variation")).toMatch(/^[+-]\d+(\.\d+)?%$/);
+    expect(renderedText(html, "page-intra-annual-variation")).toMatch(/^[+-]\d+(?:\.\d{3})*(?:,\d+)?%$/);
+    expect(renderedText(html, "page-yoy-variation")).toMatch(/^[+-]\d+(?:\.\d{3})*(?:,\d+)?%$/);
   });
 
   it("every related card, across all six pages, resolves to a slug with a real built page (closes slice 9a's disclosed narrowing)", async () => {

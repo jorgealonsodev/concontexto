@@ -5,6 +5,7 @@
 // — no DOM, no network — so it belongs under red-first testing per this
 // project's own Strict-TDD convention for pure render/transform functions.
 import { es } from "../../i18n/es";
+import { formatNumber } from "../format/number";
 import type { ChartPoint } from "./geometry";
 
 export interface DescribeSeriesInput {
@@ -13,8 +14,11 @@ export interface DescribeSeriesInput {
   decimals: number;
 }
 
+/** The description is Spanish prose a reader hears or reads, so its numbers
+ * are formatted the same way every other reader-facing numeral on the site
+ * is — "sube de 22.779 miles de personas", never "22779". */
 function formatValue(value: number, decimals: number, unit: string): string {
-  return `${value.toFixed(decimals)} ${unit}`;
+  return `${formatNumber(value, decimals)} ${unit}`;
 }
 
 function directionVerb(from: number, to: number): string {

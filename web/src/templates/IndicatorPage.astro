@@ -39,6 +39,7 @@ import { pageStateBannerCopy, pageStateFromArtifact } from "../lib/indicator/pag
 import { INDICATOR_CONTENT, routeSlugForArtifactSlug } from "../content/indicators";
 import { computeYoY, computeIntraPeriodRate } from "../lib/transform/yoy";
 import { periodFromCalendarDate } from "../lib/chart/periods";
+import { formatNumber, formatSignedPercent } from "../lib/format/number";
 import { es } from "../i18n/es";
 
 export interface RelatedCardData {
@@ -73,10 +74,13 @@ const qoqSeries = computeIntraPeriodRate(doc.points, doc.frequency);
 const yoyAtLatest = latest ? yoySeries.find((p) => p.period === latest.period) ?? null : null;
 const qoqAtLatest = latest ? qoqSeries.find((p) => p.period === latest.period) ?? null : null;
 
+// One decimal, and the sign kept explicit, exactly as before — the only
+// thing that changes is the separator: `+3.4%` was English punctuation on a
+// Spanish page. `formatSignedPercent` owns both halves so the header and any
+// future variation surface cannot disagree about either.
 function formatVariation(rate: { value: number } | null): string {
   if (!rate) return es.page.variationNotAvailable;
-  const sign = rate.value >= 0 ? "+" : "";
-  return `${sign}${rate.value.toFixed(1)}%`;
+  return formatSignedPercent(rate.value, 1);
 }
 
 // verify-report CRITICAL-4: the page state comes from the ARTIFACT, never
@@ -169,7 +173,7 @@ const perCapitaAttribution = content.transforms.perCapita ? es.chart.perCapita.a
     <h1 class="text-heading-lg font-semibold text-ink" data-testid="page-title">{content.name}</h1>
     <div class="flex flex-wrap items-baseline gap-3">
       <span class="font-numeric text-heading-md tabular-nums text-ink" data-testid="page-latest-value">
-        {latest && latest.value !== null ? latest.value.toFixed(content.decimals) : "—"}
+        {latest && latest.value !== null ? formatNumber(latest.value, content.decimals) : "—"}
         <span class="text-body text-ink-muted">{content.unit}</span>
       </span>
       <span class="text-caption text-ink-muted" data-testid="page-latest-period">

@@ -124,6 +124,74 @@ function missingContentConfig(routeSlug: string): string {
   );
 }
 
+/**
+ * The unit a series is MEASURED in, read off its artifact document.
+ *
+ * This is the only field route resolution reads out of a series document,
+ * which is why the parameter below is typed to exactly it rather than to
+ * `SeriesDoc`: a test still supplies one string per slug, not several
+ * hundred lines of provenance nobody asserts on.
+ */
+export interface ArtifactUnitRef {
+  unit: string;
+}
+
+/** Trims and NFC-normalises a unit label before comparison.
+ *
+ * `índice` can be written with a precomposed `í` or with an `i` plus a
+ * combining acute. The two are byte-different and reader-identical, and a
+ * guard that failed on the difference would send someone hunting for a
+ * discrepancy their editor cannot show them. Normalising both sides means
+ * this rule only ever fires on a difference a reader could actually see. */
+function normaliseUnit(unit: string): string {
+  return unit.normalize("NFC").trim();
+}
+
+/**
+ * Whether an editorial unit label may stand in front of the unit the
+ * pipeline actually measured in.
+ *
+ * THE RULE: editorial copy may only ELABORATE the artifact's unit. It may
+ * append (a base, a qualifier); it may never replace, shorten or rescale.
+ *
+ * NOT string equality, because two of the six labels legitimately differ
+ * and must keep differing: the artifact says `índice` for both IPC series
+ * while the pages say `índice (base 2021=100)`, because the artifact's own
+ * `base` field is a disclosed gap (`export/schema.ts`: "always null until a
+ * future slice adds index-base config") and the editorial layer is what
+ * tells a reader which base an index sits on. A guard demanding equality
+ * would delete that base from two public pages in order to pass.
+ *
+ * The appended part must begin with a space or an opening parenthesis. That
+ * keeps the rule at "the pipeline's unit, then more" rather than "any string
+ * with the right prefix", under which `índicex` — a different word — would
+ * qualify.
+ */
+function elaborates(editorialUnit: string, artifactUnit: string): boolean {
+  const editorial = normaliseUnit(editorialUnit);
+  const artifact = normaliseUnit(artifactUnit);
+  if (editorial === artifact) return true;
+  if (!editorial.startsWith(artifact)) return false;
+  const remainder = editorial.slice(artifact.length);
+  return remainder.startsWith(" ") || remainder.startsWith("(");
+}
+
+function contradictedUnit(routeSlug: string, editorialUnit: string, artifactUnit: string): string {
+  return (
+    `  - "${routeSlug}" is labelled "${editorialUnit}" on the page, but the artifact measured it in "${artifactUnit}".\n` +
+    "    THIS IS AN EDITORIAL PROBLEM, not a pipeline one: the artifact is the measurement, and this\n" +
+    `    label is prose restating it. Fix web/src/content/indicators/${routeSlug}.ts, never the artifact.\n` +
+    "    A label may only ELABORATE the measured unit — append a base or a qualifier after a space or a\n" +
+    "    parenthesis, the way `índice` becomes `índice (base 2021=100)`. It may not replace it, shorten\n" +
+    "    it, or drop its scale.\n" +
+    "    Dropping a scale is why this check exists. `ocupados-epa` was labelled \"personas\" against an\n" +
+    "    artifact reading \"miles de personas\", so the header and the homepage card published 22779 as a\n" +
+    "    headcount when it means 22.8 million people — a published figure wrong by a factor of a\n" +
+    "    thousand, which no schema, digest or route guard could see, because the unit was derived twice\n" +
+    "    and only the weaker derivation was ever rendered."
+  );
+}
+
 function notFrozen(routeSlugs: string[]): string {
   return (
     `  - ${routeSlugs.map((slug) => `"${slug}"`).join(", ")} ${routeSlugs.length === 1 ? "is" : "are"} configured in ` +
@@ -151,13 +219,35 @@ function notFrozen(routeSlugs: string[]): string {
  * that surfaces one missing slug at a time turns a two-slug outage into two
  * rounds of CI.
  *
+ * IT ALSO CHECKS THAT THE PAGES' UNIT LABELS DO NOT CONTRADICT THE
+ * ARTIFACT, and that is here rather than in a module of its own on purpose.
+ * `ocupados-epa` was labelled "personas" while its artifact — and
+ * `config/series/ocupados-epa.yaml`, and INE's own API response
+ * (`T3_Unidad: "Personas"`, `T3_Escala: "Miles"`) — all said
+ * "miles de personas", so the site published a headcount a thousand times
+ * too small. That is CRITICAL-27's shape again: a fact derived twice, with
+ * nothing comparing the two derivations. The lesson of CRITICAL-27 was that
+ * a SECOND guard function is a second thing to forget to call, so this rule
+ * lives inside the one function `/` and `/indicador/{slug}` already both
+ * reach — via `homeIndicatorListing` and `getStaticPaths` respectively —
+ * and there is no weaker sibling to call instead.
+ *
+ * Only `unit` is checked, and NOT `decimals`, which the two layers also
+ * both carry and which currently disagrees for three series (see this
+ * module's own note in the repository's change report). That is deliberate:
+ * `decimals` is display PRECISION, and rounding a published value for a
+ * reader never changes what the value means. `unit` is DIMENSION, and
+ * relabelling it changes the measurement itself. Guarding the second is
+ * correctness; guarding the first would be freezing an editorial choice.
+ *
  * @param seriesBySlug `loadExportArtifact`'s own map, keyed by ARTIFACT
- * slug. Typed as `ReadonlyMap<string, unknown>` because this function only
- * ever asks whether a key exists — narrowing it to `SeriesDoc` would buy no
- * safety here and would force every test to synthesise full documents.
+ * slug. Typed to the one field this function reads (`unit`) rather than to
+ * `SeriesDoc`: the presence check needs no fields at all, and the unit
+ * check needs exactly one, so a test still supplies a one-key object per
+ * slug instead of synthesising full documents.
  */
 export function resolveIndicatorRouteSlugs(
-  seriesBySlug: ReadonlyMap<string, unknown>,
+  seriesBySlug: ReadonlyMap<string, ArtifactUnitRef>,
   catalogs: IndicatorRouteCatalogs = {},
 ): string[] {
   const indicators = catalogs.indicators ?? INDICATOR_CONTENT;
@@ -171,12 +261,17 @@ export function resolveIndicatorRouteSlugs(
       continue;
     }
     const artifactSlug = artifactSlugFor(routeSlug, indicators);
-    if (!seriesBySlug.has(artifactSlug)) {
+    const doc = seriesBySlug.get(artifactSlug);
+    if (doc === undefined) {
       problems.push(missingFromArtifact(routeSlug, artifactSlug, [...seriesBySlug.keys()].sort()));
       continue;
     }
     if (methodology[routeSlug] === undefined) {
       problems.push(missingMethodology(routeSlug));
+    }
+    const editorialUnit = indicators[routeSlug].unit;
+    if (!elaborates(editorialUnit, doc.unit)) {
+      problems.push(contradictedUnit(routeSlug, editorialUnit, doc.unit));
     }
   }
 

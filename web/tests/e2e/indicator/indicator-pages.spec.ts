@@ -119,7 +119,11 @@ for (const slug of SLUGS) {
         }
 
         // The header figure the report found rendering "\u2014" on every page.
-        await expect(indicator.yoyVariation).toHaveText(/^[+-]\d+(\.\d+)?%$/);
+        // Punctuated the Spanish way \u2014 decimal COMMA, grouping point \u2014 because
+        // every reader-facing numeral on this site now goes through
+        // `lib/format/number.ts`. Spelled out rather than relaxed to `[.,]`,
+        // so a regression back to locale-blind `toFixed` fails here too.
+        await expect(indicator.yoyVariation).toHaveText(/^[+-]\d+(?:\.\d{3})*(?:,\d+)?%$/);
 
         // A preset that does not actually slice anything is a decorative
         // control: assert the rendered point count really drops.

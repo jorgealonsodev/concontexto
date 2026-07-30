@@ -52,12 +52,34 @@ const FULL_ARTIFACT_SLUGS = [
   "poblacion-residente",
 ] as const;
 
+/** The unit each artifact document declares, spelled out rather than
+ * derived from `INDICATOR_CONTENT` — deriving it would make every fixture
+ * below agree with the content catalog by construction, which is precisely
+ * the comparison `resolveIndicatorRouteSlugs` now makes. `ipc-general` and
+ * `ipc-subyacente` really are the bare `índice` here while their pages read
+ * `índice (base 2021=100)`; that legitimate difference is what the guard's
+ * "elaborates" rule exists to allow, and it is exercised in
+ * `unit-agreement.test.ts`. */
+const ARTIFACT_UNITS: Record<string, string> = {
+  "tasa-de-paro-epa": "% población activa",
+  "ocupados-epa": "miles de personas",
+  "ipc-general": "índice",
+  "ipc-subyacente": "índice",
+  "pib-cvi": "índice de volumen encadenado",
+  "poblacion-residente": "personas",
+};
+
 /** Builds the shape `loadExportArtifact` returns as `seriesBySlug`. The
- * resolver only ever asks the map whether a slug is present, so the values
- * are placeholders — a real `SeriesDoc` per slug would be several hundred
- * lines of noise that no assertion here reads. */
-function artifactWith(slugs: readonly string[]): ReadonlyMap<string, unknown> {
-  return new Map(slugs.map((slug) => [slug, { slug }]));
+ * resolver reads exactly one field off a document (`unit`, to check the
+ * page's label does not contradict the measurement), so that is the one
+ * field these stand-ins carry — a real `SeriesDoc` per slug would be
+ * several hundred lines of provenance no assertion here reads.
+ *
+ * A slug with no entry in `ARTIFACT_UNITS` gets its own name as a unit.
+ * That is only ever reached by the unfrozen-route case below, whose slug is
+ * never unit-checked because it is not one of the six. */
+function artifactWith(slugs: readonly string[]): ReadonlyMap<string, { unit: string }> {
+  return new Map(slugs.map((slug) => [slug, { unit: ARTIFACT_UNITS[slug] ?? slug }]));
 }
 
 function withoutKey<T>(record: Record<string, T>, key: string): Record<string, T> {

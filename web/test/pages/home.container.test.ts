@@ -62,12 +62,40 @@ describe("Home page — the six frozen indicators are reachable from `/`", () =>
 
     // Real published INE figures from the fixture's newest observations
     // (web/test/fixtures/export/source.txt), formatted to each indicator's
-    // own configured decimals — 2 for the unemployment rate, 4 for PIB.
-    expect(html).toContain("9.87");
+    // own configured decimals — 2 for the unemployment rate, 4 for PIB —
+    // and punctuated the way a Spanish reader reads them: decimal comma,
+    // grouping point. The homepage shipped `49687120` and `22779` before
+    // this, which is the same digits and a different reading task.
+    expect(html).toContain("9,87");
     expect(html).toContain("2026-Q2");
-    expect(html).toContain("121.9959");
+    expect(html).toContain("121,9959");
     expect(html).toContain("2026-Q1");
     expect(html).toContain(es.indicatorCard.periodLabel);
+  });
+
+  it("groups every thousands separator, leaving no bare digit run for a reader to count", async () => {
+    const html = await renderHome();
+
+    // The two figures the defect was found on, in the form a reader can
+    // take in at a glance.
+    expect(html).toContain("49.687.120");
+    expect(html).toContain("22.779");
+    // And the negative, which is what actually pins the fix: the raw runs
+    // must be gone from the page entirely, not merely accompanied by a
+    // formatted copy somewhere else in the markup.
+    expect(html).not.toContain("49687120");
+    expect(html).not.toContain("22779");
+  });
+
+  it("labels `ocupados-epa` in the thousands the pipeline measured it in", async () => {
+    const html = await renderHome();
+
+    // The card read `22779 personas` — 22.8 million people published as a
+    // headcount, because the editorial unit had drifted from the artifact's
+    // `miles de personas`. Asserted on the rendered page, not only in the
+    // catalog, because the card is where a reader met the wrong figure.
+    expect(html).toContain("miles de personas");
+    expect(html).not.toMatch(/22\.779\s*<span[^>]*>personas</);
   });
 
   it("reports each indicator's freshness, so a stale source is visible before the reader clicks", async () => {
@@ -138,7 +166,7 @@ describe("IndicatorCard — the value and its unit are two words, not one", () =
   it("separates the latest value from its unit in the rendered text", async () => {
     const html = await renderHome();
 
-    expect(html).toContain(">22779 <span");
-    expect(html).not.toContain("22779<span");
+    expect(html).toContain(">22.779 <span");
+    expect(html).not.toContain("22.779<span");
   });
 });

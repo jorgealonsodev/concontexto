@@ -48,6 +48,10 @@
   import { decodeChartState, encodeChartState } from "../lib/chart/permalink";
   import { toChartPoints } from "../lib/chart/chartPoints";
   import { visibleTransformControls, type IndicatorTransformConfig } from "../lib/chart/applicability";
+  // The SAME formatter the static half uses. This component re-renders the
+  // table and the point announcements client-side, so anything it formatted
+  // differently would flip under the reader the moment the island hydrated.
+  import { formatNumber } from "../lib/format/number";
   import { es } from "../i18n/es";
   import { onMount } from "svelte";
 
@@ -342,7 +346,9 @@
   }
 
   function pointLabel(p: ChartPoint): string {
-    return es.chart.pointAnnouncement(p.period, (p.value as number).toFixed(viewDecimals), viewUnit, p.status);
+    // Same formatting as the static table below and as the page header:
+    // a value a reader hears announced must be the value they can read.
+    return es.chart.pointAnnouncement(p.period, formatNumber(p.value as number, viewDecimals), viewUnit, p.status);
   }
 
   function onPointFocus(i: number) {
@@ -778,7 +784,7 @@
             class:text-provisional={p.status === "P"}
             data-testid={`table-value-${p.status}`}
           >
-            {p.value === null ? "—" : p.value.toFixed(viewDecimals)}
+            {p.value === null ? "—" : formatNumber(p.value, viewDecimals)}
           </td>
           <td class="px-2 py-1">{es.chart.statusLabel[p.status]}</td>
         </tr>

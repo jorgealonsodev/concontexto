@@ -4,6 +4,13 @@
 // (slice 8) both call these; a Vitest golden test (svg.test.ts) is the
 // anti-divergence device D-5 commits to.
 import { type Frequency, nearestPeriodIndex, periodFromCalendarDate } from "./periods";
+// The y-axis labels are read by a person, so they are formatted like every
+// other reader-facing figure on the page. Without this the same number appeared
+// two ways on one screen: the accessible data table read "49.687.120" while the
+// axis beside it read "49687120". Geometry -- the `x`/`y` coordinates and the
+// path `d` attribute above -- keeps `toFixed`, because those are SVG machine
+// values where a grouping separator would be a syntax error.
+import { formatNumber } from "../format/number";
 
 export type ObservationStatus = "P" | "D";
 
@@ -195,7 +202,7 @@ export function buildYTicks(
   const ticks: ValueTick[] = [];
   for (let i = 0; i < count; i++) {
     const value = lo + ((hi - lo) * i) / (count - 1);
-    ticks.push({ y: yForValue(value, domain, dims), label: value.toFixed(decimals) });
+    ticks.push({ y: yForValue(value, domain, dims), label: formatNumber(value, decimals) });
   }
   return ticks;
 }

@@ -33,6 +33,7 @@ import "../../styles/theme.css";
 import "../../styles/components.css";
 import IndicatorPage, { type RelatedCardData } from "../../templates/IndicatorPage.astro";
 import { loadExportArtifact, resolveLoadOptionsFromEnv } from "../../lib/export/loader";
+import { artifactSlugFor, resolveIndicatorRouteSlugs } from "../../lib/indicator/routes";
 import { INDICATOR_CONTENT } from "../../content/indicators";
 import { METHODOLOGY_CONTENT } from "../../content/indicators/methodology";
 import type { SeriesDoc } from "../../lib/export/schema";
@@ -40,22 +41,26 @@ import type { SeriesDoc } from "../../lib/export/schema";
 export async function getStaticPaths() {
   const { seriesBySlug } = await loadExportArtifact(resolveLoadOptionsFromEnv());
 
-  // Resolves the slug the export artifact actually uses for `routeSlug` —
-  // identical to `routeSlug` for every series except `pib` (see this
-  // file's own doc comment). Deliberately nested inside `getStaticPaths`
-  // (not a module-level function): Astro's build-time analysis extracts
-  // `getStaticPaths` into its own chunk and does not always capture a
-  // sibling top-level helper's closure — a real bug this slice found via
-  // a full `astro build` (`artifactSlugFor is not defined` at build time,
-  // vitest's own container tests never exercise `getStaticPaths` at all so
-  // they could not have caught it).
-  function artifactSlugFor(routeSlug: string): string {
-    return INDICATOR_CONTENT[routeSlug]?.artifactSlug ?? routeSlug;
-  }
-
-  const slugs = Object.keys(INDICATOR_CONTENT).filter(
-    (slug) => seriesBySlug.has(artifactSlugFor(slug)) && METHODOLOGY_CONTENT[slug] !== undefined,
-  );
+  // The route list, and the guard that makes it complete or fatal
+  // (verify-report CRITICAL-27). This used to be a `.filter()` over
+  // `Object.keys(INDICATOR_CONTENT)` right here, which silently dropped
+  // any frozen slug the artifact did not carry — a green build, five
+  // pages, and a 404 on a permanent permalink. `resolveIndicatorRouteSlugs`
+  // throws instead, naming the slug and where to look; see that module's
+  // header for the full rationale and for why a fourth "no data yet" page
+  // state was rejected. It returns all six or nothing.
+  //
+  // `artifactSlugFor` moved into that module with it. The nested-function
+  // hazard this file warned about is unchanged and still real — Astro's
+  // build-time analysis extracts `getStaticPaths` into its own chunk and
+  // does not always capture a sibling top-level helper declared in this
+  // file (`artifactSlugFor is not defined` at build time, found in slice
+  // 9b via a full `astro build`) — but an IMPORTED binding is not that
+  // case: it travels with the chunk exactly as `loadExportArtifact` and
+  // `INDICATOR_CONTENT` already do. Proven by a real `astro build`, not by
+  // inspection: `test/export/missing-slug-fails-build.test.ts`'s second
+  // case builds all six pages through this exact path.
+  const slugs = resolveIndicatorRouteSlugs(seriesBySlug);
 
   function relatedCardFor(slug: string): RelatedCardData {
     const doc = seriesBySlug.get(artifactSlugFor(slug));

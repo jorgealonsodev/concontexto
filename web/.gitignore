@@ -18,3 +18,10 @@ data-derived/
 # with EXDEV across filesystems; removed by the test itself, so these only
 # appear if a run is killed mid-build.
 .build-guard-out-*/
+
+# The same throwaway shape from test/export/missing-slug-fails-build.test.ts:
+# an `--outDir` target, plus the copy of test/fixtures/export it mutates (the
+# fixture itself is never edited in place — the Playwright run and half this
+# suite read it).
+.missing-slug-out-*/
+.missing-slug-artifact-*/

@@ -37,3 +37,7 @@ prd_web_datos_economicos_v2 (1).md
 # default — so the artifact lands inside the package directory rather than in a
 # t.TempDir(). Ignored rather than committed; the test recreates it on every run.
 /app/cmd/concontexto/web/
+
+# `go build` with no -o drops the binary here, named after the module. It is
+# 19 MB of compiled output and was committed once by an over-broad `git add -A`.
+/concontexto

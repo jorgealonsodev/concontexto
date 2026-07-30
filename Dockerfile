@@ -115,6 +115,84 @@ RUN if [ -z "$EXPORT_URL" ] && [ -z "$EXPORT_DIR" ]; then \
     fi; \
     EXPORT_URL="$EXPORT_URL" EXPORT_DIR="$EXPORT_DIR" npm run build
 
+# THE DEPLOY-COMPLETED STAMP (verify-report CRITICAL-28, link 3).
+#
+# Nothing in the running stack could observe whether a rebuild ever landed.
+# The scheduler's publish-latency watchdog compared a source's last ingestion
+# success against the LOCAL manifest that `publishing.Publish` had written
+# seconds earlier in the same call, so the only failure it could ever catch
+# was an export that did not run. A dispatch never sent, a CI rebuild that
+# failed and a Portainer redeploy that never happened were all invisible —
+# and that is precisely the state the live stack was in, with
+# /data-derived advancing every cycle while the pre-rendered pages stayed
+# frozen at whatever artifact this stage had rendered them from.
+#
+# This file records that artifact. `/web/build-manifest.json` is the manifest
+# of the export the pages above were BUILT from, and it can change by exactly
+# one mechanism: a new image being deployed. So a running container can
+# compare it against the artifact it is currently publishing and know whether
+# the rebuild it triggered ever arrived, without reaching GitHub, Portainer or
+# the public site. app/cmd/concontexto/schedule.go reads it
+# (APP_BUILD_MANIFEST) and app/internal/scheduler.RebuildLatencyBreached is
+# the decision.
+#
+# NOT under dist/: docker-compose.yml mounts the export_artifact volume over
+# /web/dist/data-derived, so a stamp written there would be shadowed by the
+# volume at runtime, and one written elsewhere in dist/ would be served to
+# readers as though it were part of the published artifact.
+#
+# ONE HONEST LIMITATION, in the EXPORT_URL form only. The artifact is fetched
+# here a second time, moments after the loader fetched it for the build, so if
+# a publish cycle lands between the two fetches this stamp names the artifact
+# fetched here rather than the one rendered. The window is the few seconds
+# between two adjacent HTTP requests against a source that changes at most
+# every 15 minutes, and the consequence of losing that race is bounded and
+# self-correcting: the watchdog compares generated_at instants, so a stamp one
+# cycle newer suppresses one alert until the next cycle rewrites the artifact.
+# It is disclosed rather than engineered away because removing it means
+# threading the loader's own fetched bytes out of the Astro build, which is a
+# change to web/ this remediation does not own.
+#
+# In the EXPORT_DIR form there is no race at all: the manifest copied is the
+# exact file the build read out of the context.
+#
+# A failure here FAILS THE BUILD rather than shipping an image whose deploy
+# cannot be observed, which is the same choice the artifact-source pre-check
+# above already makes.
+RUN EXPORT_URL="$EXPORT_URL" EXPORT_DIR="$EXPORT_DIR" node <<'NODE'
+const fs = require("node:fs");
+
+const dir = process.env.EXPORT_DIR;
+const url = process.env.EXPORT_URL;
+
+async function readManifest() {
+  if (dir) {
+    return fs.readFileSync(`${dir}/manifest.json`, "utf-8");
+  }
+  const manifestURL = `${url.replace(/\/+$/, "")}/manifest.json`;
+  const response = await fetch(manifestURL);
+  if (!response.ok) {
+    throw new Error(`fetching ${manifestURL}: HTTP ${response.status}`);
+  }
+  return await response.text();
+}
+
+readManifest()
+  .then((text) => {
+    const manifest = JSON.parse(text);
+    if (!manifest.generated_at) {
+      throw new Error("the artifact manifest carries no generated_at, so the deployed artifact could not be identified");
+    }
+    fs.writeFileSync("/web/build-manifest.json", text);
+    console.log(`build-manifest stamp: these pages were rendered from the artifact generated at ${manifest.generated_at}`);
+  })
+  .catch((error) => {
+    console.error(`build-manifest stamp: ${error.message}`);
+    console.error("This image would be unable to report whether a site rebuild ever landed, so the build stops here.");
+    process.exit(1);
+  });
+NODE
+
 # FIRST-BOOT SEEDING OF THE RUNTIME-WRITTEN SUBTREES.
 #
 # `docker-compose.yml` no longer mounts a volume over the whole of
@@ -169,6 +247,9 @@ COPY --from=go-builder /out/concontexto /concontexto
 # that had to be repaired by hand with `docker run ... chown` on the first
 # deployment of this stack.
 COPY --from=web-builder --chown=65532:65532 /web/dist /web/dist
+# The deploy-completed stamp (see the web-builder stage). Outside /web/dist
+# on purpose: no volume shadows it and no HTTP route serves it.
+COPY --from=web-builder --chown=65532:65532 /web/build-manifest.json /web/build-manifest.json
 COPY --from=go-builder --chown=65532:65532 /out/app_data /app_data
 
 USER nonroot:nonroot

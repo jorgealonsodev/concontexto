@@ -18,13 +18,25 @@ on:
     types: [completed]
     branches: [main]
   workflow_dispatch: {}
+  # Callable by `rebuild.yml`, which receives the repository_dispatch a
+  # publish cycle sends (verify-report CRITICAL-28, link 1). A rebuild
+  # triggered by DATA and a deploy triggered by CODE must produce the same
+  # image from the same inputs, so there is one definition of those steps
+  # and two entry points into it, never two copies.
+  workflow_call: {}
 
 jobs:
   deploy:
     name: Build, push and redeploy (gated on PORTAINER_WEBHOOK_URL)
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    # Only the workflow_run entry point needs a conclusion check -- it is the
+    # one that can be woken by a FAILED upstream run. A manual dispatch and a
+    # workflow_call from rebuild.yml (which has already verified the origin)
+    # are both deliberate requests. Written as "not workflow_run, or a
+    # successful workflow_run" so a new entry point is never silently skipped
+    # by an unmatched event name.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     permissions:
       contents: read
       packages: write

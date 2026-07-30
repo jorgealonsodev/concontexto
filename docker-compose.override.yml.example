@@ -44,6 +44,21 @@
 
 services:
   app:
+    environment:
+      # A workstation is not a deployment. docker-compose.yml defaults the
+      # `app` service to APP_REBUILD_DISPATCH=required, because a DEPLOYED
+      # stack whose rebuild wiring is missing must alarm rather than
+      # publish into silence (verify-report CRITICAL-28). On a laptop
+      # nobody asked for a site rebuild, so leaving that default in place
+      # would raise a dispatch-failed alert on every publish cycle and
+      # train you to ignore the one alert that matters in production.
+      #
+      # `off` is the deliberate opt-out: no dispatch, one INFO record
+      # saying so, and the deploy-completed watchdog stays quiet too. Set
+      # it to `required` here, with GITHUB_DISPATCH_REPO and
+      # GITHUB_DISPATCH_TOKEN in your `.env`, if you are deliberately
+      # testing the dispatch path against a real repository.
+      APP_REBUILD_DISPATCH: "off"
     ports:
       # Bound to the loopback interface ON PURPOSE. A bare "8080:8080"
       # binds 0.0.0.0, which publishes the app to every network the

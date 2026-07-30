@@ -126,6 +126,39 @@ services:
       # without also withholding DATABASE_URL, which `migrate` and
       # `healthcheck --deep` need. See env.example.
       APP_SCHEDULE_DISABLED: ${APP_SCHEDULE_DISABLED:-}
+      # REBUILD DISPATCH — the link that closes the publish loop
+      # (verify-report CRITICAL-28, link 2).
+      #
+      # A publishing cycle writes the artifact into the export_artifact
+      # volume and POSTs a GitHub repository_dispatch, which rebuilds the
+      # site against the artifact this container serves and redeploys it
+      # (.github/workflows/rebuild.yml). Without these variables
+      # `buildDispatcher` returned nil, `publishing.Publish` skipped
+      # dispatch and returned SILENTLY, and this stack ran the full cycle
+      # with no rebuild and no sound: /data-derived advanced every 15
+      # minutes while the pre-rendered pages stayed frozen at the image
+      # build. Measured on this very stack.
+      #
+      # WHY THE DEFAULT IS `required` HERE AND `off` IN A BARE BINARY.
+      # "Not configured" is legitimate on a laptop and in `go test` —
+      # nobody asked for a dispatch. It is not legitimate in a DEPLOYMENT,
+      # where nobody asked precisely because this file forgot to. The
+      # difference between the two situations IS this file, so the default
+      # lives here: a deployed stack with the dispatch wiring missing
+      # raises alerting.DispatchFailed on every publish cycle naming the
+      # unset variable, and needs no operator to have remembered anything.
+      #
+      # Set APP_REBUILD_DISPATCH=off for a stack that must not rebuild the
+      # site (a hermetic test stack, a local experiment). That is a
+      # deliberate opt-out, recorded as an INFO-level structured record,
+      # and it silences the deploy-completed watchdog too.
+      APP_REBUILD_DISPATCH: ${APP_REBUILD_DISPATCH:-required}
+      # "owner/repo" plus a fine-grained token scoped to Contents: read and
+      # Actions: write on that one repository. Named apart from the
+      # Actions-reserved GITHUB_* family so a runner-injected value can
+      # never shadow them. See env.example.
+      GITHUB_DISPATCH_REPO: ${GITHUB_DISPATCH_REPO:-}
+      GITHUB_DISPATCH_TOKEN: ${GITHUB_DISPATCH_TOKEN:-}
     # VOLUMES ARE NARROWED TO THE RUNTIME-WRITTEN SUBTREES ONLY.
     #
     # /web/dist used to be a single `public_html:/web/dist` mount, and that

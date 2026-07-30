@@ -1,0 +1,136 @@
+name: rebuild
+
+# THE RECEIVER THE PUBLISH LOOP WAS MISSING (verify-report CRITICAL-28,
+# link 1). design.md's own data-flow diagram and File Changes table both
+# planned a `repository_dispatch` rebuild job; `grep -rn repository_dispatch
+# .github/` returned nothing, at HEAD and on origin/main. The Go binary
+# built, tested and shipped a dispatcher whose event nothing anywhere
+# listened for. This workflow is the other end of that wire.
+#
+# WHAT IT IS FOR. `deploy.yml` rebuilds the site when the CODE changes
+# (after `ci` succeeds on `main`). Nothing rebuilt it when the DATA changed
+# — and the data changes on every publish cycle. The site is fully
+# pre-rendered, so an artifact that moves without a rebuild leaves the
+# downloadable JSON/CSV under /data-derived/ ahead of the numbers printed on
+# the pages, silently and indefinitely. That divergence was measured on the
+# live stack.
+#
+# THE EVENT. app/internal/adapters/github POSTs
+# /repos/{owner}/{repo}/dispatches with event_type "rebuild" and a
+# client_payload naming the artifact's own manifest.generated_at (RFC3339)
+# and a digest over the manifest's per-file digests. GitHub runs
+# repository_dispatch workflows from the DEFAULT BRANCH only, which is why
+# this file has no branch filter: there is nothing to filter.
+#
+# HONESTY GATE, the same shape deploy.yml already uses. Unconfigured
+# infrastructure produces a visible `::warning::` and no action — never a
+# fabricated green deploy. This repository still has no VPS, no Portainer
+# stack and no `PORTAINER_WEBHOOK_URL`, so on a dispatch received today this
+# workflow verifies what it CAN verify and then stops, saying so.
+
+on:
+  repository_dispatch:
+    types: [rebuild]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  # Everything this job checks is checkable from a runner with no
+  # infrastructure at all, so it runs unconditionally and its findings are
+  # real whether or not a deploy target exists.
+  verify-origin:
+    name: Verify the dispatched artifact is live at EXPORT_URL
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      proceed: ${{ steps.origin.outputs.proceed }}
+    steps:
+      # A dispatch that names no artifact cannot be verified against
+      # anything, so it is refused rather than built blind. Only this
+      # repository's own binary sends these events, and it always sets both
+      # fields (adapters/github/dispatch.go), so an empty payload means
+      # something other than the pipeline triggered the rebuild.
+      - name: Check the dispatch payload names an artifact
+        env:
+          GENERATED_AT: ${{ github.event.client_payload.generated_at }}
+          MANIFEST_DIGEST: ${{ github.event.client_payload.manifest_digest }}
+        run: |
+          if [ -z "$GENERATED_AT" ]; then
+            echo "::error::This rebuild dispatch carries no client_payload.generated_at, so there is no way to tell which artifact it is asking to be published. Refusing to build blind." >&2
+            exit 1
+          fi
+          echo "Dispatched artifact generated_at: $GENERATED_AT"
+          # Logged, not recomputed. The digest is a sha256 over the sorted
+          # "path=digest" lines of the manifest's own per-file digests
+          # (app/internal/publishing/trigger.go: manifestDigest). Verifying
+          # it here would mean a second implementation of that algorithm in
+          # a second language, which is a drift risk this job would then own
+          # forever, for no gain the generated_at comparison below does not
+          # already give: generated_at is unique per publish cycle, which is
+          # exactly the identity being checked. It is printed so a specific
+          # deployed build stays traceable to a specific artifact.
+          echo "Dispatched manifest digest:      ${MANIFEST_DIGEST:-(absent)}"
+
+      - name: Check EXPORT_URL is configured and serves the dispatched artifact
+        id: origin
+        env:
+          EXPORT_URL: ${{ vars.EXPORT_URL }}
+          GENERATED_AT: ${{ github.event.client_payload.generated_at }}
+        run: |
+          if [ -z "$EXPORT_URL" ]; then
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::The EXPORT_URL repository variable is not configured, so this rebuild stops here: there is no live origin to fetch the published artifact from, and the build will NOT fall back to the synthetic test fixture (verify-report CRITICAL-15). Nothing was built, pushed or deployed. See docs/deploy.md, 'Closing the publish loop'."
+            exit 0
+          fi
+
+          # The rebuild fetches the artifact back from the site it is
+          # rebuilding, so the site must already be serving the artifact the
+          # dispatch names. Publish writes the artifact with an atomic
+          # rename and dispatches immediately afterwards, so the origin is
+          # normally already current when this runs.
+          manifest_url="${EXPORT_URL%/}/manifest.json"
+          echo "Fetching $manifest_url"
+          if ! curl -fsS --max-time 30 "$manifest_url" -o origin-manifest.json; then
+            echo "::error::Could not fetch $manifest_url. The origin that the image build reads is unreachable, so a build now would either fail or publish something other than the dispatched artifact." >&2
+            exit 1
+          fi
+
+          origin_at="$(node -e 'process.stdout.write(String(JSON.parse(require("node:fs").readFileSync("origin-manifest.json","utf-8")).generated_at ?? ""))')"
+          if [ -z "$origin_at" ]; then
+            echo "::error::$manifest_url carries no generated_at, so the artifact it serves cannot be identified." >&2
+            exit 1
+          fi
+          echo "Origin artifact generated_at:    $origin_at"
+
+          # Compared as instants, not as strings: the dispatch formats
+          # generated_at as whole-second RFC3339 while the manifest on disk
+          # carries Go's nanosecond precision, so the same instant has two
+          # spellings.
+          dispatched_epoch="$(date -u -d "$GENERATED_AT" +%s)"
+          origin_epoch="$(date -u -d "$origin_at" +%s)"
+
+          if [ "$origin_epoch" -lt "$dispatched_epoch" ]; then
+            echo "::error::The origin is serving an artifact OLDER than the one this dispatch names ($origin_at < $GENERATED_AT). Building now would publish pages that do not carry the dispatched data while reporting a successful rebuild. Stopping instead: the next publish cycle dispatches again, so this self-corrects, and the running container's own deploy-completed watchdog keeps alerting until it does." >&2
+            exit 1
+          fi
+
+          if [ "$origin_epoch" -gt "$dispatched_epoch" ]; then
+            echo "::notice::The origin has already moved on to a NEWER artifact ($origin_at) than this dispatch named ($GENERATED_AT). Proceeding: rebuilding against the newer artifact is strictly better, and the cycle that produced it has dispatched its own rebuild too."
+          fi
+
+          echo "proceed=true" >> "$GITHUB_OUTPUT"
+
+  # Reuses deploy.yml rather than restating its build/push/redeploy steps:
+  # a rebuild triggered by DATA and a deploy triggered by CODE must produce
+  # the same image from the same inputs, and two copies of those steps is
+  # exactly how they would stop doing so. deploy.yml keeps its own
+  # PORTAINER_WEBHOOK_URL and EXPORT_URL gates, so an unconfigured
+  # deployment still ends in a visible warning and no action.
+  deploy:
+    name: Rebuild and redeploy the site
+    needs: verify-origin
+    if: needs.verify-origin.outputs.proceed == 'true'
+    uses: ./.github/workflows/deploy.yml
+    secrets: inherit

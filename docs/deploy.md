@@ -140,6 +140,122 @@ test too, and its step 5 ("no published ports") then fails. Either remove
 `docker-compose.override.yml` before running the smoke test, or run it with
 `COMPOSE_FILE=docker-compose.yml ./scripts/smoke-test.sh`.
 
+## Closing the publish loop
+
+The site is fully pre-rendered, so **new data does not reach a reader until
+the site is rebuilt.** The loop that makes that happen has four links, and
+before this section existed it was open at every one of them (verify-report
+CRITICAL-28). What that produced was measured on the running stack: a
+publishing cycle exported into the container's `export_artifact` volume
+every 15 minutes, nothing rebuilt the pages, and the downloadable artifact
+under `/data-derived/` drifted ahead of the numbers printed on the pages —
+silently, with no alert and no way to notice from the outside.
+
+| # | Link | What carries it |
+|---|---|---|
+| 1 | A publish cycle asks for a rebuild | `publishing.Publish` → `adapters/github` POSTs `repository_dispatch` (`event_type: rebuild`) |
+| 2 | The deployment is actually wired to ask | `APP_REBUILD_DISPATCH` + `GITHUB_DISPATCH_REPO`/`GITHUB_DISPATCH_TOKEN`, passed to `app` by `docker-compose.yml` |
+| 3 | GitHub receives it and rebuilds | `.github/workflows/rebuild.yml` → `deploy.yml` |
+| 4 | The running stack can tell whether the rebuild landed | `/web/build-manifest.json` + the scheduler's deploy-completed watchdog |
+
+### Link 2: telling "deliberately off" from "broken"
+
+`buildDispatcher` used to return `nil` whenever either `GITHUB_DISPATCH_*`
+variable was empty, and `publishing.Publish` treats `nil` as "skip, say
+nothing". That is the right behaviour on a laptop and in `go test` — nobody
+asked for a dispatch. It is the wrong behaviour in a deployment, where
+nobody asked *because the compose file forgot to*. The two states were
+indistinguishable, and the deployed one was the silent one.
+
+`APP_REBUILD_DISPATCH` separates them, and it records **whether the operator
+ever asked**:
+
+| Value | Meaning |
+|---|---|
+| `off`, or unset | Deliberately off. No dispatch, one INFO-level structured record, no alert ever. The default for a bare binary. |
+| `required` | A rebuild is expected. Configured means dispatch; **unconfigured means broken** — every publish cycle raises `alerting.DispatchFailed` naming the unset variable. |
+
+`docker-compose.yml` defaults the `app` service to `required`. That is the
+whole point: the difference between "a deployment" and "a laptop" *is* the
+compose file, so the default lives there and no operator has to remember
+anything. `docker-compose.override.yml.example` sets `off` for local
+development, so a developer who copies it is not paged for a rebuild they
+never wanted. An unrecognised value is treated as `required` and reported —
+a typo must never silently switch the publish loop off.
+
+Every state reaches the structured log under `component=rebuild-dispatch`
+with `state=disabled` / `enabled` / `unconfigured`, so the distinction is
+greppable rather than being two readings of the same silence.
+
+### Link 4: the deploy-completed instant
+
+This is the link with no obvious signal, and it is worth being precise about
+what was wrong before. The scheduler's publish-latency watchdog compared a
+source's last ingestion success against the **local** `manifest.json` — the
+one `publishing.Publish` had written seconds earlier in the same call. So
+the only failure it could ever catch was an export that did not run. A
+dispatch never sent, a CI rebuild that failed and a Portainer redeploy that
+never happened were all invisible to it.
+
+The image now records the artifact its pages were **built** from, at
+`/web/build-manifest.json` (the Dockerfile's web-builder stage writes it;
+`APP_BUILD_MANIFEST` overrides the path). That file changes by exactly one
+mechanism: **a new image being deployed** — which cannot happen unless the
+dispatch, the CI rebuild and the redeploy all succeeded. So one comparison
+inside the running container covers every remaining link at once, with no
+call to GitHub, to Portainer or to the public site:
+
+> the artifact this container is publishing has been live for longer than
+> `APP_PUBLISH_LATENCY_BUDGET` and the deployed pages were still built from
+> an older one ⇒ the rebuild did not land ⇒ alert.
+
+Divergence itself is normal — every publish cycle creates it, and a rebuild
+is supposed to close it. Only divergence that outlives the budget is a
+breach. Not under `dist/`, deliberately: the `export_artifact` volume is
+mounted over `/web/dist/data-derived`, so a stamp inside `dist/` would either
+be shadowed at runtime or served to readers as though it were part of the
+published artifact.
+
+The check declines to fire in two cases, and says which at start-up
+(`component=deploy-watchdog`, `state=active|inactive`, with a reason):
+
+- **Rebuild dispatch is off.** Divergence is then the operator's stated
+  intent, not a fault.
+- **The deployed artifact is unknown** — no build manifest, i.e. a bare
+  binary or an image built before this existed. *Unknown is not stale.* A
+  watchdog reporting a deploy failure it cannot observe would be exactly the
+  fabricated verdict this repository refuses elsewhere.
+
+### What remains unprovable here, stated plainly
+
+This environment has no VPS, no Portainer stack, no `PORTAINER_WEBHOOK_URL`
+and no `EXPORT_URL`, so the following are **built and unit-tested but have
+never been executed end to end**, and nothing in this repository should be
+read as claiming otherwise:
+
+1. **A real `repository_dispatch` round trip.** No dispatch has ever been
+   accepted by GitHub from this repository — the only live attempt returned
+   `401` from a deliberately invalid token, which proves the request is
+   well-formed and reaches `api.github.com`, and proves nothing about the
+   receiving workflow. `rebuild.yml`'s own steps were exercised as shell
+   scripts against a local HTTP origin (payload present/absent, origin
+   matching/newer/older/unreachable, `EXPORT_URL` unset), not as a GitHub
+   run.
+2. **`rebuild.yml` → `deploy.yml` as a reusable-workflow call.** Validated
+   by `actionlint`; never dispatched.
+3. **A redeploy actually replacing the running container**, and therefore
+   the build manifest actually advancing. The comparison that detects a
+   stalled rebuild is unit-tested in both directions and was exercised
+   against real manifests on disk; the event it is watching for has never
+   occurred here because nothing has ever deployed this stack.
+
+What *is* proven locally: the stamp is written by a real `docker build` in
+both the `EXPORT_DIR` and `EXPORT_URL` forms and is byte-identical to the
+artifact the build read; a missing or unreachable artifact fails that build
+rather than shipping an unobservable image; and all three dispatch states
+were driven through a real `concontexto ingest` against a real Postgres and
+the live INE endpoint.
+
 ## What must exist before this criterion can close
 
 1. A VPS (or any host) running Portainer, reachable from the internet
@@ -162,6 +278,23 @@ test too, and its step 5 ("no published ports") then fails. Either remove
 No other secret is required: the image push to `ghcr.io` authenticates
 with the workflow's automatically provided `GITHUB_TOKEN`, which already
 has `packages: write` scope for a workflow running in this repository.
+
+## Required container environment (the stack, not Actions)
+
+These are read by the running binary, not by a workflow, so they belong in
+the Portainer stack's environment (or a `.env` beside `docker-compose.yml`)
+and never in the repository. See `env.example` for the full text.
+
+| Variable | What it is |
+|---|---|
+| `APP_REBUILD_DISPATCH` | `required` (the compose default) or `off`. Whether this deployment expects a site rebuild after each publish cycle. |
+| `GITHUB_DISPATCH_REPO` | `owner/repo` the `repository_dispatch` is POSTed to. |
+| `GITHUB_DISPATCH_TOKEN` | A **fine-grained** personal access token scoped to `Contents: read` and `Actions: write` on that one repository. Never a classic, account-wide token. |
+
+With `APP_REBUILD_DISPATCH=required` and the other two unset, the stack
+does not fail: it publishes normally and raises a `dispatch-failed` alert
+on every cycle naming the missing variable. That is the intended noise —
+it is what a deployment that cannot reach its readers should sound like.
 
 ## Required GitHub Actions variable
 
@@ -366,6 +499,21 @@ docker run --rm \
 3. POSTs to `PORTAINER_WEBHOOK_URL`, which tells the already-configured
    stack to redeploy — Portainer, not this workflow, decides how the
    running container is replaced.
+
+`rebuild.yml` is the same three steps reached from the other direction: it
+receives the `repository_dispatch` a publish cycle sends, verifies that the
+origin at `EXPORT_URL` really is serving the artifact the dispatch names,
+and then **calls `deploy.yml` as a reusable workflow** rather than restating
+its build/push/redeploy steps. A rebuild triggered by data and a deploy
+triggered by code must produce the same image from the same inputs, and two
+copies of those steps is exactly how they would stop doing so.
+
+If the origin is serving something **older** than the dispatched artifact,
+`rebuild.yml` stops with an error instead of building: publishing pages that
+do not carry the dispatched data while reporting a successful rebuild is the
+one outcome worse than not rebuilding. It self-corrects — the next publish
+cycle dispatches again, and the deploy-completed watchdog keeps alerting
+until one lands.
 
 This workflow never provisions the VPS or the Portainer stack itself:
 that is a one-time manual infrastructure step (1 and 2 above), not

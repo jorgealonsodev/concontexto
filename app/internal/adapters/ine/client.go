@@ -79,6 +79,15 @@ const defaultMaxResponseBytes int64 = 8 * 1024 * 1024
 // indicators.Period (never a source-specific label -- see period.go) and
 // its value.
 //
+// Value stays a *float64 because the WIRE field is nullable, but every
+// Observation this package hands back carries a NON-NIL Value: a row
+// published with "Valor": null fails the decode closed as a named
+// sourceerr.SchemaDrift instead of becoming a nil-valued observation
+// (verify-report WARNING-30; see envelope.go's null-Valor branch for the
+// full reasoning). Callers therefore never have to defend against a nil
+// here, and migration 0001's CHECK (value IS NOT NULL OR status = 'W')
+// can never be reached with an invented status to satisfy it.
+//
 // SourceStatus carries T3_TipoDato's verbatim token, UNCLASSIFIED (task
 // 2a.1/2a.2 -- see envelope.go's decodeAndNormalize doc comment for why
 // classification is deliberately deferred to Client.Decode rather than

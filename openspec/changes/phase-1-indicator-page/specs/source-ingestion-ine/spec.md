@@ -56,6 +56,60 @@ domain status.
 - THEN it fails as schema drift
 - AND no observation is stored with a defaulted status
 
+### Requirement: A null Valor has no decided meaning and fails closed
+
+A `DATOS_SERIE` row published with an explicit `"Valor": null` MUST fail the decode as
+`sourceerr.SchemaDrift`, naming the series, the canonical period and the row as decoded. It MUST NOT
+become an observation with a null value, MUST NOT be assigned a withdrawn, definitive or any other
+domain status to satisfy migration 0001's `CHECK (value IS NOT NULL OR status = 'W')`, and MUST NOT be
+silently dropped.
+
+The reason is that the row carries no information about WHY it is null. A `DATOS_SERIE` row carries
+exactly five fields — `Fecha`, `Anyo`, `T3_Periodo`, `T3_TipoDato`, `Valor` — with no secrecy marker, no
+not-applicable flag and no annotation of any kind (verified live 2026-07-30 across all six configured
+series, 1,032 rows, of which zero carry a null). Statistical secrecy, a not-applicable period and a
+genuine gap are therefore indistinguishable, so every projection would be an invention. Marking the row
+withdrawn would be the worst of them: `data-model-vintages` defines withdrawal as a source **stopping**
+publication of a period it previously published, and a period the source is publishing right now, as a
+null, was never withdrawn.
+
+This is deliberately **not** the shape of the Eurostat sparse-position rule. A JSON-stat value map with
+no entry at a position is the **absence** of a datum and is decidable, so no observation is emitted. An
+INE row that exists and carries an explicit null is a positive act by the source, and discarding it would
+throw away something INE chose to publish.
+
+The refusal message MUST name what would have to be decided — which domain status a null `Valor` carries,
+or that the row yields no observation — so whoever first encounters it can act rather than only diagnose.
+
+#### Scenario: A null value with a definitive token fails closed
+
+- GIVEN a stubbed `DATOS_SERIE` response whose row carries `"Valor": null` and `T3_TipoDato` of `"Definitivo"`
+- WHEN ingestion runs
+- THEN it fails with `sourceerr.SchemaDrift` naming the series, the canonical period and the row
+- AND the message states that the project has no decided meaning for a null `Valor`
+- AND the message names the spec where the projection must be decided
+- AND no observation is written, neither for that period nor for the other rows in the payload
+
+#### Scenario: The refusal does not depend on the accompanying status token
+
+- GIVEN stubbed responses whose row carries `"Valor": null` with `"Definitivo"`, with `"Provisional"`, with an unrecognised token, and with `T3_TipoDato` omitted
+- WHEN each is decoded
+- THEN every one fails as schema drift naming the null `Valor`
+- AND no token value causes the null to be accepted
+
+#### Scenario: A published zero is a value, not a missing one
+
+- GIVEN a response whose row carries `"Valor": 0`
+- WHEN it is decoded
+- THEN it produces an observation whose value is `0`
+- AND the run is not refused
+
+#### Scenario: Every decoded observation carries a value
+
+- GIVEN any `DATOS_SERIE` response the adapter decodes successfully
+- WHEN its observations are inspected
+- THEN none carries a null value
+
 ### Requirement: Wire types declare only fields the requested response contains
 
 An INE wire type MUST NOT declare a field absent from the response the adapter actually requests. The

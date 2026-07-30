@@ -93,13 +93,45 @@ type Manifest struct {
 	Digests       map[string]string `json:"digests"`
 }
 
+// PruneOutcome records what Export DELETED from outDir on top of what it
+// wrote (export.go's pruneUnpublishedFiles). It exists because a removal
+// is reader-facing data disappearing: an export that silently deletes a
+// file a reader could reach is its own integrity problem, so the counts
+// travel back to the command layer exactly the way the editorial
+// reconcile already reports inserted/updated/retired.
+//
+// Removed holds manifest-relative paths ("series/{slug}.json",
+// "csv/{slug}.csv") -- the same keys Manifest.Digests uses -- sorted, so
+// an operator reading a log line sees the two projections of one
+// withdrawn series adjacent rather than interleaved with another's.
+//
+// Skipped is the discriminator an empty Removed alone cannot provide, and
+// it exists for the same reason PublishResult.DispatchSkipped does: an
+// empty Removed means BOTH "there was nothing stale to remove" and "the
+// zero-series guard REFUSED to remove anything", and those are opposite
+// operational facts. The first is a healthy steady state; the second says
+// the directory is knowingly holding more than the manifest declares. A
+// guard that fires in silence cannot be told from one that never fired.
+type PruneOutcome struct {
+	Removed []string
+	Skipped bool
+}
+
 // Artifact is the full in-memory export: the manifest plus one SeriesDoc
 // per published series. publishing.Export builds this; ValidateArtifact
 // checks it before a single byte reaches disk; writeArtifact serialises
 // it into public/data-derived/.
+//
+// Prune is deliberately NOT part of that content: it describes what the
+// WRITE did to a directory, not what the artifact says. Nothing
+// serialises an Artifact as a whole today (Export marshals Manifest and
+// each SeriesDoc individually), and the `json:"-"` tag is there so that
+// stays true if anything ever does -- a removal report has no place in a
+// document a reader fetches.
 type Artifact struct {
 	Manifest Manifest
 	Series   []SeriesDoc
+	Prune    PruneOutcome `json:"-"`
 }
 
 // SourceRef is a series doc's "source" section (spec publishing-export,

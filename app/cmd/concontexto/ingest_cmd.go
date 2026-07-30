@@ -499,6 +499,13 @@ func runIngest(ctx context.Context, db postgres.TxBeginner, cfg *config.Config, 
 			} else {
 				fmt.Fprintln(stdout, message)
 			}
+			// A publish that withdrew a series' files from the served
+			// directory says so, by name -- the same reason the reconcile
+			// above prints its retired counts rather than only its inserts.
+			// See pruneOutcomeMessage (export_cmd.go).
+			if message, ok := pruneOutcomeMessage("ingest: publish", outDir, result.Artifact.Prune); ok {
+				fmt.Fprintln(stdout, message)
+			}
 			if result.ArchiveErr != nil {
 				fmt.Fprintf(stderr, "ingest: publish: archiving retained artifact: %v\n", result.ArchiveErr)
 			}

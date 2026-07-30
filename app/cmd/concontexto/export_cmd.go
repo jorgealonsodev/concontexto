@@ -22,6 +22,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -87,7 +88,40 @@ func runExport(ctx context.Context, deps publishing.Deps, outDir string, now tim
 	}
 	fmt.Fprintf(stdout, "export: wrote %d series to %s (schema_version=%d, generated_at=%s)\n",
 		len(artifact.Series), outDir, artifact.Manifest.SchemaVersion, artifact.Manifest.GeneratedAt.Format(time.RFC3339))
+	if message, ok := pruneOutcomeMessage("export", outDir, artifact.Prune); ok {
+		fmt.Fprintln(stdout, message)
+	}
 	return 0
+}
+
+// pruneOutcomeMessage renders one export's removal report, or reports
+// that there is nothing to say (ok == false).
+//
+// A removal is reader-facing data disappearing from a served directory, so
+// it is NEVER silent: the removed paths are named individually, not
+// counted, because "removed 2 files" gives an operator investigating a
+// missing page nothing to correlate against. This is the same convention
+// `ingest --reconcile`'s inserted/updated/retired line already follows.
+//
+// The skipped case is reported LOUDLY rather than as a quiet nil, for the
+// reason PruneOutcome.Skipped exists at all: it means the directory is
+// knowingly holding more than the manifest declares, and an operator
+// reading a log that only ever mentions removals would have no way to see
+// the guard firing. A steady state with nothing stale says nothing --
+// that line would print on every single cycle and train the reader to
+// skip it.
+//
+// Shared by `export` (runExport) and the in-cycle publish (runIngest), so
+// the two paths cannot report the same fact differently.
+func pruneOutcomeMessage(prefix, outDir string, prune publishing.PruneOutcome) (string, bool) {
+	switch {
+	case prune.Skipped:
+		return fmt.Sprintf("%s: this export declared NO series, so the prune guard refused to remove anything from %s: any file left there from a previous export is still being served and is no longer declared by the manifest", prefix, outDir), true
+	case len(prune.Removed) > 0:
+		return fmt.Sprintf("%s: removed %d file(s) from %s that the manifest no longer declares: %s", prefix, len(prune.Removed), outDir, strings.Join(prune.Removed, ", ")), true
+	default:
+		return "", false
+	}
 }
 
 // exportOutputDir resolves `export`'s output directory: the fixed

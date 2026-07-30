@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 
 	"github.com/jorgealonsodev/concontexto/app/internal/adapters/postgres"
+	"github.com/jorgealonsodev/concontexto/app/internal/ingestion/freshness"
 	"github.com/jorgealonsodev/concontexto/app/internal/publishing"
 )
 
@@ -185,5 +187,99 @@ func TestRunExport_EndToEndAgainstRealPostgresWritesTheArtifactMatchingIngestedD
 	}
 	if rp.RawFileSHA256 != "hash-e2e" {
 		t.Fatalf("expected the ingested run's raw-file hash to reach the artifact, got %q", rp.RawFileSHA256)
+	}
+}
+
+// prunableExportDeps binds publishing.Deps to publish exactly the named
+// slugs from memory -- no database, no Docker. The command layer's job
+// here is reporting, and reporting is testable without either.
+func prunableExportDeps(slugs ...string) publishing.Deps {
+	series := make([]postgres.PublishedSeries, 0, len(slugs))
+	obs := map[string][]postgres.PublishedObservation{}
+	for _, slug := range slugs {
+		series = append(series, postgres.PublishedSeries{
+			Slug: slug, Name: slug, Unit: "%", Frequency: "Q", Decimals: 2, Geo: "ES",
+			DatasetID: "ine-epa", SourceID: "ine", SourceName: "INE", SourceAttribution: "Fuente: INE",
+			SourceLicenceName: "lic", SourceURL: "https://ine.es",
+			OriginKind: "ine-series-cod", OriginRef: "TESTCOD001",
+		})
+		value := 10.5
+		obs[slug] = []postgres.PublishedObservation{{
+			Period: "2026-Q1", Value: &value, Status: postgres.StatusDefinitive, Version: 1,
+			IngestionRunID: 1, ExtractedAt: time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC),
+			RawFileSHA256: strings.Repeat("a", 64), RequestURL: "https://ine.es/data",
+		}}
+	}
+	return publishing.Deps{
+		ListPublishedSeries: func(context.Context) ([]postgres.PublishedSeries, error) { return series, nil },
+		ListObservations: func(_ context.Context, seriesID string) ([]postgres.PublishedObservation, error) {
+			return obs[seriesID], nil
+		},
+		SeriesFreshness: func(context.Context, string, time.Time) (freshness.State, error) {
+			return freshness.StateFresh, nil
+		},
+		ResolveActiveBreaksForSeries: func(context.Context, string) ([]postgres.SeriesBreak, error) { return nil, nil },
+		ListActiveEvents:             func(context.Context, string) ([]postgres.Event, error) { return nil, nil },
+		SeriesValidationOutcome: func(context.Context, string) (postgres.ValidationOutcome, error) {
+			return postgres.ValidationOutcome{}, nil
+		},
+	}
+}
+
+// TestRunExport_NamesEveryFileItRemovedFromTheServedDirectory closes the
+// observability half of the stale-file defect. publishing.Export now
+// deletes the files a dropped-out series left behind (see
+// app/internal/publishing/export_prune_test.go for the defect itself), and
+// a delete an operator cannot see in the log is its own integrity problem:
+// the removed file was reader-facing, and its disappearance is exactly the
+// event someone investigating "the page for X is gone" needs to correlate
+// against. The paths are named, not counted.
+func TestRunExport_NamesEveryFileItRemovedFromTheServedDirectory(t *testing.T) {
+	outDir := t.TempDir()
+	ctx := context.Background()
+	asOf := time.Date(2026, 7, 30, 6, 0, 0, 0, time.UTC)
+
+	var stdout, stderr bytes.Buffer
+	if code := runExport(ctx, prunableExportDeps("ipc-general", "ocupados-epa"), outDir, asOf, &stdout, &stderr); code != 0 {
+		t.Fatalf("seeding export: exit %d, stderr=%q", code, stderr.String())
+	}
+
+	stdout.Reset()
+	if code := runExport(ctx, prunableExportDeps("ipc-general"), outDir, asOf.Add(time.Hour), &stdout, &stderr); code != 0 {
+		t.Fatalf("runExport: exit %d, stderr=%q", code, stderr.String())
+	}
+	for _, want := range []string{"series/ocupados-epa.json", "csv/ocupados-epa.csv"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("expected stdout to name %s as removed, got %q", want, stdout.String())
+		}
+	}
+}
+
+// TestRunExport_ReportsThatTheZeroSeriesGuardRefusedToPrune proves the
+// guard is not silent. An export declaring no series deletes nothing (see
+// pruneUnpublishedFiles' own doc comment for why that refusal is the right
+// trade), which leaves the directory holding files the manifest no longer
+// declares -- a state an operator must be told about, since it is
+// indistinguishable, in a log that only ever prints removals, from a
+// healthy cycle with nothing stale to remove.
+func TestRunExport_ReportsThatTheZeroSeriesGuardRefusedToPrune(t *testing.T) {
+	outDir := t.TempDir()
+	ctx := context.Background()
+	asOf := time.Date(2026, 7, 30, 6, 0, 0, 0, time.UTC)
+
+	var stdout, stderr bytes.Buffer
+	if code := runExport(ctx, prunableExportDeps("ipc-general"), outDir, asOf, &stdout, &stderr); code != 0 {
+		t.Fatalf("seeding export: exit %d, stderr=%q", code, stderr.String())
+	}
+
+	stdout.Reset()
+	if code := runExport(ctx, prunableExportDeps(), outDir, asOf.Add(time.Hour), &stdout, &stderr); code != 0 {
+		t.Fatalf("runExport: exit %d, stderr=%q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "refused to remove anything") {
+		t.Fatalf("expected stdout to report the refusal, got %q", stdout.String())
+	}
+	if _, err := os.Stat(filepath.Join(outDir, "series", "ipc-general.json")); err != nil {
+		t.Fatalf("expected the previously published series doc to survive an empty export: %v", err)
 	}
 }

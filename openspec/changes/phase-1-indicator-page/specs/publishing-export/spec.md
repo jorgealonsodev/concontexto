@@ -124,6 +124,57 @@ published CSV and the built site can never disagree (principle P5).
 - THEN every series, period, value and status matches exactly
 - AND the CSV is regenerated whenever the artifact is
 
+### Requirement: The published directory contains exactly what the manifest declares
+
+The published directory MUST describe exactly the series the manifest written in the same run declares —
+nothing missing, nothing left over. A file a previous export wrote for a series the current export no
+longer publishes MUST be removed in that same run, so no reader can reach data that appears in no
+manifest, carries no digest, and is indistinguishable from current data.
+
+The removal MUST be confined to the file shapes the export itself writes, in the subdirectories it owns.
+The published directory is also a served static root, so anything else it holds MUST be left untouched.
+
+Removal MUST be observable: an export MUST report every path it removed, naming each one.
+
+An export that declares **no series at all** MUST NOT remove anything, and MUST report that it refused.
+Deriving "what should exist" from a single export's own output means an export that produced nothing
+would otherwise delete the entire published artifact, turning a stale file into unrecoverable data loss;
+a stale file is recoverable by the next good export and a deleted artifact is not. The refusal
+deliberately leaves the directory holding more than the manifest declares, which is why it must be
+reported rather than passed over in silence.
+
+(This does not weaken "`/data-derived` is generated from the same artifact". That requirement governs how
+each published file is DERIVED — one in-memory artifact, two projections, so CSV and site can never
+disagree — and its scenario compares the rows of the files the export writes. It says nothing about files
+the export no longer writes, and nothing at all about the JSON side, so a series that dropped out of the
+artifact while its files stayed on disk violated no existing clause. The gap was real and is closed here:
+that requirement makes every file the export produces agree with the artifact; this one makes the set of
+files agree with it too.)
+
+#### Scenario: A series that stops being published leaves nothing behind
+
+- GIVEN a published directory holding the files of six exported series
+- AND a later export in which one of those series publishes no observation, so the artifact declares five
+- WHEN that export completes
+- THEN the dropped series' files are absent from the published directory
+- AND the directory holds exactly the files the new manifest declares, and no others
+- AND the export reports each removed path by name
+
+#### Scenario: Removal never reaches a file the export does not own
+
+- GIVEN a published directory that also holds files the export never writes — other extensions, other
+  subdirectories, and another writer's in-flight temporary file
+- WHEN an export completes
+- THEN every one of those files is byte-identical to its pre-run state
+- AND the export reports no removal
+
+#### Scenario: An export that declares no series removes nothing
+
+- GIVEN a published directory holding previously exported series
+- WHEN an export completes having declared no series at all
+- THEN no file is removed
+- AND the export reports that the guard refused to remove anything
+
 ### Requirement: Freshness in the artifact is source-relative
 
 The per-series freshness state carried by the artifact MUST be derived only from the source's expected

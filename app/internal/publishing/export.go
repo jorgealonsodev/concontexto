@@ -36,6 +36,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jorgealonsodev/concontexto/app/internal/adapters/postgres"
@@ -209,6 +210,41 @@ func runKey(ingestionRunID int64) string { return strconv.FormatInt(ingestionRun
 // intent, "write to data-derived.tmp, rename", without resolving that
 // os.Rename cannot atomically replace a NON-EMPTY existing directory on
 // POSIX; per-file atomic replace is this slice's chosen "equivalent").
+//
+// LAST of all, it PRUNES: every series/{slug}.json and csv/{slug}.csv
+// left over from a previous export whose slug this one no longer
+// declares is removed (pruneUnpublishedFiles). Writing without pruning
+// was a data-integrity defect observed on the deployed stack, not a
+// theoretical gap -- see export_prune_test.go's file comment for the
+// exact reproduction. A series that STOPS being published (blocked by a
+// validation rule, so ListObservations returns nothing and the loop above
+// skips it) used to leave its last-good files reachable at the URLs the
+// indicator page still links to, absent from the manifest and therefore
+// carrying no digest: data served with no provenance, presented as
+// current, which is principle P4 exactly inverted.
+//
+// WHY THE PRUNE COMES AFTER THE MANIFEST, not before the writes. Neither
+// ordering is atomic -- see the per-file boundary above -- so the choice
+// is between two transient windows, and they are not equally bad:
+//
+//   - Prune FIRST: between the removal and the new manifest's rename,
+//     the manifest a reader currently holds still DECLARES a series whose
+//     files no longer exist. That reader gets a 404 for a declared file
+//     and a digest it can never verify -- a currently-published series
+//     broken for real, and broken exactly for the readers who follow the
+//     manifest correctly.
+//   - Prune LAST: between the manifest's rename and the last removal, the
+//     directory holds MORE than the manifest declares. That is the
+//     pre-existing steady state of this bug, now bounded to milliseconds,
+//     and it is unreachable through any manifest-driven path: the Astro
+//     build reads the manifest, and every reader-facing link is generated
+//     from it, so no route offers the extra file.
+//
+// The second window degrades to "a stale file exists but nothing links to
+// it"; the first degrades to "a live series is 404". Pruning last is the
+// lesser evil, and it additionally guarantees that if a removal fails, the
+// artifact on disk is already complete, valid and self-consistent -- the
+// error names a cleanup failure, never a half-written artifact.
 func Export(ctx context.Context, deps Deps, asOf time.Time, outDir string) (Artifact, error) {
 	// Composition check before any read and any write (verify-report
 	// WARNING-17). Only this one port is checked explicitly, because it is
@@ -303,7 +339,126 @@ func Export(ctx context.Context, deps Deps, asOf time.Time, outDir string) (Arti
 		return Artifact{}, err
 	}
 
+	// The directory must end up describing exactly what the manifest
+	// declares. See this function's doc comment for why this runs after
+	// the manifest rather than before the writes.
+	prune, err := pruneUnpublishedFiles(outDir, docs)
+	if err != nil {
+		return Artifact{}, err
+	}
+	artifact.Prune = prune
+
 	return artifact, nil
+}
+
+// exportOwnedFiles enumerates the per-series files Export itself produces:
+// one subdirectory of outDir, one filename extension, per projection. It is
+// the ONLY definition of what pruneUnpublishedFiles is allowed to delete,
+// and a new projection must be added here in the same change that starts
+// writing it -- otherwise the new file becomes the next thing to go stale.
+var exportOwnedFiles = []struct{ dir, ext string }{
+	{dir: "series", ext: ".json"},
+	{dir: "csv", ext: ".csv"},
+}
+
+// pruneUnpublishedFiles removes every file matching Export's OWN output
+// shape, in Export's OWN subdirectories, whose slug docs no longer
+// declares -- and touches nothing else under outDir.
+//
+// THE SCOPE IS DELIBERATELY NARROW, because outDir is not a private
+// scratch directory: in production it is /web/dist/data-derived, a served
+// static root and a mounted volume. Files at the root of outDir (other
+// than manifest.json, which every export rewrites anyway), files with any
+// other extension, subdirectories, and anything that is not a regular file
+// are all left alone. Other runtime paths already live beside this one
+// under /web/dist -- deployedManifestPath (app/cmd/concontexto/schedule.go)
+// documents a stamp kept deliberately OUTSIDE dist for the neighbouring
+// reason -- and a delete that reaches outside the two directories below
+// would be a far worse bug than the stale file it set out to fix.
+//
+// Non-regular entries are skipped rather than resolved: a symlink in
+// series/ is not something Export ever created, so it is not Export's to
+// remove. Leftover ".tmp-*" files are not matched either, and that is
+// load-bearing rather than incidental -- writeFileAtomic creates one in
+// the destination directory on every single write, so a CONCURRENT export
+// may have one in flight, and unlinking it would break that writer's
+// rename.
+//
+// THE ZERO-SERIES GUARD. "What should exist" is derived from what this one
+// export produced, so an export that produced NOTHING would, unguarded,
+// delete the entire published artifact -- every series, both projections --
+// turning a stale-file bug into unrecoverable data loss, with the served
+// site going from "one stale series" to "nothing at all". Zero documents is
+// the one failure of that family that is both DETECTABLE from inside this
+// function and CATASTROPHIC, so it is refused outright and reported as
+// PruneOutcome.Skipped.
+//
+// A PARTIAL list is deliberately NOT guarded: five documents where nine
+// were expected is indistinguishable, from here, from a legitimate
+// retirement of four, and any ratio-based floor would either fail to catch
+// a real truncation or block a real retirement -- an arbitrary rule that
+// would eventually be wrong in the direction that loses data. The defences
+// against that case sit outside this function and already exist: the
+// ingest gate ("a cycle that learned nothing MUST NOT export", spec
+// publishing-export), which is what stops an empty or degraded read from
+// reaching an export at all, and artifact retention (retention.go), which
+// keeps the last N artifacts for rollback.
+//
+// The refusal knowingly leaves the directory holding MORE than the
+// manifest declares -- the very state this function exists to end -- and
+// says so. That trade is the right way round: a stale file is recoverable
+// by the next good export, a deleted artifact is not.
+func pruneUnpublishedFiles(outDir string, docs []SeriesDoc) (PruneOutcome, error) {
+	if len(docs) == 0 {
+		return PruneOutcome{Skipped: true}, nil
+	}
+
+	published := make(map[string]bool, len(docs))
+	for _, d := range docs {
+		published[d.Slug] = true
+	}
+
+	var removed []string
+	for _, owned := range exportOwnedFiles {
+		dir := filepath.Join(outDir, owned.dir)
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			// A directory that does not exist holds nothing stale. This is
+			// the ordinary first-ever export, not an error.
+			if os.IsNotExist(err) {
+				continue
+			}
+			return PruneOutcome{}, fmt.Errorf("publishing: reading %s to prune files the manifest no longer declares: %w", dir, err)
+		}
+		for _, e := range entries {
+			if !e.Type().IsRegular() {
+				continue
+			}
+			name := e.Name()
+			if !strings.HasSuffix(name, owned.ext) {
+				continue
+			}
+			slug := strings.TrimSuffix(name, owned.ext)
+			// An empty slug means a file named exactly ".json"/".csv",
+			// which is not a shape Export can ever have written.
+			if slug == "" || published[slug] {
+				continue
+			}
+			if err := os.Remove(filepath.Join(dir, name)); err != nil {
+				// Loud, not best-effort. A file that cannot be removed is
+				// stale reader-facing data left reachable -- the defect
+				// itself -- so it fails the export and, through it, the
+				// cycle, rather than being logged and forgotten. The
+				// artifact already on disk is complete and valid (this runs
+				// after the manifest), so nothing is left half-written.
+				return PruneOutcome{}, fmt.Errorf("publishing: removing %s/%s, which this export's manifest no longer declares: %w", owned.dir, name, err)
+			}
+			removed = append(removed, owned.dir+"/"+name)
+		}
+	}
+	sort.Strings(removed)
+
+	return PruneOutcome{Removed: removed}, nil
 }
 
 // buildSeriesDoc assembles one SeriesDoc from a series' metadata and its

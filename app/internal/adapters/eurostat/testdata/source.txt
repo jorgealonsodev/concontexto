@@ -41,6 +41,43 @@ deadcode/prc_hicp_minr-coicop18-cp00.json
   up by loadEurostatFixtures's "exactly 3 real datasets" glob in
   client_test.go.
 
+sparse/nama_10_gdp-full-history.json
+  URL: https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/nama_10_gdp?format=JSON&lang=EN&freq=A&unit=CLV10_MEUR&na_item=B1GQ&geo=ES
+  Fetched: 2026-07-30. HTTP 200, 4689 bytes on the wire. The FULL history
+  (no lastTimePeriod), i.e. exactly the request config/series/pib-eurostat.yaml
+  drives in production — and exactly the payload that produced the reported
+  "observation_check" constraint violation at pib-eurostat/1975.
+  Trimmed the same way as the three files above: only Eurostat's unparsed
+  "extension" block is dropped; "value", "status", "id", "size" and the whole
+  "dimension" tree are byte-real (every one of the 31 numeric value tokens was
+  checked to appear verbatim in the original body).
+  Shape that makes it worth keeping: "size":[1,1,1,1,51] — the time dimension
+  declares 51 annual periods, 1975..2025, while "value" carries only 31
+  entries, positions 20..50 (1995..2025). The 20 leading positions 0..19
+  (1975..1994) carry NO value: Eurostat's time dimension spans further back
+  than the data. This is the SPARSENESS every JSON-stat response has, and the
+  reason a valueless position must yield no observation rather than a
+  nil-valued one (envelope.go's value-presence branch; sparse_test.go).
+  It is also the only checked-in fixture carrying a REAL "status" map:
+  {"48":"p","49":"p","50":"p"} — 2023/2024/2025 are provisional.
+  Kept in its own subdirectory (testdata/sparse/, not testdata/) so it is
+  never picked up by loadEurostatFixtures's "exactly 3 real datasets" glob in
+  client_test.go, following testdata/deadcode/'s precedent.
+
+Sparseness verified live 2026-07-30 across all three configured datasets, with
+the same full-history (no lastTimePeriod) requests config/series/*.yaml issue:
+
+  nama_10_gdp    51 declared periods, 31 values, 20 valueless (1975..1994)
+  une_rt_q       93 declared periods, 69 values, 24 valueless (2003-Q1..2008-Q4)
+  prc_hicp_minr 366 declared periods, 354 values, 12 valueless (1996-01..1996-12)
+
+In all three the valueless positions form ONE CONTIGUOUS LEADING HEAD — there
+are no interior holes — so dropping them leaves a dense, step-1 history and the
+cadence audit (indicators.AssertCadence, design D-4) classifies the same
+periodicity it did before. Also checked in all three: ZERO positions carry a
+"status" entry without a "value" entry, so the fail-closed
+flag-on-a-valueless-position branch costs nothing against today's real data.
+
 Also verified live (not checked in as a fixture, reported in the apply-progress
 transcript instead): the SAME three base URLs without lastTimePeriod each
 return HTTP 200 with every non-time dimension fully pinned (freq/unit/

@@ -18,6 +18,17 @@ package eurostat
 // formula below computes it generically rather than assuming that
 // shape structurally — a genuinely correct JSON-stat reader, not a
 // three-dataset special case.
+//
+// JSON-stat is also SPARSE, and that is not a detail: the "time"
+// dimension declares every period the DATASET spans, while "value"
+// carries an entry only where the source actually PUBLISHED a figure.
+// Every configured series shows it live (verified 2026-07-30) —
+// nama_10_gdp declares 1975 and publishes from 1995, une_rt_q declares
+// 2003-Q1 and publishes from 2009-Q1, prc_hicp_minr declares 1996-01 and
+// publishes from 1997-01. A position with no value therefore yields NO
+// observation at all (see the value-presence branch below for why the
+// alternative — a nil-valued or withdrawn-status observation — is both
+// unwritable and untrue).
 
 import (
 	"encoding/json"
@@ -142,11 +153,8 @@ func Decode(raw []byte, ref string, expectedFrequency indicators.Frequency, segm
 		}
 		posKey := fmt.Sprintf("%d", pos)
 
-		var value *float64
-		if v, ok := ws.Value[posKey]; ok {
-			vv := v
-			value = &vv
-		}
+		rawValue, hasValue := ws.Value[posKey]
+		flag, hasFlag := ws.Status[posKey]
 
 		// Task 2b.1-2b.5 (GREEN): status is read at the SAME posKey
 		// "value" already uses (spec "JSON-stat status is read at the
@@ -157,24 +165,134 @@ func Decode(raw []byte, ref string, expectedFrequency indicators.Frequency, segm
 		// never a schema-drift rejection (spec "Absence of a flag means
 		// definitive"). classifyEurostatFlag only runs when an entry
 		// exists.
+		//
+		// The flag's VOCABULARY is judged here, before the value-presence
+		// branch below, deliberately: an undocumented flag keeps the
+		// diagnostic its own spec scenario asks for ("An unrecognised flag
+		// fails closed" -- "naming the dataset and the unrecognised flag")
+		// whether or not it also happens to sit on a position carrying no
+		// value, rather than being masked by the newer alignment check.
 		status := indicators.ObservationStatusDefinitive
 		sourceStatus := ""
-		if flag, ok := ws.Status[posKey]; ok {
-			classified, breakOrDefinition, classifyErr := classifyEurostatFlag(flag)
+		breakOrDefinition := false
+		if hasFlag {
+			classified, isBreakOrDefinition, classifyErr := classifyEurostatFlag(flag)
 			if classifyErr != nil {
 				return indicators.SourceResult{}, sourceerr.New(sourceerr.SchemaDrift, fmt.Sprintf(
 					"%s: %v at period %s", ref, classifyErr, period))
 			}
 			status = classified
 			sourceStatus = flag
-			if breakOrDefinition {
-				breakSignals = append(breakSignals, indicators.BreakSignal{Period: period, Flag: flag})
+			breakOrDefinition = isBreakOrDefinition
+		}
+
+		// A JSON-stat response is SPARSE: the "time" dimension declares
+		// every period the DATASET spans, while "value" carries an entry
+		// only where the source actually PUBLISHED a figure. All three
+		// configured series exhibit this live (verified 2026-07-30,
+		// testdata/source.txt): nama_10_gdp's time dimension reaches back
+		// to 1975 while its earliest published value is 1995; une_rt_q
+		// declares 2003-Q1 and publishes from 2009-Q1; prc_hicp_minr
+		// declares 1996-01 and publishes from 1997-01.
+		//
+		// A position with no value is therefore "the source published
+		// nothing here", and the honest projection of that is NO
+		// observation -- not an observation with a nil Value. Two reasons,
+		// both load-bearing:
+		//
+		//  1. The schema forbids the row outright: observation's own
+		//     CHECK (value IS NOT NULL OR status = 'W') (migration
+		//     0001_fase0_schema) rejects a null value under any status but
+		//     withdrawn, so a nil-valued Definitive observation could
+		//     never be written -- it failed at the publish gate, which is
+		//     how this defect surfaced: NO Eurostat series could be
+		//     ingested at all.
+		//  2. Coercing it to 'W' to satisfy that CHECK would be a lie.
+		//     Status W is a WITHDRAWAL: spec data-model-vintages, "Source
+		//     withdrawal is representable" -- "A source withdrawing a
+		//     period MUST be recorded as a new version with withdrawn
+		//     status, never as a delete", whose scenario is GIVEN a
+		//     current observation ... WHEN the source STOPS PUBLISHING
+		//     that period. A period never published in the first place was
+		//     never withdrawn, and there is a whole rollback/tombstone
+		//     mechanism keyed to that meaning. Fabricating a retraction
+		//     that never happened is precisely the silent lie design D-3
+		//     exists to remove ("coercing unknown tokens to D is exactly
+		//     the silent lie this change exists to remove").
+		//
+		// Dropping is also what the spec's own zero-observation
+		// requirement already assumes: "A zero-observation result fails
+		// the run" describes a dead dimension code answering HTTP 200 with
+		// "value": {} as a run yielding ZERO observations -- not a run of
+		// null-valued ones. That requirement is only actually satisfiable
+		// once a valueless position stops becoming an observation (see the
+		// SilentEmpty check after this loop).
+		if !hasValue {
+			// A flag with no value to annotate. The spec requires the
+			// decoder to "carry the verbatim flag through to the
+			// observation's source_status" (spec "JSON-stat status is read
+			// at the computed position"); with no observation to carry it,
+			// that MUST is unsatisfiable, leaving only two options --
+			// silently discard published source information, or fail
+			// closed. This adapter fails closed, for the same reason every
+			// other undecided token in it does ("An unrecognised flag
+			// fails closed", design D-3's "fails SchemaDrift until the
+			// spec allowlists a token with a decided projection"), and for
+			// one more that is specific to this shape: a flag landing on a
+			// position the source published no value for is ALSO exactly
+			// what a bug in the linear (Horner) position arithmetic above
+			// would look like, and the spec has a scenario protecting that
+			// very alignment ("Status is aligned with the value it belongs
+			// to"). Failing closed turns a silent misalignment into a
+			// named SchemaDrift naming dataset, period and flag; ignoring
+			// the flag would hide it.
+			//
+			// No live response in this project exhibits the shape
+			// (verified 2026-07-30 across all three full-history payloads:
+			// zero positions carry a "status" entry without a "value"
+			// entry), so failing closed costs nothing today and escalates
+			// to a human -- with the dataset and period in the message --
+			// if Eurostat ever starts publishing it.
+			//
+			// Consequently a "b"/"d" flag on a valueless position emits no
+			// break signal either: the whole run fails, so nothing is
+			// emitted at all. A break annotation beside series_break
+			// (spec "Break and definition flags are metadata, not
+			// statuses") is metadata ABOUT an observation this payload
+			// does not contain.
+			if hasFlag {
+				return indicators.SourceResult{}, sourceerr.New(sourceerr.SchemaDrift, fmt.Sprintf(
+					"%s carries status flag %q at period %s but no value at that position -- a flag cannot annotate an observation the source did not publish",
+					ref, flag, period))
 			}
+			continue
+		}
+
+		value := rawValue
+		if breakOrDefinition {
+			breakSignals = append(breakSignals, indicators.BreakSignal{Period: period, Flag: flag})
 		}
 
 		observations = append(observations, indicators.Observation{
-			Period: period, Value: value, Status: status, SourceStatus: sourceStatus,
+			Period: period, Value: &value, Status: status, SourceStatus: sourceStatus,
 		})
+	}
+
+	// Once valueless positions stop becoming observations, a structurally
+	// valid response that published nothing at any position decodes to
+	// zero observations -- the exact "value": {} shape a dead dimension
+	// code returns under HTTP 200 (spec "A zero-observation result fails
+	// the run": "it fails with the zero-observation failure class,
+	// distinct from a transport error ... and nothing is published"). It
+	// is classified here, in the adapter, exactly as ine/envelope.go
+	// classifies its own zero-row body, so the two SourceClient
+	// implementations answer "the source had nothing to say" the same
+	// named way instead of one relying on Rule 6 downstream while the
+	// other reports it at the source. Rule 6 (validation/rule6_nonempty)
+	// remains the second, independent net for any path that does reach it.
+	if len(observations) == 0 {
+		return indicators.SourceResult{}, sourceerr.New(sourceerr.SilentEmpty, fmt.Sprintf(
+			"%s returned no observed values across its %d declared time periods", ref, len(slots)))
 	}
 
 	// Task 1.2 (GREEN, "same principle in eurostat" -- design D-4):

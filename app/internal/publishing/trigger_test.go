@@ -154,3 +154,58 @@ func TestPublish_AFailedExportNeverDispatches(t *testing.T) {
 		t.Error("expected a failed export to never reach dispatch")
 	}
 }
+
+// CRITICAL-28 (RED), link 2. DispatchedAt == nil used to mean two entirely
+// different things -- "no dispatcher was configured, so nothing was
+// attempted" and "a dispatcher was configured and the attempt failed" --
+// and the caller had no way to tell them apart. runIngest consequently
+// printed "exported and dispatched" for all three outcomes, including the
+// deployed-stack case where nothing was ever dispatched at all.
+// DispatchSkipped is the discriminator: with DispatchedAt it names exactly
+// one of the three states, and the caller logs which one.
+func TestPublish_DispatchStateIsDistinguishableAcrossAllThreeOutcomes(t *testing.T) {
+	t.Run("not configured: skipped, never attempted", func(t *testing.T) {
+		result, err := publishing.Publish(context.Background(), onePublishedSeriesDeps(t), nil, time.Now(), t.TempDir(), "", 0)
+		if err != nil {
+			t.Fatalf("Publish: %v", err)
+		}
+		if !result.DispatchSkipped {
+			t.Error("expected DispatchSkipped with a nil dispatcher: nothing was attempted")
+		}
+		if result.DispatchedAt != nil {
+			t.Errorf("expected no dispatch instant when dispatch was skipped, got %v", result.DispatchedAt)
+		}
+	})
+
+	t.Run("configured and dispatching: not skipped, instant recorded", func(t *testing.T) {
+		dispatch := func(context.Context, time.Time, string) error { return nil }
+		result, err := publishing.Publish(context.Background(), onePublishedSeriesDeps(t), dispatch, time.Now(), t.TempDir(), "", 0)
+		if err != nil {
+			t.Fatalf("Publish: %v", err)
+		}
+		if result.DispatchSkipped {
+			t.Error("expected DispatchSkipped to be false when a dispatcher was configured and succeeded")
+		}
+		if result.DispatchedAt == nil {
+			t.Error("expected a dispatch instant on a successful dispatch")
+		}
+	})
+
+	t.Run("configured and failing: not skipped, no instant", func(t *testing.T) {
+		alerting.SetDefaultSink(alerting.NoopSink{})
+		defer alerting.SetDefaultSink(nil)
+		dispatch := func(context.Context, time.Time, string) error {
+			return errors.New("github: dispatch returned status 403")
+		}
+		result, err := publishing.Publish(context.Background(), onePublishedSeriesDeps(t), dispatch, time.Now(), t.TempDir(), "", 0)
+		if err != nil {
+			t.Fatalf("Publish: %v", err)
+		}
+		if result.DispatchSkipped {
+			t.Error("expected DispatchSkipped to be FALSE on a dispatch FAILURE: an attempt was made and it failed, which is not the same as never attempting")
+		}
+		if result.DispatchedAt != nil {
+			t.Errorf("expected no dispatch instant on a dispatch failure, got %v", result.DispatchedAt)
+		}
+	})
+}

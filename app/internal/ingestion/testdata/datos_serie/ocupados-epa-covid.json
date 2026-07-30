@@ -1,0 +1,29 @@
+{
+    "COD": "EPA387796",
+    "Nombre": "Total Nacional. Ambos sexos. Total. Ocupados. Valor absoluto. ",
+    "T3_Unidad": "Personas",
+    "T3_Escala": "Miles",
+    "Data": [
+        {
+            "Fecha": "2019-10-01T00:00:00.000+02:00",
+            "T3_TipoDato": "Definitivo",
+            "T3_Periodo": "T4",
+            "Anyo": 2019,
+            "Valor": 19966.9
+        },
+        {
+            "Fecha": "2020-01-01T00:00:00.000+01:00",
+            "T3_TipoDato": "Definitivo",
+            "T3_Periodo": "T1",
+            "Anyo": 2020,
+            "Valor": 19681.3
+        },
+        {
+            "Fecha": "2020-04-01T00:00:00.000+02:00",
+            "T3_TipoDato": "Definitivo",
+            "T3_Periodo": "T2",
+            "Anyo": 2020,
+            "Valor": 18607.2
+        }
+    ]
+}

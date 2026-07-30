@@ -54,3 +54,57 @@ func PublishLatencyBreached(now, lastIngestionSuccess, manifestGeneratedAt time.
 	}
 	return true, elapsed
 }
+
+// RebuildLatencyBreached reports whether the artifact this container has
+// published is still not reflected in the DEPLOYED pages after the budget
+// elapsed (verify-report CRITICAL-28, link 3: "No deploy-completed instant
+// exists anywhere").
+//
+// PublishLatencyBreached above compares an ingestion success against the
+// LOCAL manifest that publishing.Publish wrote seconds earlier in the same
+// call, so the only thing it can ever catch is an export that did not run.
+// It is structurally blind to the three links that follow: a dispatch never
+// sent, a rebuild that failed, and a deploy that never landed. This
+// function closes those by comparing two instants that move independently:
+//
+//	artifactGeneratedAt  the live artifact's manifest.generated_at, rewritten
+//	                     by every publish cycle into the export_artifact volume;
+//	deployedGeneratedAt  the generated_at of the artifact the running image's
+//	                     pre-rendered pages were BUILT from -- shipped in the
+//	                     image as /web/build-manifest.json (Dockerfile) and
+//	                     therefore changed by nothing except a deploy.
+//
+// A deploy-completed instant is exactly what deployedGeneratedAt is: the
+// pages cannot advance without a new image, and a new image cannot arrive
+// without the dispatch, the rebuild and the redeploy all having succeeded.
+// So one comparison covers every remaining link at once, without this
+// process needing to reach GitHub, Portainer or the public site.
+//
+// Divergence is NORMAL and is not itself the alarm: every publish cycle
+// makes the live artifact newer than the deployed pages, and the whole
+// point of the pipeline is that a rebuild then catches up. Only divergence
+// that OUTLIVES the budget is a breach -- the same shape
+// PublishLatencyBreached already uses, and the reason both take the one
+// budget.
+//
+// A zero artifactGeneratedAt means nothing has ever been published here, so
+// there is no rebuild to be waiting for; that case belongs to
+// PublishLatencyBreached (a missing export) and returns false, 0 rather
+// than measuring elapsed time from the zero instant. A zero
+// deployedGeneratedAt is NOT handled here: "the image carries no build
+// manifest" means the deployed artifact is unknown, not old, and the caller
+// must decline to call this function at all rather than let an unknown
+// masquerade as a stale deploy (see app/cmd/concontexto/schedule.go).
+func RebuildLatencyBreached(now, artifactGeneratedAt, deployedGeneratedAt time.Time, budget time.Duration) (breached bool, elapsed time.Duration) {
+	if artifactGeneratedAt.IsZero() {
+		return false, 0
+	}
+	elapsed = now.Sub(artifactGeneratedAt)
+	if elapsed < budget {
+		return false, elapsed
+	}
+	if !deployedGeneratedAt.Before(artifactGeneratedAt) {
+		return false, elapsed
+	}
+	return true, elapsed
+}

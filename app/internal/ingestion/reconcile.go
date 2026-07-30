@@ -23,6 +23,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/jorgealonsodev/concontexto/app/internal/adapters/config"
@@ -34,11 +35,24 @@ type ReconcileResult struct {
 	Breaks postgres.ReconcileCounts
 	Events postgres.ReconcileCounts
 
+	// Acknowledgements is config/reconocimientos.yaml's effect on
+	// validation_acknowledgement (spec data-validation, "Acknowledged
+	// findings").
+	Acknowledgements postgres.ReconcileCounts
+
 	// PendingBreakIDs/PendingEventIDs list every entry this run declined
 	// to project because its date is not yet confirmed (see the package
 	// doc comment above) — never nil-but-silently-dropped.
 	PendingBreakIDs []string
 	PendingEventIDs []string
+
+	// PendingAcknowledgementIDs lists every acknowledgement this run
+	// declined to project because NO HUMAN HAS SIGNED IT YET. Reported for
+	// the same reason the two lists above are: a record waiting on a person
+	// must be visible as waiting, not silently absent. An operator seeing a
+	// series blocked can then tell "nobody has looked at this yet" apart
+	// from "there is no record at all".
+	PendingAcknowledgementIDs []string
 }
 
 // ReconcileEditorialConfig reconciles cfg.Breaks/cfg.Events into
@@ -80,12 +94,48 @@ func ReconcileEditorialConfig(ctx context.Context, db postgres.TxBeginner, cfg c
 		})
 	}
 
-	breakCounts, eventCounts, err := postgres.ReconcileEditorial(ctx, db, breakInputs, eventInputs)
+	// An UNSIGNED acknowledgement is never projected, for exactly the reason
+	// an unconfirmed break date is never projected (this file's own package
+	// doc comment). There, the refusal is because a guessed date silently
+	// corrupts every comparison across it. Here, it is because an
+	// acknowledgement's entire authority is the human signature: a record
+	// nobody has signed is a PROPOSAL, however good its research and however
+	// well cited, and letting it resolve a finding would hand the override
+	// to whoever wrote the argument rather than to the human
+	// rule4_revision.go says must decide. The draft stays documented in
+	// reconocimientos.yaml, visible here as pending, and reconciles the
+	// moment a person signs it and the YAML is edited accordingly — the same
+	// lifecycle an unconfirmed break date already follows.
+	//
+	// A nil Value or a nil AcknowledgedOn on a supposedly signed record
+	// cannot occur past validate-config; skipping rather than dereferencing
+	// keeps a bypass of that gate inert instead of turning it into a panic
+	// or, worse, an unconditional override.
+	var ackInputs []postgres.AcknowledgementInput
+	for _, a := range cfg.Acknowledgements {
+		if a.SignatureStatus == "unsigned" || a.AcknowledgedBy == "" {
+			result.PendingAcknowledgementIDs = append(result.PendingAcknowledgementIDs, a.ID)
+			continue
+		}
+		if a.Value == nil || a.AcknowledgedOn == nil {
+			result.PendingAcknowledgementIDs = append(result.PendingAcknowledgementIDs, a.ID)
+			continue
+		}
+		ackInputs = append(ackInputs, postgres.AcknowledgementInput{
+			AckKey: a.ID, SeriesID: a.Series, Period: a.Period, Rule: a.Rule,
+			Value: *a.Value, AcknowledgedBy: a.AcknowledgedBy, AcknowledgedOn: *a.AcknowledgedOn,
+			NoteMD: a.NoteMD, SourceURL: a.SourceURL,
+			ConfigDigest: acknowledgementDigest(a),
+		})
+	}
+
+	counts, err := postgres.ReconcileEditorial(ctx, db, breakInputs, eventInputs, ackInputs)
 	if err != nil {
 		return ReconcileResult{}, fmt.Errorf("ingestion: reconciling editorial config: %w", err)
 	}
-	result.Breaks = breakCounts
-	result.Events = eventCounts
+	result.Breaks = counts.Breaks
+	result.Events = counts.Events
+	result.Acknowledgements = counts.Acknowledgements
 
 	return result, nil
 }
@@ -109,6 +159,31 @@ func eventDigest(e config.EventConfig) string {
 	fmt.Fprintf(h, "id=%s\ngroup=%s\nname=%s\ndate_start=%s\ndate_end=%s\nnote_md=%s\n",
 		e.ID, e.Group, e.Name, dateDigestString(e.DateStart), dateDigestString(e.DateEnd), e.NoteMD)
 	return hex.EncodeToString(h.Sum(nil))
+}
+
+// acknowledgementDigest is breakDigest/eventDigest's counterpart for the
+// acknowledgement registry, over exactly the fields that reach the
+// database row -- INCLUDING the pinned value. That inclusion is
+// load-bearing: correcting a mis-typed pin must register as an EDIT of
+// that acknowledgement (a new digest, an in-place update, a visible
+// reconcile count), never as a silent no-op that leaves the database
+// holding a number no reviewer approved.
+func acknowledgementDigest(a config.AcknowledgementConfig) string {
+	h := sha256.New()
+	fmt.Fprintf(h, "id=%s\nseries=%s\nperiod=%s\nrule=%s\nvalue=%v\nacknowledged_by=%s\nacknowledged_on=%s\nnote_md=%s\nsource_url=%s\n",
+		a.ID, a.Series, a.Period, a.Rule, valueDigestString(a.Value), a.AcknowledgedBy,
+		dateDigestString(a.AcknowledgedOn), a.NoteMD, a.SourceURL)
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// valueDigestString formats the pinned value for the digest with full
+// float64 precision ('g' with -1), so two pins that differ in any digit
+// that survives the round trip produce different digests.
+func valueDigestString(v *float64) string {
+	if v == nil {
+		return ""
+	}
+	return strconv.FormatFloat(*v, 'g', -1, 64)
 }
 
 func dateDigestString(t *time.Time) string {

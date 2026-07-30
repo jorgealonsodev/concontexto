@@ -87,8 +87,14 @@ func TestMigrationDown_SeriesDiscontinuedColumnsDropWithoutLosingAnySeries(t *te
 	seedSeries(t, ctx, tx)
 	mustExec(t, ctx, tx, `UPDATE series SET discontinued_since = DATE '2026-03-31' WHERE id = 'tasa-de-paro-epa'`)
 
-	// Down rolls back exactly one step (runner.go's own contract); 0005
-	// is head, so a single call reverts precisely this migration.
+	// Down rolls back exactly one step (runner.go's own contract). One
+	// later migration now sits on top of 0005 --
+	// 0006_validation_acknowledgement, which touches no column of series --
+	// so the SECOND Down is the one that reverts 0005, the migration this
+	// test actually asserts against.
+	if err := runner.Down(ctx); err != nil {
+		t.Fatalf("Down (0006): %v", err)
+	}
 	if err := runner.Down(ctx); err != nil {
 		t.Fatalf("Down (0005): %v", err)
 	}

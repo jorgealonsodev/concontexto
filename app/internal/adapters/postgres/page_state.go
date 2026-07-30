@@ -50,14 +50,24 @@ type ValidationOutcome struct {
 // the page asserting that the SOURCE published a datum failing our
 // checks -- a claim about a third party the data does not support.
 // Only the explicit 'validation-failed' terminal outcome counts.
+//
+// An ACKNOWLEDGED publish ('succeeded-with-acknowledgement', see
+// RunOutcomeSucceededWithAcknowledgement) counts as a success here, and
+// deliberately so. The reader-facing banner this feeds answers "when was
+// this series last correctly updated", and a run a named human reviewed
+// and vouched for did correctly update it -- reporting "never succeeded"
+// for a series carrying a fresh, human-confirmed datum would be a false
+// statement to the reader. The distinction between a clean and an
+// acknowledged publish is preserved where it belongs, in the outcome
+// column itself and in the pipeline log, not by making the page lie.
 func SeriesValidationOutcome(ctx context.Context, db DBTX, seriesID string) (ValidationOutcome, error) {
 	row := db.QueryRow(ctx, `
 		SELECT
 			(SELECT outcome FROM ingestion_run
 			  WHERE series_id = $1 ORDER BY started_at DESC, id DESC LIMIT 1),
 			(SELECT max(started_at) FROM ingestion_run
-			  WHERE series_id = $1 AND outcome = $2)`,
-		seriesID, string(RunOutcomeSucceeded))
+			  WHERE series_id = $1 AND outcome = ANY($2))`,
+		seriesID, []string{string(RunOutcomeSucceeded), string(RunOutcomeSucceededWithAcknowledgement)})
 
 	var latestOutcome *string
 	var lastSucceededAt *time.Time

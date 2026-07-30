@@ -39,3 +39,19 @@ string literal, keeping the origin-identifier static-scan guard
 (app/internal/guard) honest, exactly like
 app/internal/adapters/ine/testdata/datos_serie/source.txt's identical
 convention for the single 5a.9 fixture.
+
+ocupados-epa-covid.json (added for the acknowledgement registry, spec
+data-validation "Acknowledged findings"): the same EPA387796 series, the
+same real `tip=A` response shape, trimmed to 2019-Q4 / 2020-Q1 / 2020-Q2
+instead of the last three periods. Those are the quarters the portal's
+one shipped acknowledgement is about: 19681,3 -> 18607,2 is a fall of
+1074,1 thousand employed persons against ocupados-epa's configured
+max_delta_abs of 1000 -- the COVID-19 lockdown quarter, which INE's own
+press release of 28 July 2020 reports as "La ocupación ha bajado en
+1.074.000 personas en el segundo trimestre" under the heading "Efectos de
+la COVID-19 en la EPA de este trimestre"
+(https://www.ine.es/daco/daco42/daco4211/epa0220.pdf).
+
+Fetched: 2026-07-30
+
+  https://servicios.ine.es/wstempus/js/ES/DATOS_SERIE/EPA387796?nult=30&tip=A

@@ -1,0 +1,108 @@
+# Registro de reconocimientos de validación (spec data-validation,
+# "Acknowledged findings"). Reconciliado por
+# ingestion.ReconcileEditorialConfig a la tabla validation_acknowledgement
+# -- este fichero es la fuente de verdad; la base de datos es una
+# proyección, igual que rupturas.yaml y eventos.yaml.
+#
+# QUÉ ES. Una entrada FIRMADA registra que una persona con nombre y
+# apellidos revisó UN hallazgo de validación bloqueante concreto y confirmó
+# que el dato subyacente es correcto. A partir de ahí la puerta de
+# publicación trata ese hallazgo como informativo en lugar de bloqueante, y
+# la ejecución se registra con el resultado "publish-overridden", nunca como
+# "publish": un operador leyendo el log jamás debe confundir "validado" con
+# "sobrescrito por una persona".
+#
+# LA FIRMA ES LA AUTORIDAD. `signature_status: unsigned` marca un BORRADOR:
+# investigación redactada, pendiente de que una persona la revise y la
+# firme. Un borrador NO se proyecta a la base de datos y NO resuelve
+# absolutamente nada -- la serie sigue bloqueada. Es la misma disciplina que
+# `date_status: unconfirmed` en rupturas.yaml, por la misma razón: nunca se
+# proyecta un hecho no verificado. Aquí el hecho no verificado es "una
+# persona ha revisado esto y ha aceptado la responsabilidad". Un argumento
+# bien construido no es una firma; si lo fuera, quien redacta el argumento
+# sería quien salta el guardián, que es exactamente lo que un sign-off
+# existe para impedir (ver rule4_revision.go).
+#
+# QUÉ NO ES. No es una forma de desactivar una regla. El alcance de una
+# entrada son exactamente una serie, un periodo y una regla, comparados por
+# igualdad exacta: no existe sintaxis en este esquema para "todos los
+# periodos", "toda la serie" ni "todas las reglas", y validate-config
+# rechaza cualquier intento de ampliarlo (adapters/config/acknowledgement.go).
+# Sólo son reconocibles las reglas cuyo hallazgo es genuinamente un juicio
+# humano -- rule3-plausibility y rule4-revision. Un fallo de esquema, de
+# decodificación o de metadatos describe una tubería o una configuración
+# rotas, y su remedio correcto es arreglarlas, nunca reconocerlas.
+#
+# `value` ES OBLIGATORIO Y ES LA GARANTÍA ANTIENVEJECIMIENTO. Fija el
+# número exacto que la persona revisó. Si una ejecución posterior entrega
+# otro valor en ese periodo, el reconocimiento deja de aplicar y se emite
+# un hallazgo `acknowledgement-stale` que bloquea y nombra ambos valores:
+# una aprobación jamás sobrevive en silencio al dato que aprobaba.
+#
+# Cambios en este fichero requieren revisión a cuatro ojos (PRD §9.6,
+# §15.2): son decisiones editoriales con apariencia técnica, no cambios de
+# código rutinarios. Ver .github/CODEOWNERS y .github/BRANCH_PROTECTION.md.
+
+# ---------------------------------------------------------------------------
+# BORRADOR SIN FIRMAR. Redactado por un agente (Claude) bajo autoridad
+# delegada; NINGUNA persona lo ha revisado todavía. Mientras siga así,
+# ocupados-epa permanece bloqueada, ausente del artefacto de exportación y
+# su página ausente con ella. Ese es el estado correcto: hay una decisión
+# humana genuinamente pendiente, y la tubería lo dice en lugar de fabricar
+# la aprobación que está esperando.
+#
+# CIFRAS LEÍDAS EN VIVO (2026-07-30) de la propia fuente por el agente que
+# redacta. Esto es lectura de datos, no una revisión editorial:
+# DATOS_SERIE/EPA387796 devuelve 2020-T1 = 19681,3 y 2020-T2 = 18607,2
+# (miles de personas), una caída intertrimestral de 1074,1 frente al
+# max_delta_abs de 1000 configurado en config/series/ocupados-epa.yaml. La
+# nota de prensa del INE citada abajo lo dice con sus propias palabras: "La
+# ocupación ha bajado en 1.074.000 personas en el segundo trimestre", bajo
+# el epígrafe "Efectos de la COVID-19 en la EPA de este trimestre".
+#
+# POR QUÉ AQUÍ Y NO EN config/rupturas.yaml: ese registro es, por su propia
+# cabecera, un "Registro de rupturas metodológicas". El desplome del empleo
+# del segundo trimestre de 2020 fue economía real, no un cambio de método;
+# anotarlo como ruptura falsearía ese registro y destruiría justamente la
+# distinción sobre la que se sostiene la regla 3 (una ruptura exime el
+# salto porque el salto no es real; aquí el salto SÍ es real).
+#
+# POR QUÉ NO SE SUBE EL UMBRAL: de los 97 saltos intertrimestrales de la
+# historia de la serie (98 observaciones), exactamente UNO supera 1000. La
+# mediana es 152,4, el percentil 95 es 503,3 y el segundo mayor es 770,9
+# (crisis financiera de 2009). El umbral está bien calibrado; subirlo
+# cegaría el guardián permanentemente para no mirar un solo número una vez.
+- id: ocupados-epa-2020-q2-covid
+  series: ocupados-epa
+  period: 2020-Q2
+  rule: rule3-plausibility
+  value: 18607.2
+  signature_status: unsigned
+  drafted_by: "Claude (agente), bajo autoridad delegada — no es una firma"
+  todo: >-
+    PARA FIRMAR. Revisión (1) abrir la nota de prensa del INE citada en
+    source_url; (2) comprobar que la caída de la ocupación del segundo
+    trimestre de 2020 es real y atribuible al confinamiento por la
+    COVID-19, y no a un cambio metodológico ni a un fallo del analizador;
+    (3) comprobar que el valor fijado 18607,2 coincide con el que el INE
+    publica para 2020-T2. Edición, si la revisión es conforme (a)
+    sustituir las tres líneas signature_status, drafted_by y todo por
+    acknowledged_by, con nombre y apellidos, y acknowledged_on, con la
+    fecha de la revisión; (b) borrar de note_md la última frase, la que
+    dice que el registro está pendiente de revisión y firma, y ajustar la
+    primera frase para que describa una conclusión revisada y no una
+    lectura; (c) borrar el bloque de comentario "BORRADOR SIN FIRMAR" de
+    encima de esta entrada. Si la revisión NO es conforme, borrar la
+    entrada entera: un registro rechazado no se deja a medias.
+  note_md: >-
+    Caída intertrimestral de 1074,1 miles de ocupados en el segundo
+    trimestre de 2020, coincidente con el confinamiento por la COVID-19.
+    Las cifras (2020-T1 = 19681,3; 2020-T2 = 18607,2) se leyeron de la
+    serie EPA387796 del INE y de su nota de prensa de 28 de julio de 2020,
+    que titula el epígrafe "Efectos de la COVID-19 en la EPA de este
+    trimestre" y cifra la bajada de la ocupación en 1.074.000 personas.
+    Sobre esa lectura, el salto parece movimiento económico real y no un
+    cambio metodológico ni un error del analizador. ESTE REGISTRO ESTÁ
+    PENDIENTE DE REVISIÓN Y FIRMA HUMANA: nadie lo ha aprobado todavía y
+    no surte ningún efecto sobre la validación.
+  source_url: "https://www.ine.es/daco/daco42/daco4211/epa0220.pdf"

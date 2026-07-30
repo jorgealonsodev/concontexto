@@ -47,6 +47,27 @@ type PublishResult struct {
 	// genuinely successful dispatch sets it.
 	DispatchedAt *time.Time
 
+	// DispatchSkipped is true when no Dispatcher was supplied, i.e. the
+	// operator never asked for one, so nothing was attempted. It is the
+	// discriminator DispatchedAt alone cannot provide (verify-report
+	// CRITICAL-28, link 2): a nil DispatchedAt means BOTH "not configured,
+	// not attempted" and "attempted and failed", and those are opposite
+	// operational facts -- the first is a deliberate configuration, the
+	// second is a broken pipeline that has already raised
+	// alerting.DispatchFailed. Callers log which of the three states a
+	// cycle ended in; before this field existed, app/cmd/concontexto's
+	// runIngest printed "exported and dispatched" for all three, including
+	// the deployed-stack case in which nothing was ever dispatched.
+	//
+	// Deciding whether "not configured" is itself acceptable is the
+	// COMPOSITION's job, not this function's: app/cmd/concontexto resolves
+	// APP_REBUILD_DISPATCH and hands Publish either a real dispatcher, a
+	// nil one (dispatch deliberately off) or one that fails immediately
+	// naming the missing configuration (dispatch expected but unconfigured
+	// -- which then travels the dispatch-failure branch below and alerts).
+	// Publish itself stays a mechanism and never guesses intent.
+	DispatchSkipped bool
+
 	// ArchiveErr records a retention-archiving failure (task 4.9/4.10,
 	// ArchiveArtifact in retention.go) -- best-effort, the same convention
 	// dispatch failure already establishes: a retained-history gap is a
@@ -82,11 +103,15 @@ func manifestDigest(m Manifest) string {
 // in retention.go), and, when dispatch succeeds, hands the deploy pipeline
 // a rebuild trigger. dispatch may be nil (design D-2's "recovery,
 // boot-time self-heal, fixture generation" callers never need one) --
-// Publish then simply skips dispatch, matching the "not configured, not
-// attempted" convention APIConfig/other optional wiring already
-// establishes elsewhere in this codebase. historyDir is the same: empty
-// skips retention entirely rather than archiving into some invented
-// default location.
+// Publish then skips dispatch and RECORDS that it did so on
+// PublishResult.DispatchSkipped, so the caller can tell "deliberately off"
+// from "attempted and failed". Whether nil is legitimate at all is the
+// caller's decision and not Publish's: see DispatchSkipped's own comment
+// and app/cmd/concontexto's buildDispatcher, which returns a dispatcher
+// that fails immediately -- never nil -- when the deployment declares that
+// a rebuild dispatch is expected. historyDir is unchanged: empty skips
+// retention entirely rather than archiving into some invented default
+// location.
 //
 // A dispatch failure is caught, alerted (alerting.DispatchFailed, design
 // D-2: "Dispatch failure is an alert ..., never a retry loop and never
@@ -110,6 +135,7 @@ func Publish(ctx context.Context, deps Deps, dispatch Dispatcher, asOf time.Time
 		result.ArchiveErr = ArchiveArtifact(outDir, historyDir, artifact.Manifest.GeneratedAt, retain)
 	}
 	if dispatch == nil {
+		result.DispatchSkipped = true
 		return result, nil
 	}
 

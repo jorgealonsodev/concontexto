@@ -32,7 +32,6 @@ import (
 	"github.com/jorgealonsodev/concontexto/app/internal/adapters/config"
 	"github.com/jorgealonsodev/concontexto/app/internal/adapters/eurostat"
 	"github.com/jorgealonsodev/concontexto/app/internal/adapters/filestore"
-	"github.com/jorgealonsodev/concontexto/app/internal/adapters/github"
 	"github.com/jorgealonsodev/concontexto/app/internal/adapters/ine"
 	"github.com/jorgealonsodev/concontexto/app/internal/adapters/postgres"
 	"github.com/jorgealonsodev/concontexto/app/internal/adapters/xlsx"
@@ -163,17 +162,12 @@ func cmdIngestRun(ctx context.Context, db postgres.TxBeginner, cfg *config.Confi
 		exportOutputDir(false), buildDispatcher(), stdout, stderr)
 }
 
-// buildDispatcher resolves the rebuild-trigger adapter (design D-2:
-// "adapter adapters/github/ POSTs a repository_dispatch ... with a
-// fine-grained token from env") from GITHUB_DISPATCH_REPO ("owner/repo")
-// and GITHUB_DISPATCH_TOKEN. Deliberately named apart from the
-// GitHub-Actions-reserved GITHUB_* variable family (e.g. GITHUB_REPOSITORY,
-// auto-set inside every Actions runner) so this production-side config
-// can never be shadowed by a value Actions itself injects. Either unset
-// returns nil -- publishing.Publish already treats a nil Dispatcher as
-// "not configured, skip dispatch" (trigger.go), matching this codebase's
-// established "not configured, not attempted" convention (buildSourceClient's
-// own nil-checked src.API, for instance) rather than failing the ingest.
+// buildDispatcher, which resolves the rebuild-trigger adapter this
+// function passes to runIngest, now lives in rebuild_dispatch.go together
+// with the APP_REBUILD_DISPATCH mode that decides whether an unconfigured
+// dispatch is a deliberate opt-out or a fault (verify-report CRITICAL-28,
+// link 2).
+//
 // retentionHistoryDir resolves where publishing.Publish archives each
 // export snapshot for rollback (task 4.9/4.10, design's own
 // Migration/Rollout note: "last N artifacts retained"). Deliberately a
@@ -206,16 +200,6 @@ func retainedArtifacts(logs io.Writer) int {
 		return publishing.DefaultRetainedArtifacts
 	}
 	return n
-}
-
-func buildDispatcher() publishing.Dispatcher {
-	repo := os.Getenv("GITHUB_DISPATCH_REPO")
-	token := os.Getenv("GITHUB_DISPATCH_TOKEN")
-	if repo == "" || token == "" {
-		return nil
-	}
-	client := github.NewClient(repo, token, nil)
-	return client.Dispatch
 }
 
 // buildSourceClient resolves the indicators.SourceClient ref's kind
@@ -505,7 +489,16 @@ func runIngest(ctx context.Context, db postgres.TxBeginner, cfg *config.Config, 
 		if err != nil {
 			fmt.Fprintf(stderr, "ingest: publish: %v\n", err)
 		} else {
-			fmt.Fprintf(stdout, "ingest: publish: exported and dispatched to %s (%s)\n", outDir, exportReason(published, failedValidation))
+			// Names which of the three dispatch states this cycle ended in
+			// rather than claiming a dispatch unconditionally (verify-report
+			// CRITICAL-28, link 2) -- see publishOutcomeMessage in
+			// rebuild_dispatch.go.
+			message, fault := publishOutcomeMessage(outDir, exportReason(published, failedValidation), result)
+			if fault {
+				fmt.Fprintln(stderr, message)
+			} else {
+				fmt.Fprintln(stdout, message)
+			}
 			if result.ArchiveErr != nil {
 				fmt.Fprintf(stderr, "ingest: publish: archiving retained artifact: %v\n", result.ArchiveErr)
 			}

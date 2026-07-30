@@ -30,6 +30,16 @@ type Config struct {
 	// government changes in their own file with no per-entry group field
 	// since the whole file is exactly one group).
 	Events []EventConfig
+
+	// Acknowledgements is every entry in config/reconocimientos.yaml (spec
+	// data-validation, "Acknowledged findings") — the editorial record
+	// that a named human reviewed one specific blocking validation finding
+	// and confirmed the underlying datum. Reconciled into
+	// validation_acknowledgement by ingestion.ReconcileEditorialConfig
+	// alongside Breaks and Events, in the same transaction. See
+	// acknowledgement.go for the whole rationale, including why this is a
+	// registry of its own and not a break.
+	Acknowledgements []AcknowledgementConfig
 }
 
 // BreakConfig is one config/rupturas.yaml entry (PRD §9.6, filename fixed

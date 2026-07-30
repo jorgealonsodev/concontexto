@@ -15,6 +15,7 @@
 package pipelinelog
 
 import (
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -41,9 +42,25 @@ type Entry struct {
 	Verdicts []string
 
 	// FailedRules is the distinct set of rule names that produced a
-	// blocking finding -- empty on a Publish outcome, by construction
-	// (spec "a failed run additionally records which rules failed").
+	// blocking finding the run did NOT resolve -- empty on a Publish
+	// outcome, by construction (spec "a failed run additionally records
+	// which rules failed"). A finding a human acknowledged is not a failed
+	// rule of a run that published; it appears in Acknowledgements below
+	// and, verbatim, in Verdicts.
 	FailedRules []string
+
+	// Acknowledgements names every finding a human acknowledgement
+	// resolved, with the record and the person that resolved it (spec
+	// data-validation, "An acknowledged publish is distinguishable from a
+	// clean one").
+	//
+	// This attribute, together with an `outcome` of "publish-overridden"
+	// rather than "publish", is what makes an override impossible to
+	// mistake for a pass in the structured log: a clean run has neither,
+	// and no run can have one without the other. An operator grepping
+	// their pipeline logs for `acknowledgements` gets exactly the set of
+	// runs that proceeded because a person said so.
+	Acknowledgements []string
 }
 
 // Attrs converts e into a fixed-order []slog.Attr for
@@ -66,7 +83,29 @@ func Attrs(e Entry) []slog.Attr {
 	if len(e.FailedRules) > 0 {
 		attrs = append(attrs, slog.Any("failed_rules", e.FailedRules))
 	}
+	if len(e.Acknowledgements) > 0 {
+		attrs = append(attrs, slog.Any("acknowledgements", e.Acknowledgements))
+	}
 	return attrs
+}
+
+// Acknowledgements formats every override as
+// "rule at period: overridden by acknowledgement <id>, acknowledged by
+// <person>", in the order the gate recorded them.
+//
+// The wording is deliberately the word "overridden", not "passed",
+// "waived" or "approved": an operator reading this line must be left in no
+// doubt that a guard fired and a named human decided to proceed anyway.
+func Acknowledgements(overrides []validation.Override) []string {
+	if len(overrides) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(overrides))
+	for _, o := range overrides {
+		out = append(out, fmt.Sprintf("%s at %s: overridden by acknowledgement %q, acknowledged by %s",
+			o.Finding.Rule, o.Finding.Period, o.AcknowledgementID, o.AcknowledgedBy))
+	}
+	return out
 }
 
 // Verdicts formats every finding as "rule: severity: message", in the

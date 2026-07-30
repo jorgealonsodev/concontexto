@@ -33,6 +33,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -405,8 +406,46 @@ func startSchedulerLoop(ctx context.Context, pool *pgxpool.Pool, cfg *config.Con
 // a permission error) is different: this codebase's own best-effort
 // convention for every other watchdog/alert path is to log and skip that
 // tick rather than risk raising or suppressing an alert off garbage data.
+// THE SECOND COMPARISON (verify-report CRITICAL-28, link 3: "No
+// deploy-completed instant exists anywhere"). The check described above can
+// only ever observe the EXPORT step, because the manifest it reads is the
+// one publishing.Publish wrote seconds earlier in the same call -- a
+// dispatch that was never sent, a rebuild that failed and a deploy that
+// never landed are all invisible to it. The live stack sat in exactly that
+// state: /data-derived advanced every cycle while the pre-rendered pages
+// stayed frozen at the image build, and nothing raised a sound.
+//
+// deployedManifestPath (the image's own build manifest, written by the
+// Dockerfile from the artifact the pages were RENDERED from) supplies the
+// missing instant. It cannot change without a new image, and a new image
+// cannot arrive without the dispatch, the CI rebuild and the Portainer
+// redeploy all having succeeded -- so one comparison covers every remaining
+// link at once, from inside the container, with no call to GitHub, to
+// Portainer or to the public site.
+//
+// It declines to fire in two cases, both deliberate:
+//
+//   - Rebuild dispatch is deliberately off (APP_REBUILD_DISPATCH, see
+//     rebuild_dispatch.go). Divergence is then the operator's own stated
+//     intent, not a fault, and paging for it would train them to ignore
+//     this alert.
+//   - The deployed artifact is UNKNOWN -- no build manifest, i.e. a bare
+//     binary or an image built before the stamp existed. Unknown is not
+//     stale, and reporting a deploy failure this process cannot observe
+//     would be the same fabricated verdict the whole remediation exists to
+//     avoid. Which of the two the process is in is recorded once, at
+//     construction, so an operator can see whether the check is live rather
+//     than having to infer it from silence.
+//
+// The two comparisons never double-page: a stale EXPORT returns before the
+// deploy comparison runs, because until the export catches up there is no
+// current artifact for a rebuild to be late for.
 func publishLatencyWatchdog(ctx context.Context, budget time.Duration, logs io.Writer) func(sourceID string, now, lastSuccess time.Time) {
 	manifestPath := filepath.Join(exportOutputDir(false), "manifest.json")
+	deployedPath := deployedManifestPath()
+	rebuildExpected := rebuildDispatchExpected()
+	logDeployWatchdogState(deployedPath, rebuildExpected)
+
 	return func(sourceID string, now, lastSuccess time.Time) {
 		var generatedAt time.Time
 		if m, err := publishing.ReadManifest(manifestPath); err == nil {
@@ -419,8 +458,80 @@ func publishLatencyWatchdog(ctx context.Context, budget time.Duration, logs io.W
 			if err := alerting.PublishLatencyBreach(ctx, alerting.DefaultSink(), sourceID, "", elapsed); err != nil {
 				fmt.Fprintln(logs, "serve: scheduler: raising publish-latency-breach alert for", sourceID, ":", err)
 			}
+			return
+		}
+
+		if !rebuildExpected {
+			return
+		}
+		deployed, err := publishing.ReadManifest(deployedPath)
+		if err != nil {
+			// Unknown, never stale. Only a genuinely unreadable (as opposed
+			// to absent) build manifest is worth a line, matching the
+			// best-effort convention the live-manifest read above already
+			// establishes.
+			if !errors.Is(err, os.ErrNotExist) {
+				fmt.Fprintln(logs, "serve: scheduler: reading the deployed build manifest for the rebuild watchdog:", err)
+			}
+			return
+		}
+		if breached, elapsed := scheduler.RebuildLatencyBreached(now, generatedAt, deployed.GeneratedAt, budget); breached {
+			if err := alerting.PublishLatencyBreach(ctx, alerting.DefaultSink(), sourceID, "", elapsed); err != nil {
+				fmt.Fprintln(logs, "serve: scheduler: raising publish-latency-breach alert for", sourceID, ":", err)
+			}
 		}
 	}
+}
+
+// deployedManifestPath resolves where the running image records the
+// artifact its pre-rendered pages were BUILT from (APP_BUILD_MANIFEST,
+// defaulting to the path the Dockerfile writes).
+//
+// /web/build-manifest.json is deliberately NOT under STATIC_ROOT
+// (/web/dist): docker-compose.yml mounts the export_artifact volume over
+// /web/dist/data-derived, so a stamp written there would either be shadowed
+// by the volume or served to readers as though it were part of the
+// published artifact. Outside dist it is shipped by the image, replaced only
+// by a deploy, and reachable by no HTTP route.
+func deployedManifestPath() string {
+	if p := os.Getenv("APP_BUILD_MANIFEST"); p != "" {
+		return p
+	}
+	return "/web/build-manifest.json"
+}
+
+// logDeployWatchdogState records once, at start-up, whether the
+// deploy-completed comparison is actually live -- so "no rebuild alert has
+// ever fired" can be read as "the deploy is keeping up" rather than "the
+// check was never running", which are the two readings CRITICAL-28 showed
+// are impossible to tell apart from silence alone.
+func logDeployWatchdogState(deployedPath string, rebuildExpected bool) {
+	switch {
+	case !rebuildExpected:
+		slog.Info("deploy-completed watchdog is inactive: rebuild dispatch is off, so divergence between the published artifact and the deployed pages is expected and will not be alerted",
+			slog.String("component", deployWatchdogComponent),
+			slog.String("state", "inactive"),
+			slog.String("reason", "APP_REBUILD_DISPATCH is unset or off"))
+	case !fileExists(deployedPath):
+		slog.Warn("deploy-completed watchdog is inactive: this build carries no build manifest, so the artifact the deployed pages were rendered from is unknown and a stalled rebuild cannot be detected",
+			slog.String("component", deployWatchdogComponent),
+			slog.String("state", "inactive"),
+			slog.String("reason", "no build manifest at "+deployedPath))
+	default:
+		slog.Info("deploy-completed watchdog is active: the published artifact will be compared against the artifact the deployed pages were rendered from",
+			slog.String("component", deployWatchdogComponent),
+			slog.String("state", "active"),
+			slog.String("build_manifest", deployedPath))
+	}
+}
+
+// deployWatchdogComponent tags the records above, mirroring
+// rebuildDispatchComponent's own convention in rebuild_dispatch.go.
+const deployWatchdogComponent = "deploy-watchdog"
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 // publishLatencyBudget resolves APP_PUBLISH_LATENCY_BUDGET (a Go duration

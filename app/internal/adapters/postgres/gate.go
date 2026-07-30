@@ -47,6 +47,26 @@ const (
 	// documented, never erased). There is no CHECK constraint on
 	// ingestion_run.outcome, so adding this value needed no migration.
 	RunOutcomePending RunOutcome = "pending"
+
+	// RunOutcomeSucceededWithAcknowledgement is a run that published ONLY
+	// because a human acknowledgement resolved a finding that would
+	// otherwise have blocked it (spec data-validation, "An acknowledged
+	// publish is distinguishable from a clean one").
+	//
+	// It is a distinct persisted value, not a flag alongside 'succeeded',
+	// because the requirement is that the RECORDED OUTCOME distinguish the
+	// two: querying ingestion_run must be enough to tell "this series
+	// validated" from "a human overrode a guard so this series could
+	// proceed" -- months later, with no log retention and nobody's memory
+	// involved. Like 'pending' it needed no migration; ingestion_run.outcome
+	// carries no CHECK constraint.
+	//
+	// It IS a success for every purpose that asks "did the pipeline produce
+	// a datum": SeriesValidationOutcome counts it alongside 'succeeded'
+	// when resolving PRD §6.1.3's "last correct update" banner, because the
+	// run did write an observation a named human vouched for. What it must
+	// never do is disappear into 'succeeded'.
+	RunOutcomeSucceededWithAcknowledgement RunOutcome = "succeeded-with-acknowledgement"
 )
 
 // recordRunOutcome updates an already-existing ingestion_run row's
@@ -103,7 +123,23 @@ var _ ObservationWriterPort = (*ObservationWriter)(nil)
 // *ObservationWriter -- see ApplyGateWithWriter for the test-only
 // injectable-writer variant.
 func ApplyGate(ctx context.Context, db TxBeginner, ingestionRunID int64, findings []validation.Finding, candidates []ObservationInput) (GateApplyResult, error) {
-	return applyGate(ctx, db, NewObservationWriter(db), ingestionRunID, findings, candidates)
+	return applyGate(ctx, db, NewObservationWriter(db), ingestionRunID, validation.Gate(findings), candidates)
+}
+
+// ApplyGateVerdict is ApplyGate for a caller that has ALREADY made the
+// pure decision -- specifically ingestion.IngestSeries, which calls
+// validation.GateWithAcknowledgements because resolving the editorial
+// acknowledgement registry needs the series id, the run's candidate
+// observations and the rows read out of validation_acknowledgement, none
+// of which this adapter has any business knowing about.
+//
+// This keeps the split this file's doc comment describes intact rather
+// than eroding it: the DECISION stays pure and in the application layer,
+// and this function remains only the EFFECT. ApplyGate above is now simply
+// the no-acknowledgements case of it, so every existing call site keeps
+// its exact previous behaviour.
+func ApplyGateVerdict(ctx context.Context, db TxBeginner, ingestionRunID int64, verdict validation.GateResult, candidates []ObservationInput) (GateApplyResult, error) {
+	return applyGate(ctx, db, NewObservationWriter(db), ingestionRunID, verdict, candidates)
 }
 
 // ApplyGateWithWriter is ApplyGate's injectable-writer variant, used only
@@ -114,11 +150,11 @@ func ApplyGate(ctx context.Context, db TxBeginner, ingestionRunID int64, finding
 // app/internal/ingestion.IngestSeries always calls ApplyGate, which
 // always constructs the real writer.
 func ApplyGateWithWriter(ctx context.Context, db DBTX, writer ObservationWriterPort, ingestionRunID int64, findings []validation.Finding, candidates []ObservationInput) (GateApplyResult, error) {
-	return applyGate(ctx, db, writer, ingestionRunID, findings, candidates)
+	return applyGate(ctx, db, writer, ingestionRunID, validation.Gate(findings), candidates)
 }
 
-func applyGate(ctx context.Context, db DBTX, writer ObservationWriterPort, ingestionRunID int64, findings []validation.Finding, candidates []ObservationInput) (GateApplyResult, error) {
-	result := GateApplyResult{GateResult: validation.Gate(findings)}
+func applyGate(ctx context.Context, db DBTX, writer ObservationWriterPort, ingestionRunID int64, verdict validation.GateResult, candidates []ObservationInput) (GateApplyResult, error) {
+	result := GateApplyResult{GateResult: verdict}
 
 	if result.Outcome == validation.GateBlock {
 		if err := recordRunOutcome(ctx, db, ingestionRunID, RunOutcomeValidationFailed); err != nil {
@@ -135,7 +171,16 @@ func applyGate(ctx context.Context, db DBTX, writer ObservationWriterPort, inges
 		result.Published = append(result.Published, obs)
 	}
 
-	if err := recordRunOutcome(ctx, db, ingestionRunID, RunOutcomeSucceeded); err != nil {
+	// An acknowledged publish writes exactly the same observations a clean
+	// one does -- the datum is the datum -- and differs only in what the
+	// run RECORDS about how it got there. Keeping the difference in the
+	// outcome column, rather than in what is written, is what lets the two
+	// be told apart forever without changing a single published number.
+	outcome := RunOutcomeSucceeded
+	if result.Outcome == validation.GatePublishOverridden {
+		outcome = RunOutcomeSucceededWithAcknowledgement
+	}
+	if err := recordRunOutcome(ctx, db, ingestionRunID, outcome); err != nil {
 		return result, err
 	}
 	return result, nil

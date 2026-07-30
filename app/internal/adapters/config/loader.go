@@ -38,7 +38,43 @@ func Load(fsys fs.FS) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Config{Sources: sources, Series: series, Breaks: breaks, Events: events}, nil
+	acknowledgements, err := loadAcknowledgements(fsys)
+	if err != nil {
+		return nil, err
+	}
+	return &Config{Sources: sources, Series: series, Breaks: breaks, Events: events, Acknowledgements: acknowledgements}, nil
+}
+
+// acknowledgementsFile is the editorial acknowledgement registry's fixed
+// filename. Spanish, like rupturas.yaml/eventos.yaml/gobiernos.yaml: PRD
+// §9.6 fixes those three names in Spanish and this file joins them as a
+// sibling editorial registry under the same four-eyes review discipline,
+// so a mixed-language config/ directory would make the set look like two
+// unrelated things. Field names inside stay English, exactly as they do in
+// the other three.
+const acknowledgementsFile = "reconocimientos.yaml"
+
+// loadAcknowledgements parses config/reconocimientos.yaml — a bare
+// top-level YAML sequence of AcknowledgementConfig entries. A missing file
+// is not an error, the same convention loadBreaks uses: a deployment with
+// nothing acknowledged is the ordinary case and must stay the zero-config
+// default.
+func loadAcknowledgements(fsys fs.FS) ([]AcknowledgementConfig, error) {
+	present, err := fileExists(fsys, acknowledgementsFile)
+	if err != nil {
+		return nil, err
+	}
+	if !present {
+		return nil, nil
+	}
+	var out []AcknowledgementConfig
+	if err := decodeYAML(fsys, acknowledgementsFile, &out); err != nil {
+		return nil, err
+	}
+	for i := range out {
+		out[i].FilePath = acknowledgementsFile
+	}
+	return out, nil
 }
 
 func loadSources(fsys fs.FS) (map[string]SourceConfig, error) {

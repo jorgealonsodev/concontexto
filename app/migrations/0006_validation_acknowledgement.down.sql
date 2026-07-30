@@ -1,0 +1,12 @@
+-- 0006_validation_acknowledgement.down.sql
+--
+-- Reverses 0006_validation_acknowledgement.up.sql exactly. The table is a
+-- projection of config/reconocimientos.yaml, reconciled on every `ingest
+-- --reconcile`, so dropping it loses no authored fact: the registry
+-- itself, with its full provenance, lives in the repository. The index
+-- goes with the table.
+--
+-- What DOES change while the table is absent is behaviour, not data: no
+-- acknowledgement resolves, so a series whose only blocking finding was
+-- acknowledged blocks again. That is the correct direction to fail.
+DROP TABLE validation_acknowledgement;

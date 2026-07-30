@@ -283,6 +283,19 @@ func IngestSeries(ctx context.Context, db postgres.TxBeginner, store *filestore.
 		findings = append(findings, rule(seriesCtx, incoming)...)
 	}
 
+	// The editorial acknowledgement registry (spec data-validation,
+	// "Acknowledged findings"), resolved from the database exactly like
+	// breaks are, and for the same reason: ReconcileEditorialConfig
+	// projects config/reconocimientos.yaml into validation_acknowledgement
+	// ahead of any ingest run, and this pipeline never reads editorial YAML
+	// itself. A series with nothing acknowledged resolves to an empty
+	// (nil-safe) slice, so every series behaves exactly as it did before
+	// this registry existed.
+	acknowledgements, err := resolveAcknowledgements(ctx, db, cfg.SeriesID)
+	if err != nil {
+		return Result{}, fmt.Errorf("ingestion: resolving acknowledgements for %s: %w", cfg.SeriesID, err)
+	}
+
 	candidates := make([]postgres.ObservationInput, 0, len(incoming))
 	for _, o := range incoming {
 		candidates = append(candidates, postgres.ObservationInput{
@@ -296,12 +309,52 @@ func IngestSeries(ctx context.Context, db postgres.TxBeginner, store *filestore.
 		})
 	}
 
-	result, err := postgres.ApplyGate(ctx, db, runID, findings, candidates)
+	// The pure verdict is computed HERE, not inside ApplyGate, because
+	// resolving acknowledgements needs the series id and this run's
+	// candidate observations -- neither of which the postgres adapter has
+	// any business knowing about. ApplyGateVerdict keeps its half of the
+	// original split (the EFFECT: write, or write nothing, and record the
+	// outcome) unchanged; see postgres/gate.go's doc comment.
+	verdict := validation.GateWithAcknowledgements(cfg.SeriesID, findings, acknowledgements, incoming)
+
+	result, err := postgres.ApplyGateVerdict(ctx, db, runID, verdict, candidates)
 	if err != nil {
 		return Result{}, fmt.Errorf("ingestion: applying the publish gate for %s: %w", cfg.SeriesID, err)
 	}
-	logAndAlertRun(ctx, cfg, runID, archived.Hash, result, findings, startedAt)
+	logAndAlertRun(ctx, cfg, runID, archived.Hash, result, result.Findings, startedAt)
 	return Result{GateApplyResult: result, RunID: runID}, nil
+}
+
+// resolveAcknowledgements resolves seriesID's active
+// validation_acknowledgement rows into the pure validation.Acknowledgement
+// values the gate consumes -- the exact mirror of resolveBreaks. db
+// satisfies postgres.DBTX, so this runs inside IngestSeries's own handle
+// without opening a second transaction.
+//
+// The conversion drops the row's config_digest, acknowledged_on and
+// retired_at: the gate's decision must depend only on the scope, the
+// pinned value and the provenance it reports, never on when the record was
+// authored. Those columns exist for audit, and audit reads the table.
+func resolveAcknowledgements(ctx context.Context, db postgres.DBTX, seriesID string) ([]validation.Acknowledgement, error) {
+	rows, err := postgres.ResolveActiveAcknowledgementsForSeries(ctx, db, seriesID)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	out := make([]validation.Acknowledgement, 0, len(rows))
+	for _, r := range rows {
+		ack := validation.Acknowledgement{
+			ID: r.AckKey, SeriesID: r.SeriesID, Period: r.Period, Rule: r.Rule,
+			Value: r.Value, By: r.AcknowledgedBy, Note: r.NoteMD,
+		}
+		if r.SourceURL != nil {
+			ack.SourceURL = *r.SourceURL
+		}
+		out = append(out, ack)
+	}
+	return out, nil
 }
 
 // mapObservationStatus converts the shared domain classification
@@ -392,16 +445,26 @@ func sourceStatusPtr(token string) *string {
 // wants different behaviour swaps the default (slog.SetDefault,
 // alerting.SetDefaultSink) exactly like this batch's own tests do.
 func logAndAlertRun(ctx context.Context, cfg SeriesIngestConfig, runID int64, rawFileHash string, result postgres.GateApplyResult, findings []validation.Finding, startedAt time.Time) {
-	failedRules := pipelinelog.FailedRules(findings)
+	// failedRules is derived from the UNRESOLVED findings, not from every
+	// finding: a finding a human acknowledged did not fail this run, and
+	// reporting it under failed_rules on a run that published would make
+	// the log contradict its own outcome. The full finding set still
+	// reaches the log through Verdicts, at its original severity, so
+	// nothing is hidden -- only correctly attributed.
+	failedRules := pipelinelog.FailedRules(result.UnresolvedFindings())
 
+	// An acknowledged publish logs at WARN, not INFO. It is not a failure,
+	// but it is not a routine success either: a guard was overridden, and
+	// an operator scanning at WARN and above must see that happen.
 	level := slog.LevelInfo
-	if result.Outcome == validation.GateBlock {
+	if result.Outcome == validation.GateBlock || result.Outcome == validation.GatePublishOverridden {
 		level = slog.LevelWarn
 	}
 	slog.Default().LogAttrs(ctx, level, "ingestion run completed", pipelinelog.Attrs(pipelinelog.Entry{
 		RunID: runID, Source: cfg.SourceID, Dataset: cfg.DatasetID, Series: cfg.SeriesID,
 		Outcome: string(result.Outcome), RawFileHash: rawFileHash, Duration: time.Since(startedAt),
 		Verdicts: pipelinelog.Verdicts(findings), FailedRules: failedRules,
+		Acknowledgements: pipelinelog.Acknowledgements(result.Overridden),
 	})...)
 
 	if result.Outcome == validation.GateBlock {

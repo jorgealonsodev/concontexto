@@ -25,6 +25,19 @@ var fase0Tables = []string{
 	"ingestion_run", "raw_file", "download_attempt", "series_break", "event",
 }
 
+// fase1Tables are the tables Fase 1 adds ON TOP of the Fase 0 set. Kept
+// as a separate list, rather than appended to fase0Tables, so decision
+// D3's "no more, no fewer" claim about Fase 0 itself stays literally
+// asserted and a later phase cannot quietly dilute it: the total is still
+// a closed set, and an unaccounted table still fails this test.
+//
+//   - validation_acknowledgement (migration 0006): the editorial
+//     acknowledgement registry, spec data-validation's "Acknowledged
+//     findings". It is what finally resolves
+//     SeverityBlockRequiresSignoff, a severity declared in Fase 0 that
+//     nothing in Fase 0 could ever clear.
+var fase1Tables = []string{"validation_acknowledgement"}
+
 // excludedTables are the four capabilities explicitly cut from Fase 0:
 // no Fase 0 consumer references them.
 var excludedTables = []string{"indicator_page", "verification", "glossary", "correction"}
@@ -64,7 +77,7 @@ func TestMigrationUp_CreatesExactlyTheFase0TableSet(t *testing.T) {
 
 	names := publicTableNames(t, ctx, tx)
 
-	for _, want := range fase0Tables {
+	for _, want := range append(append([]string{}, fase0Tables...), fase1Tables...) {
 		if !names[want] {
 			t.Errorf("expected table %q to exist after migrate up, it does not", want)
 		}
@@ -74,8 +87,9 @@ func TestMigrationUp_CreatesExactlyTheFase0TableSet(t *testing.T) {
 			t.Errorf("table %q must NOT exist (excluded by decision D3), but it does", forbidden)
 		}
 	}
-	if len(names) != len(fase0Tables) {
-		t.Errorf("expected exactly %d public tables, got %d: %v", len(fase0Tables), len(names), names)
+	if want := len(fase0Tables) + len(fase1Tables); len(names) != want {
+		t.Errorf("expected exactly %d public tables (%d Fase 0 + %d Fase 1), got %d: %v",
+			want, len(fase0Tables), len(fase1Tables), len(names), names)
 	}
 }
 

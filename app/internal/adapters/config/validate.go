@@ -53,6 +53,11 @@ func Validate(cfg *Config) []Violation {
 		violations = append(violations, validateEvent(ev)...)
 	}
 	violations = append(violations, validateDuplicateEventIDs(cfg.Events)...)
+	for _, ack := range cfg.Acknowledgements {
+		violations = append(violations, validateAcknowledgement(cfg, ack)...)
+	}
+	violations = append(violations, validateDuplicateAcknowledgementIDs(cfg.Acknowledgements)...)
+	violations = append(violations, validateDuplicateAcknowledgementScopes(cfg.Acknowledgements)...)
 	return violations
 }
 

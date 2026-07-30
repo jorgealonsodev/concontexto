@@ -24,6 +24,31 @@ rebuild + redeploy (see `config_embed_test.go` at the repository root).
   methodological note carries `date_status: unconfirmed` + `todo` instead
   of a guessed date; ReconcileEditorialConfig never projects such an entry
   into the database (see `app/internal/ingestion/reconcile.go`).
+- `reconocimientos.yaml` — the editorial acknowledgement registry (spec
+  data-validation, "Acknowledged findings"), reconciled by
+  `ingestion.ReconcileEditorialConfig` into `validation_acknowledgement`.
+  One entry records that a **named human** reviewed **one specific**
+  blocking validation finding and confirmed the underlying datum; the
+  publish gate then treats that finding as informational and records the
+  run as `succeeded-with-acknowledgement`, never as a plain success.
+  An entry's scope is exactly one series, one period and one rule, matched
+  by exact equality — the schema has no syntax for "every period" or
+  "every rule", and only `rule3-plausibility` and `rule4-revision` admit
+  one at all. The required `value` field pins the number the reviewer
+  looked at, so a later revision of that datum invalidates the
+  acknowledgement (raising a blocking `acknowledgement-stale` finding)
+  rather than silently inheriting the approval.
+  **A record's authority is the human signature.** `signature_status:
+  unsigned` marks a draft — research checked in for review, carrying
+  `drafted_by` and `todo` and *no* signature. A draft is never projected
+  into the database and resolves nothing, the same discipline
+  `date_status: unconfirmed` applies in `rupturas.yaml`: never project an
+  unverified fact. `validate-config` rejects a placeholder signature and
+  rejects any record that is both a draft and signed. The single entry
+  shipped today is **unsigned**, so `ocupados-epa` remains blocked until a
+  person reviews and signs it. See
+  `app/internal/adapters/config/acknowledgement.go` and
+  `app/internal/ingestion/validation/acknowledgement.go`.
 - `embed-marker.txt` — a fixed-content fixture with no data meaning of
   its own; it exists only so `config_embed_test.go` can prove the
   embedded bytes are unaffected by an on-disk mutation after compile.

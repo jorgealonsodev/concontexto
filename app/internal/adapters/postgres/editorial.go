@@ -154,34 +154,56 @@ func reconcileBreaksTx(ctx context.Context, tx DBTX, desired []SeriesBreakInput)
 	return counts, nil
 }
 
-// ReconcileEditorial reconciles both series_break and event inside ONE
-// transaction (task: closing PR 7a's disclosed gap — spec
-// editorial-config's "A failed reconcile leaves no partial state" scenario
-// is written against ONE reconcile, not "the breaks half of one
-// reconcile"; two independent top-level transactions could leave an
-// already-committed breaks change durable while the events half failed).
-// It reuses reconcileBreaksTx/reconcileEventsTx (the same per-table diff
-// logic ReconcileBreaks/ReconcileEvents use) against a single shared tx,
-// so a natural-key collision in EITHER table rolls back BOTH.
-func ReconcileEditorial(ctx context.Context, db TxBeginner, breaks []SeriesBreakInput, events []EventInput) (ReconcileCounts, ReconcileCounts, error) {
+// EditorialCounts is one ReconcileEditorial call's effect, one
+// ReconcileCounts per reconciled table.
+//
+// It replaces the previous (ReconcileCounts, ReconcileCounts, error)
+// return, which could not absorb a third editorial table without every
+// call site changing shape anyway. Naming the tables also removes the
+// positional ambiguity a third bare return value would have introduced.
+type EditorialCounts struct {
+	Breaks           ReconcileCounts
+	Events           ReconcileCounts
+	Acknowledgements ReconcileCounts
+}
+
+// ReconcileEditorial reconciles series_break, event AND
+// validation_acknowledgement inside ONE transaction (task: closing PR 7a's
+// disclosed gap — spec editorial-config's "A failed reconcile leaves no
+// partial state" scenario is written against ONE reconcile, not "the
+// breaks half of one reconcile"; two independent top-level transactions
+// could leave an already-committed breaks change durable while the events
+// half failed). It reuses reconcileBreaksTx/reconcileEventsTx/
+// reconcileAcknowledgementsTx (the same per-table diff logic each table's
+// own exported entry point uses) against a single shared tx, so a
+// natural-key collision in ANY of the three rolls back ALL of them.
+//
+// validation_acknowledgement joined this transaction rather than getting
+// one of its own for exactly the reason the events half did: an
+// acknowledgement resolves a finding about a series whose breaks are
+// reconciled in the same pass, and a half-applied editorial state is a
+// state no reviewer ever approved.
+func ReconcileEditorial(ctx context.Context, db TxBeginner, breaks []SeriesBreakInput, events []EventInput, acknowledgements []AcknowledgementInput) (EditorialCounts, error) {
 	tx, err := db.Begin(ctx)
 	if err != nil {
-		return ReconcileCounts{}, ReconcileCounts{}, fmt.Errorf("postgres: beginning editorial reconcile: %w", err)
+		return EditorialCounts{}, fmt.Errorf("postgres: beginning editorial reconcile: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	breakCounts, err := reconcileBreaksTx(ctx, tx, breaks)
-	if err != nil {
-		return ReconcileCounts{}, ReconcileCounts{}, err
+	var counts EditorialCounts
+	if counts.Breaks, err = reconcileBreaksTx(ctx, tx, breaks); err != nil {
+		return EditorialCounts{}, err
 	}
-	eventCounts, err := reconcileEventsTx(ctx, tx, events)
-	if err != nil {
-		return ReconcileCounts{}, ReconcileCounts{}, err
+	if counts.Events, err = reconcileEventsTx(ctx, tx, events); err != nil {
+		return EditorialCounts{}, err
+	}
+	if counts.Acknowledgements, err = reconcileAcknowledgementsTx(ctx, tx, acknowledgements); err != nil {
+		return EditorialCounts{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return ReconcileCounts{}, ReconcileCounts{}, fmt.Errorf("postgres: committing editorial reconcile: %w", err)
+		return EditorialCounts{}, fmt.Errorf("postgres: committing editorial reconcile: %w", err)
 	}
-	return breakCounts, eventCounts, nil
+	return counts, nil
 }
 
 func nullableString(s string) *string {

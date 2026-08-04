@@ -135,12 +135,11 @@ describe("IndicatorChart", () => {
   // ── The chips answer the same window the marks do ────────────────────────
   //
   // Measured in a real browser before it was written down: on
-  // /indicador/tasa-de-paro-epa narrowed to "Desde 2018" the drawing marked
-  // two policy measures and the chip row beneath it listed three, naming a
-  // 2012 reform as though it were in view. The same held for `governments`
-  // and `exogenous`, and `governments` was inconsistent even at the FULL
-  // range — six chips over three rules, because three investitures predate
-  // that series' first observation.
+  // /indicador/tasa-de-paro-epa narrowed to "Desde 2018" the drawing dropped
+  // the 2008-2013 crisis rail and the chip row beneath it went on naming the
+  // crisis as though it were in view. `governments` was inconsistent even at
+  // the FULL range — six chips over three rules, because three investitures
+  // predate that series' first observation.
   //
   // These tests hold the STATIC half, which is also the no-JS baseline: it
   // has no range control, so its window is always the whole series and these
@@ -195,12 +194,11 @@ describe("IndicatorChart", () => {
       ],
     };
     const html = await container.renderToString(IndicatorChart, { props: allOutside });
-    // Every fixture annotation predates 2025, so all four groups vanish and
+    // Every fixture annotation predates 2025, so all three groups vanish and
     // the section they live in goes with them.
     expect(html).not.toContain('data-testid="annotation-toggle-governments"');
     expect(html).not.toContain('data-testid="annotation-toggle-exogenous"');
     expect(html).not.toContain('data-testid="annotation-toggle-milestones"');
-    expect(html).not.toContain('data-testid="annotation-toggle-measures"');
     expect(html).not.toContain('data-testid="chart-annotations"');
   });
 
@@ -422,64 +420,5 @@ describe("IndicatorChart — editorial event spans", () => {
     expect(html).not.toContain('data-testid="chart-legend-event-span"');
     const note = /data-testid="chart-event-spans-note"[^>]*>([\s\S]*?)<\/p>/.exec(html)?.[1] ?? "x";
     expect(note.trim()).toBe("");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// The POLICY-MEASURE group, rendered by the static (no-JavaScript) half.
-//
-// Two things are being held here at once, and they pull in opposite
-// directions. The owner asked to SEE which measures were taken and when, so
-// the layer has to be visible without a gesture. He also agreed the site must
-// not say whether they worked, so everything the layer renders has to stop at
-// an instrument and a date. Each test below pins one side of that.
-describe("IndicatorChart — the policy-measure layer", () => {
-  it("draws the measure's mark without the reader opening anything", async () => {
-    const container = await AstroContainer.create();
-    const html = await container.renderToString(IndicatorChart, { props: { ...fx.indicatorChart } });
-    expect(html).toContain('data-measure-id="medida-ejemplo-2021"');
-    // Both drawings: a phone reader gets the layer too.
-    expect(html).toContain('data-testid="chart-measure-mark"');
-    expect(html).toContain('data-testid="chart-measure-mark-narrow"');
-  });
-
-  it("offers the group its own toggle and chips, beside the other three", async () => {
-    const container = await AstroContainer.create();
-    const html = await container.renderToString(IndicatorChart, { props: { ...fx.indicatorChart } });
-    expect(html).toContain('data-testid="annotation-toggle-measures"');
-    expect(html).toContain('data-testid="annotation-group-content-measures"');
-    expect(html).toContain("medidas de política pública");
-  });
-
-  it("names the instrument and its date beside the chart, and claims nothing further", async () => {
-    const container = await AstroContainer.create();
-    const html = await container.renderToString(IndicatorChart, { props: { ...fx.indicatorChart } });
-    expect(html).toContain('data-testid="chart-measures-note"');
-    expect(html).toContain("entrada en vigor");
-    expect(html).toContain("15 de septiembre de 2021");
-    // The refusal, rendered: the chart states that it represents no relation
-    // between the measures and the series. Delete that clause from `es.ts` and
-    // this fails.
-    expect(html).toContain("no representa ninguna relación");
-  });
-
-  it("teaches the mark's code in the legend, only while a mark is drawn", async () => {
-    const container = await AstroContainer.create();
-    const html = await container.renderToString(IndicatorChart, { props: { ...fx.indicatorChart } });
-    expect(html).toContain('data-testid="chart-legend-measure"');
-
-    const withoutMeasures = {
-      ...fx.indicatorChart,
-      annotations: fx.indicatorChart.annotations!.filter((a) => a.group !== "measures"),
-    };
-    const bare = await container.renderToString(IndicatorChart, { props: withoutMeasures });
-    expect(bare).not.toContain('data-testid="chart-legend-measure"');
-    expect(bare).not.toContain('data-testid="chart-measure-mark"');
-  });
-
-  it("renders no on-drawing label for a measure, so no name sits beside the curve", async () => {
-    const container = await AstroContainer.create();
-    const html = await container.renderToString(IndicatorChart, { props: { ...fx.indicatorChart } });
-    expect(html).not.toContain("chart-measure-label");
   });
 });

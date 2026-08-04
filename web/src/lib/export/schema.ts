@@ -130,7 +130,7 @@ export type ArtifactPageState = z.infer<typeof PageStateSchema>;
  */
 const CalendarDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
-/** The four annotation groups the page is able to render.
+/** The three annotation groups the page is able to render.
  *
  * Deliberately TIGHTER than the Go half, which types `EventRef.Group` as a
  * bare `string` and never constrains its value — `config/loader.go` copies
@@ -139,16 +139,16 @@ const CalendarDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
  * YAML travels all the way into the artifact unchallenged.
  *
  * Tightening it HERE is the only place the mistake becomes visible.
- * `ChartIsland.svelte`'s `groupedAnnotations` walks the known groups
- * and filters each one's entries out of `annotations`; an event carrying an
- * unlisted value matches no group, renders nowhere, and reports nothing. An
+ * `ChartIsland.svelte`'s `groupedAnnotations` walks the three known groups
+ * and filters each one's entries out of `annotations`; an event carrying a
+ * fourth value matches no group, renders nowhere, and reports nothing. An
  * editorial event silently missing from a page is precisely the failure
  * mode the loader contract ("a shape mismatch MUST fail the build loudly")
  * exists to prevent — so the build fails instead. It also means
  * `IndicatorPage.astro` can pass `event.group` straight through, rather
  * than asserting the union with a cast the compiler cannot check.
  */
-export const AnnotationGroupSchema = z.enum(["governments", "exogenous", "milestones", "measures"]);
+export const AnnotationGroupSchema = z.enum(["governments", "exogenous", "milestones"]);
 export type AnnotationGroup = z.infer<typeof AnnotationGroupSchema>;
 
 /** One entry of a series document's `breaks` section — the Go writer's
@@ -184,22 +184,16 @@ export type BreakRef = z.infer<typeof BreakRefSchema>;
  * `dateEnd` and `noteMd`, both `*string` + `omitempty` on the Go side.
  *
  * `dateEnd` absent is the ordinary case, not an edge one: it is how an
- * open-ended entry (a sitting government, an ongoing episode, and every
- * policy measure — a law has a date of entry into force and, as a rule, no
- * end date) is written. `toEventRefs` additionally collapses an empty
- * `noteMd` or `sourceUrl` to nil before marshalling, so the key is absent
- * rather than `""` — hence `.min(1)` under the `.optional()`, which rejects
- * an empty string a drifted writer would have to have gone out of its way
- * to emit.
+ * open-ended entry (a sitting government, an ongoing episode) is written.
+ * `toEventRefs` additionally collapses an empty `noteMd` or `sourceUrl` to
+ * nil before marshalling, so the key is absent rather than `""` — hence
+ * `.min(1)` under the `.optional()`, which rejects an empty string a drifted
+ * writer would have to have gone out of its way to emit.
  *
- * `sourceUrl` is REQUIRED OF A MEASURE and optional here, and the split is
- * deliberate rather than lax. `validate-config` refuses a measure with no
- * citation, in the one place a message can name the offending file and
- * field; the artifact schema's job is to describe every shape the writer can
- * legitimately produce, and a government entry with no document to point at
- * is one of them. Encoding the requirement here as well would mean two
- * places to keep in step, and the one that drifted would be the one that let
- * an uncitable measure through.
+ * `sourceUrl` is the document the registry recorded for the entry, where it
+ * recorded one. Optional, because a change of government has none to point
+ * at; the same `.optional()`-never-`.nullable()` contract every other
+ * optional field on this type keeps.
  */
 export const EventRefSchema = z.object({
   id: z.string().min(1),

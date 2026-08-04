@@ -3,18 +3,16 @@
 // ── THE DEFECT THIS PINS ───────────────────────────────────────────────────
 //
 // Measured in Chromium against real full-history data before it was written
-// down. On /indicador/tasa-de-paro-epa with the measures group open, selecting
-// "Desde 2018":
+// down. On /indicador/tasa-de-paro-epa, selecting "Desde 2018":
 //
-//   series points   98 -> 34   narrowed
-//   measure marks   12 ->  8   narrowed
-//   measure chips    3 ->  3   NOT narrowed, still naming a 2012 reform
+//   series points     98 -> 34   narrowed
+//   exogenous rails    2 ->  1   narrowed
+//   exogenous chips    4 ->  4   NOT narrowed, still naming the 2008-2013 crisis
 //
-// The same held for `governments` (6 chips, 1 mark at that range) and for
-// `exogenous` (4 chips, 1 rail — with a 2008-2013 crisis listed under a chart
-// that starts in 2018). `governments` was inconsistent even at the FULL range:
-// six chips over three rules, because three of that registry's six confirmed
-// investitures predate the series' own first observation.
+// `governments` did the same, and was wrong even at the FULL range: six chips
+// over three rules, because three of that registry's six confirmed
+// investitures predate the series' own first observation. No reader had to
+// touch a control to see that one.
 //
 // ── WHAT THIS FILE CAN AND CANNOT PROVE ────────────────────────────────────
 //
@@ -37,8 +35,9 @@ const POINTS = [
 
 /** One entry per shape the rule has to tell apart, each named so a failing
  * assertion says WHICH shape was misjudged rather than only that a chip was
- * missing. `milestones` and `measures` are the two groups open at first
- * render, so their chips are in the markup without any gesture. */
+ * missing. `milestones` is the one group open at first render, so its chips
+ * are in the markup without any gesture — which is why the shape cases live
+ * there and the per-group absence case uses `governments`. */
 const ANNOTATIONS = [
   // An INSTANT before the series: no mark is drawn for it, so no chip.
   {
@@ -77,22 +76,17 @@ const ANNOTATIONS = [
     dateEnd: "2019-06-30",
     href: null,
   },
-  // A MEASURE before the series, and one inside it.
+  // A change of GOVERNMENT before the series — the exact shape that was wrong
+  // at the default view on the real page. Its group is closed at first render,
+  // so what this entry proves here is the presence or absence of the group's
+  // own toggle rather than the text of a chip.
   {
-    id: "measure-before",
-    group: "measures" as const,
-    name: "Medida anterior a la serie",
-    dateStart: "2012-02-10",
+    id: "government-before",
+    group: "governments" as const,
+    name: "Gobierno anterior a la serie",
+    dateStart: "1996-05-05",
     dateEnd: null,
-    href: "https://www.boe.es/",
-  },
-  {
-    id: "measure-inside",
-    group: "measures" as const,
-    name: "Medida dentro de la serie",
-    dateStart: "2020-03-17",
-    dateEnd: null,
-    href: "https://www.boe.es/",
+    href: null,
   },
 ];
 
@@ -120,8 +114,6 @@ describe("ChartIsland — annotation chips against the visible window", () => {
     const html = renderIsland(ANNOTATIONS);
     expect(html).toContain("Hito dentro de la serie");
     expect(html).not.toContain("Hito anterior a la serie");
-    expect(html).toContain("Medida dentro de la serie");
-    expect(html).not.toContain("Medida anterior a la serie");
   });
 
   it("keeps an interval that merely OVERLAPS the window, and drops one that does not", () => {
@@ -135,29 +127,40 @@ describe("ChartIsland — annotation chips against the visible window", () => {
     expect(html).not.toContain("Periodo anterior a la serie");
   });
 
-  it("the chips name exactly what the generated sentence names, for the measures group", () => {
+  it("the chips name exactly what the generated sentence names", () => {
     // Three lists that can disagree is worse than the bug being fixed. The
-    // sentence is derived from `selectPolicyMeasures` and the chips from
+    // sentence is derived from `selectEventSpans` and the chips from
     // `annotationsInWindow`; this asserts the two answer alike.
     const html = renderIsland(ANNOTATIONS);
-    const note = /data-testid="chart-measures-note"[^>]*>([\s\S]*?)<\/p>/.exec(html);
+    const note = /data-testid="chart-event-spans-note"[^>]*>([\s\S]*?)<\/p>/.exec(html);
     expect(note).not.toBeNull();
-    expect(note![1]).toContain("Medida dentro de la serie");
-    expect(note![1]).not.toContain("Medida anterior a la serie");
+    expect(note![1]).toContain("Periodo que alcanza la serie");
+    expect(note![1]).not.toContain("Periodo anterior a la serie");
   });
 
   it("a group whose every entry falls outside the window has no toggle at all", () => {
     // Absent, not present-and-empty — the rule `availablePresets` and the
     // government filter already follow. This toggle gates the DRAWING, so with
     // nothing in range it is a focus stop that cannot change one pixel.
-    const html = renderIsland(ANNOTATIONS.filter((a) => a.id === "measure-before"));
-    expect(html).not.toContain('data-testid="annotation-toggle-measures"');
+    const html = renderIsland(ANNOTATIONS.filter((a) => a.id === "milestone-before"));
+    expect(html).not.toContain('data-testid="annotation-toggle-milestones"');
     expect(html).not.toContain('data-testid="chart-annotations"');
   });
 
   it("a group keeps its toggle while ONE entry is still in range", () => {
-    const html = renderIsland(ANNOTATIONS.filter((a) => a.group === "measures"));
-    expect(html).toContain('data-testid="annotation-toggle-measures"');
-    expect(html).toContain("Medida dentro de la serie");
+    const html = renderIsland(ANNOTATIONS.filter((a) => a.group === "milestones"));
+    expect(html).toContain('data-testid="annotation-toggle-milestones"');
+    expect(html).toContain("Hito dentro de la serie");
+  });
+
+  it("removes only the group that emptied, and leaves the section standing for the rest", () => {
+    // The rule is PER GROUP, not all-or-nothing, and this is the case the
+    // real page hit at its default view: `governments` had nothing inside the
+    // series while every other group did. A whole-section rule would have
+    // taken the surviving groups down with it.
+    const html = renderIsland(ANNOTATIONS);
+    expect(html).toContain('data-testid="chart-annotations"');
+    expect(html).toContain('data-testid="annotation-toggle-milestones"');
+    expect(html).not.toContain('data-testid="annotation-toggle-governments"');
   });
 });

@@ -35,7 +35,37 @@
 // exactly as wide as the label it replaces, and "sept 2026" is two glyphs
 // wider — see `lib/format/period.ts` for the rule and for where the prose
 // register applies instead.
+//
+// COLLAPSED ON ARRIVAL, inside a native `<details>`. The table is the
+// accessible route to the data and it is also 98 rows on `tasa-de-paro-epa`
+// and 294 on `ipc-general` — at full height it pushed the action bar, the
+// methodology sheet and the related indicators off the page for every reader
+// who arrived. Collapsing it is the only way to keep both.
+//
+// A NATIVE `<details>`, AND NOTHING ELSE. The indicator-page spec's "The page
+// works with JavaScript disabled" requires this table to be "present and
+// legible" with no script running: a collapse that needed the island to
+// hydrate would take the table away from exactly the readers that requirement
+// exists for. `<details>` keeps the table in the DOM and in the accessibility
+// tree at all times, and hands the reader a control the browser itself
+// operates — by pointer and by keyboard — with zero bytes of script. It is the
+// same instrument, and the same `min-h-11` summary, that
+// `MethodologySheet.astro` already passes that requirement with.
+//
+// The chart's `aria-describedby` names this table's `id` and keeps resolving
+// while the disclosure is closed: accname includes a hidden node that is
+// DIRECTLY referenced by `aria-describedby`, which is the whole reason that
+// carve-out exists in the specification.
+//
+// THE CAPTION STAYS. A `<summary>` labels the disclosure widget; a `<caption>`
+// is the accessible NAME of the table, which is what assistive technology
+// announces when a reader lands on it and what its table-listing rotor shows.
+// Dropping it would leave the one element the chart is described by unnamed.
+// They also say different things on purpose — the caption names the series and
+// its unit, the summary states how many rows there are and which span they
+// cover (see `lib/chart/tableSummary.ts`).
 import type { ObservationStatus } from "../lib/export/schema";
+import { dataTableSummaryLabel } from "../lib/chart/tableSummary";
 import { formatNumber } from "../lib/format/number";
 import { formatPeriodCompact } from "../lib/format/period";
 import { es } from "../i18n/es";
@@ -55,34 +85,38 @@ export interface Props {
 }
 
 const { id, caption, unit, decimals = 1, points } = Astro.props;
+const summaryLabel = dataTableSummaryLabel(points);
 ---
 
-<table id={id} class="w-full border-collapse text-body text-ink" data-testid="accessible-data-table">
-  <caption class="mb-2 text-left text-caption text-ink-muted">{caption} ({unit})</caption>
-  <thead>
-    <tr class="border-b border-ink/15">
-      <th scope="col" class="px-2 py-1 text-left font-semibold">{es.table.periodHeader}</th>
-      <th scope="col" class="px-2 py-1 text-right font-semibold">{es.table.valueHeader}</th>
-      <th scope="col" class="px-2 py-1 text-left font-semibold">{es.table.statusHeader}</th>
-    </tr>
-  </thead>
-  <tbody>
-    {
-      points.map((point) => (
-        <tr class="border-b border-ink/10" data-status={point.status}>
-          <td class="px-2 py-1">{formatPeriodCompact(point.period)}</td>
-          <td
-            class:list={[
-              "font-numeric px-2 py-1 text-right tabular-nums",
-              point.status === "P" && "border-b-2 border-dotted border-provisional text-provisional",
-            ]}
-            data-testid={`table-value-${point.status}`}
-          >
-            {point.value === null ? "—" : formatNumber(point.value, decimals)}
-          </td>
-          <td class="px-2 py-1">{es.chart.statusLabel[point.status]}</td>
-        </tr>
-      ))
-    }
-  </tbody>
-</table>
+<details data-testid="accessible-data-table-details">
+  <summary class="min-h-11 cursor-pointer py-2 text-body font-medium text-ink">{summaryLabel}</summary>
+  <table id={id} class="w-full border-collapse text-body text-ink" data-testid="accessible-data-table">
+    <caption class="mb-2 text-left text-caption text-ink-muted">{caption} ({unit})</caption>
+    <thead>
+      <tr class="border-b border-ink/15">
+        <th scope="col" class="px-2 py-1 text-left font-semibold">{es.table.periodHeader}</th>
+        <th scope="col" class="px-2 py-1 text-right font-semibold">{es.table.valueHeader}</th>
+        <th scope="col" class="px-2 py-1 text-left font-semibold">{es.table.statusHeader}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {
+        points.map((point) => (
+          <tr class="border-b border-ink/10" data-status={point.status}>
+            <td class="px-2 py-1">{formatPeriodCompact(point.period)}</td>
+            <td
+              class:list={[
+                "font-numeric px-2 py-1 text-right tabular-nums",
+                point.status === "P" && "border-b-2 border-dotted border-provisional text-provisional",
+              ]}
+              data-testid={`table-value-${point.status}`}
+            >
+              {point.value === null ? "—" : formatNumber(point.value, decimals)}
+            </td>
+            <td class="px-2 py-1">{es.chart.statusLabel[point.status]}</td>
+          </tr>
+        ))
+      }
+    </tbody>
+  </table>
+</details>

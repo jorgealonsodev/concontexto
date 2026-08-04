@@ -300,19 +300,15 @@ func ResolveActiveBreaksForSeries(ctx context.Context, db DBTX, seriesID string)
 	return out, nil
 }
 
-// EventInput is one already-digested eventos.yaml/medidas.yaml/
-// gobiernos.yaml entry ready to reconcile.
+// EventInput is one already-digested eventos.yaml/gobiernos.yaml entry
+// ready to reconcile.
 //
-// ScopeKind/ScopeRef and SourceURL arrived with the policy-measures group
-// (migration 0007). They are on this shared type rather than on a parallel
-// one because a measure IS an event by every property that matters here --
-// a stable id, a name, a date, a note, the same insert/update-in-place/
-// soft-retire discipline, the same transaction -- and the only thing it
-// needed that the type lacked was a way to say which charts it belongs on.
-//
-// There is still NO field for an effect, an outcome or an evaluation, on
-// this type or on the row it writes. That absence is a guarantee and not an
-// omission: no layer downstream can project a claim the storage cannot hold.
+// ScopeKind/ScopeRef and SourceURL are migration 0007's columns. Every
+// entry the registry holds today is scoped 'global' -- a change of
+// government and a worldwide shock apply wherever the calendar does -- but
+// 'global' is now a value the registry STATES rather than a property of the
+// schema, which is what closed the gap ListActiveEvents used to disclose in
+// its own doc comment (a seriesID accepted and not read).
 type EventInput struct {
 	ID           string
 	Group        string

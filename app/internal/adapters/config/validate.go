@@ -510,27 +510,17 @@ func scopeRefResolves(cfg *Config, kind, ref string) bool {
 	return false
 }
 
-// validateEventScope enforces the event registry's own scope rules, plus
-// the two extra requirements a POLICY MEASURE carries.
+// validateEventScope enforces the event registry's scope rules, using the
+// break registry's own resolution rule (scopeRefResolves) so the two can
+// never disagree about what "dataset: ine-epa" means.
 //
-// WHY A MEASURE MUST BE SCOPED. It is the entire reason the scope column
-// exists. A government change and a global shock are facts about the
-// calendar and apply wherever the calendar does; a policy measure is
-// addressed at a specific market, and publishing a labour-market reform on
-// an IPC chart would be noise a reader has to filter themselves. An
-// unscoped measure would silently be that, on every chart in the portal, so
-// the schema refuses it rather than the reviewer having to catch it.
-//
-// WHY A MEASURE MUST BE CITED. Every entry is a legal instrument with a
-// real date and a real identifier. The date is the whole content of the
-// annotation, and a date nobody can check against a primary source is an
-// editorial assertion — which is precisely what date_status: "unconfirmed"
-// exists to keep OUT of the reader-facing artifact. Requiring the citation
-// makes the entry checkable at the gate rather than trusted at review.
-//
-// WHAT IS DELIBERATELY NOT REQUIRED, and its absence is the point: nothing
-// here asks for, permits or validates any statement about what FOLLOWED the
-// measure. There is no such field to require.
+// "global" is the value every entry authored today carries, and it is a
+// legitimate one rather than a default nobody chose: a change of government
+// and a worldwide shock are facts about the calendar and apply wherever the
+// calendar does. What this function refuses is an entry that is scoped
+// INCOHERENTLY — a global scope carrying a ref that names something it
+// cannot apply to, a narrow scope with nothing named, a ref resolving to no
+// configured series/dataset/source, or a kind outside the four.
 func validateEventScope(cfg *Config, ev EventConfig) []Violation {
 	var out []Violation
 
@@ -563,20 +553,6 @@ func validateEventScope(cfg *Config, ev EventConfig) []Violation {
 		})
 	}
 
-	if ev.Group == EventGroupMeasures {
-		if ev.Scope.Kind == EventScopeGlobal {
-			out = append(out, Violation{
-				File: ev.FilePath, Field: "scope.kind",
-				Message: fmt.Sprintf("measure %q: a policy measure must declare the series, dataset or source it applies to — a global measure would be published on every chart in the portal", ev.ID),
-			})
-		}
-		if ev.SourceURL == "" {
-			out = append(out, Violation{
-				File: ev.FilePath, Field: "source_url",
-				Message: fmt.Sprintf("measure %q: source_url is required — a policy measure is a legal instrument and its date must be checkable against a primary source", ev.ID),
-			})
-		}
-	}
 	return out
 }
 
@@ -620,14 +596,14 @@ func validateEvent(ev EventConfig) []Violation {
 
 	// The group is an ENUM in every consumer downstream — the export
 	// artifact's own Zod schema types it as a closed union, and an entry
-	// carrying a fourth value matches no group there, renders nowhere and
+	// carrying an unlisted value matches no group there, renders nowhere and
 	// reports nothing. That silence is the failure mode this check exists
 	// to convert into a named violation at the gate, which is the one place
 	// a person is looking.
 	if ev.Group != "" && !eventGroups[ev.Group] {
 		out = append(out, Violation{
 			File: ev.FilePath, Field: "group",
-			Message: fmt.Sprintf("event %q: group %q is not one of exogenous, milestones, measures, governments", ev.ID, ev.Group),
+			Message: fmt.Sprintf("event %q: group %q is not one of exogenous, milestones, governments", ev.ID, ev.Group),
 		})
 	}
 

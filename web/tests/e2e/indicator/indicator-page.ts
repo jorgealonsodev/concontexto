@@ -70,13 +70,6 @@ export class IndicatorPage extends BasePage {
    * `role="img"`, which prunes its own children). */
   readonly legendEventSpan: Locator;
   readonly eventSpansNote: Locator;
-  /** The policy-measure stubs in the WIDE drawing's bottom gutter, and the
-   * sentence that is the ONLY identification any reader gets for them: a
-   * measure carries no on-drawing label, because the gutter has no room for
-   * one without putting words over the axis. */
-  readonly measureMarks: Locator;
-  readonly measureMarksNarrow: Locator;
-  readonly measuresNote: Locator;
   readonly yoyVariation: Locator;
   /** The link back to `/` (milestone 1.2). Rendered by `IndicatorPage.astro`,
    * so all six routes carry it. */
@@ -90,6 +83,17 @@ export class IndicatorPage extends BasePage {
   readonly headerFreshness: Locator;
   /** Every card in the "Indicadores relacionados" strip, in document order. */
   readonly relatedCards: Locator;
+  /** The native `<details>` the accessible data table lives inside — closed on
+   * arrival, opened by the browser itself with no script (see
+   * `AccessibleDataTable.astro`'s header). Three locators rather than one,
+   * because the three claims worth asserting are different: the disclosure
+   * carries the open/closed STATE, the summary is the CONTROL a reader
+   * activates and the 44 px sweep measures, and the table is the CONTENT that
+   * must stay in the DOM either way. */
+  readonly dataTableDisclosure: Locator;
+  readonly dataTableSummary: Locator;
+  readonly dataTable: Locator;
+  readonly dataTableRows: Locator;
 
   constructor(page: Page, slug: string) {
     super(page);
@@ -121,14 +125,15 @@ export class IndicatorPage extends BasePage {
     this.eventSpansNarrow = this.chartSection.locator('[data-testid="chart-event-span-narrow"]');
     this.legendEventSpan = this.chartSection.getByTestId("chart-legend-event-span");
     this.eventSpansNote = this.chartSection.getByTestId("chart-event-spans-note");
-    this.measureMarks = this.chartSection.locator('[data-testid="chart-measure-mark"]');
-    this.measureMarksNarrow = this.chartSection.locator('[data-testid="chart-measure-mark-narrow"]');
-    this.measuresNote = this.chartSection.getByTestId("chart-measures-note");
     this.yoyVariation = page.getByTestId("page-yoy-variation");
     this.backToHome = page.getByTestId("back-to-home");
     this.header = page.getByTestId("page-header");
     this.headerFreshness = this.header.locator('[data-testid^="freshness-"]');
     this.relatedCards = this.relatedIndicators.getByTestId("indicator-card");
+    this.dataTableDisclosure = this.chartSection.getByTestId("accessible-data-table-details");
+    this.dataTableSummary = this.dataTableDisclosure.locator("summary");
+    this.dataTable = this.chartSection.getByTestId("accessible-data-table");
+    this.dataTableRows = this.dataTable.locator("tbody tr");
   }
 
   /** The freshness semaphore inside one related-indicator card. */
@@ -151,7 +156,7 @@ export class IndicatorPage extends BasePage {
 
   /** The chips listed under one annotation group, in document order. Scoped to
    * that group's own content container: an unscoped `annotation-chip` locator
-   * would mix all four groups into one list and make "the chips name exactly
+   * would mix all three groups into one list and make "the chips name exactly
    * what the marks name" unprovable per layer. */
   annotationChips(group: string): Locator {
     return this.annotationGroupContent(group).locator('[data-testid="annotation-chip"]');

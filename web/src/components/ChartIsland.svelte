@@ -29,16 +29,10 @@
     type ObservationStatus,
   } from "../lib/chart/geometry";
   import { narrowChartVariant, renderChartSVG } from "../lib/chart/svg";
-  import {
-    describeEventSpans,
-    describeGovernmentChanges,
-    describePolicyMeasures,
-    describeSeries,
-  } from "../lib/chart/description";
+  import { describeEventSpans, describeGovernmentChanges, describeSeries } from "../lib/chart/description";
   import { annotationsInWindow } from "../lib/chart/annotationWindow";
   import { selectEventSpans } from "../lib/chart/eventSpans";
   import { selectGovernmentChanges } from "../lib/chart/governmentMarkers";
-  import { selectPolicyMeasures } from "../lib/chart/measureMarks";
   import { periodFromCalendarDate, periodOrdinalIndex, type Frequency } from "../lib/chart/periods";
   import { computeIntraPeriodRate, computeYoY } from "../lib/transform/yoy";
   import { computePerCapita } from "../lib/transform/perCapita";
@@ -64,6 +58,10 @@
   import { reduceTransform, type TransformKind, type ToggleableTransform } from "../lib/chart/toggleState";
   import { decodeChartState, encodeChartState } from "../lib/chart/permalink";
   import { toChartPoints } from "../lib/chart/chartPoints";
+  // The data table's disclosure label — the ONE function that builds it, shared
+  // with `AccessibleDataTable.astro` so the two copies of this table cannot
+  // print two different counts or two different spans.
+  import { dataTableSummaryLabel } from "../lib/chart/tableSummary";
   import { visibleTransformControls, type IndicatorTransformConfig } from "../lib/chart/applicability";
   // The SAME formatter the static half uses. This component re-renders the
   // table and the point announcements client-side, so anything it formatted
@@ -80,7 +78,7 @@
   import { es } from "../i18n/es";
   import { onMount } from "svelte";
 
-  export type AnnotationGroup = "governments" | "exogenous" | "milestones" | "measures";
+  export type AnnotationGroup = "governments" | "exogenous" | "milestones";
 
   interface IndicatorChartBreak {
     key: string;
@@ -211,15 +209,11 @@
   let hydrated = $state(false);
   // The SAME default map `IndicatorChart.astro` holds -- that identity is what
   // keeps this component's server-rendered drawing byte-identical to the
-  // static one (`test/chart/island-ssr.test.ts`'s golden parity). See that
-  // file for why `measures` opens by default: the owner asked to see which
-  // policy measures were taken and when, and the layer is scoped, so opening
-  // it adds nothing to a chart the measure was not addressed at.
+  // static one (`test/chart/island-ssr.test.ts`'s golden parity).
   let openGroups: Record<AnnotationGroup, boolean> = $state({
     governments: false,
     exogenous: false,
     milestones: true,
-    measures: true,
   });
   let hoverIndex: number | null = $state(null);
   let focusIndex: number | null = $state(null);
@@ -517,21 +511,6 @@
   const eventSpans = $derived(selectEventSpans(shownAnnotations, rangedPeriods, frequency));
   const eventSpanNote = $derived(describeEventSpans(eventSpans));
 
-  // ---- The policy-measure marks (config/medidas.yaml, the `measures` group) ----
-  //
-  // Same three properties as the two layers above: gated on the reader's own
-  // group toggle, derived from `rangedPeriods` so narrowing the range
-  // re-selects them with no second filter to keep in step, and fed from ONE
-  // list so the stubs and the sentence can never disagree.
-  //
-  // What is different is WHERE they are drawn, and it is the whole design of
-  // this layer: entirely inside the bottom axis gutter, never across the data.
-  // A mark that crossed the series at the period a curve turns would assert an
-  // effect by adjacency, which is exactly what this feature must not do — see
-  // `lib/chart/measureMarks.ts`.
-  const policyMeasures = $derived(selectPolicyMeasures(shownAnnotations, rangedPeriods, frequency));
-  const policyMeasureNote = $derived(describePolicyMeasures(policyMeasures));
-
   const chartInput = $derived({
     points: rangedPoints,
     breaks: visibleBreaks.map((b) => ({ key: b.key, date: b.date })),
@@ -542,7 +521,6 @@
     // shared renderer, so the static half and this one cannot disagree.
     governmentChanges: shownAnnotations,
     eventSpans: shownAnnotations,
-    policyMeasures: shownAnnotations,
     frequency,
     decimals: viewDecimals,
     unit: viewUnit,
@@ -741,29 +719,28 @@
     return startYear === endYear ? startYear : `${startYear}–${endYear}`;
   }
 
-  const GROUPS: AnnotationGroup[] = ["governments", "exogenous", "milestones", "measures"];
+  const GROUPS: AnnotationGroup[] = ["governments", "exogenous", "milestones"];
 
   /** The entries the chips may name: those the CURRENTLY VISIBLE window
    * covers, judged by the same rule the marks are drawn under.
    *
    * This is the defect that produced this expression, measured in a browser
-   * rather than reasoned about. On /indicador/tasa-de-paro-epa with the
-   * measures group open, selecting "Desde 2018" narrowed the series from 98
-   * points to 34 and the measure stubs from 12 to 8 — and left the chip row
-   * naming all three measures, including a 2012 reform, under a chart that
-   * begins in 2018. `governments` and `exogenous` did the same, and
-   * `governments` did it even at the full range: six chips over three rules,
-   * because three of that registry's confirmed investitures predate 2002.
+   * rather than reasoned about. On /indicador/tasa-de-paro-epa, selecting
+   * "Desde 2018" narrowed the series from 98 points to 34 and the drawing's
+   * marks with it — and left the chip row naming a 2008-2013 crisis under a
+   * chart that begins in 2018. `governments` was worse still: it was wrong at
+   * the DEFAULT view, six chips over three rules, because three of that
+   * registry's confirmed investitures predate 2002.
    *
    * `annotationsInWindow` is the ONE rule, and reusing it rather than writing
    * a second predicate here is the whole point — see
-   * `lib/chart/annotationWindow.ts`. An instant (a change of government, a
-   * measure's entry into force, or an event the registry gave no end date)
-   * must fall inside the span on screen; an interval need only intersect it,
-   * exactly as its rail does, because a 2008-2013 crisis really does cover
-   * 2010-2013 of a window that starts in 2010.
+   * `lib/chart/annotationWindow.ts`. An instant (a change of government, or
+   * an event the registry gave no end date) must fall inside the span on
+   * screen; an interval need only intersect it, exactly as its rail does,
+   * because a 2008-2013 crisis really does cover 2010-2013 of a window that
+   * starts in 2010.
    *
-   * Fed `rangedPeriods`, like all three mark layers and unlike the government
+   * Fed `rangedPeriods`, like both mark layers and unlike the government
    * `<select>`'s own option list: a chip beneath the drawing is a statement
    * about the drawing in front of the reader, while that control is a
    * statement about the series' history. */
@@ -1007,27 +984,6 @@
     {eventSpanNote}
   </p>
 
-  <!-- The policy-measure sentence. Same live-region reasoning as the event
-       spans one element above — it states transient selection state, so it
-       re-narrates as the reader opens and closes the group, and it is
-       deliberately not in the drawing's `aria-describedby`.
-
-       It carries more weight here than in either sibling, because a measure
-       has no on-drawing label at all: the gutter has no room for one without
-       putting words over the axis labels or back onto the series. So this is
-       the ONLY place any reader, sighted or not, learns which instrument a
-       stub stands for — and it is also where the chart states, in words, that
-       it represents no relation between those measures and the series. The
-       drawing already refuses to imply one by staying out of the plot area;
-       this says so. -->
-  <p
-    class="mt-1 text-caption text-ink-muted"
-    aria-live="polite"
-    data-testid="chart-measures-note"
-  >
-    {policyMeasureNote}
-  </p>
-
   {#if effectiveTransform !== "raw"}
     <p class="mt-1 text-caption text-ink-muted" data-testid="chart-derivation-note">
       {es.chart.transforms.derivationNote(transformLabel)}
@@ -1078,20 +1034,6 @@
           <path d="M1 7 L1 2 L15 2 L15 7" stroke="currentColor" stroke-width="1.5" />
         </svg>
         {es.chart.eventSpan.legendLabel}
-      </li>
-    {/if}
-    <!-- The fifth entry, present only while the drawing really carries a mark.
-         The glyph is the mark in miniature WITH the axis line above it,
-         because the position is the meaning: this is the one annotation that
-         hangs below the axis and never enters the plot, which is what keeps a
-         date of entry into force from being read against the curve. -->
-    {#if policyMeasures.length > 0}
-      <li class="flex items-center gap-1.5" data-testid="chart-legend-measure">
-        <svg aria-hidden="true" viewBox="0 0 10 12" class="h-3 w-2.5 shrink-0" fill="none">
-          <line x1="0" y1="3" x2="10" y2="3" stroke="currentColor" stroke-width="1" class="text-ink-muted" />
-          <line x1="5" y1="6" x2="5" y2="12" stroke="currentColor" stroke-width="2" class="text-event-span" />
-        </svg>
-        {es.chart.measure.legendLabel}
       </li>
     {/if}
   </ul>
@@ -1340,15 +1282,13 @@
           {#if openGroups[group]}
             <div id={`ann-content-${idBase}-${group}`} class="mt-2 flex flex-wrap gap-2" data-testid={`annotation-group-content-${group}`}>
               <!-- A chip becomes a LINK when the registry recorded a document
-                   to link to, and stays plain text when it did not. That is
-                   the whole rule, and it matters most for a policy measure:
-                   the annotation's entire content is a date of entry into
-                   force, and `validate-config` requires every measure to carry
-                   the primary source that date was verified against. A date a
-                   reader cannot check is an editorial assertion — putting the
-                   citation one click away is what makes it a fact instead.
-                   The three transversal groups carry no citation today, so
-                   they render exactly as they did before. -->
+                   to link to (`source_url`), and stays plain text when it did
+                   not. That is the whole rule: an entry a reader can check
+                   against a primary source is a fact, and one they cannot is
+                   an editorial assertion, so putting the citation one click
+                   away is what makes the difference visible. No entry in
+                   config/eventos.yaml or config/gobiernos.yaml carries one
+                   today, so every chip currently renders as plain text. -->
               {#each entries as entry (entry.id)}
                 {#if entry.href}
                   <a
@@ -1373,39 +1313,59 @@
     </div>
   {/if}
 
-  <table id={tableId} class="mt-4 w-full border-collapse text-body text-ink" data-testid="accessible-data-table">
-    <caption class="mb-2 text-left text-caption text-ink-muted">{es.chart.tableCaption(name)} ({viewUnit})</caption>
-    <thead>
-      <tr class="border-b border-ink/15">
-        <th scope="col" class="px-2 py-1 text-left font-semibold">{es.table.periodHeader}</th>
-        <th scope="col" class="px-2 py-1 text-right font-semibold">{es.table.valueHeader}</th>
-        <th scope="col" class="px-2 py-1 text-left font-semibold">{es.table.statusHeader}</th>
-      </tr>
-    </thead>
-    <tbody>
-      {#each rangedPoints as p (p.period)}
-        <tr class="border-b border-ink/10" data-status={p.status}>
-          <!-- Compact register, matching `AccessibleDataTable.astro`'s own
-               cell byte for byte: this is the same column, re-rendered by the
-               other half of the same chart. The `{#each}` key above is still
-               `p.period` — the CANONICAL label — because a keyed list is
-               identity, not display. -->
-          <td class="px-2 py-1">{formatPeriodCompact(p.period)}</td>
-          <td
-            class="font-numeric px-2 py-1 text-right tabular-nums"
-            class:border-b-2={p.status === "P"}
-            class:border-dotted={p.status === "P"}
-            class:border-provisional={p.status === "P"}
-            class:text-provisional={p.status === "P"}
-            data-testid={`table-value-${p.status}`}
-          >
-            {p.value === null ? "—" : formatNumber(p.value, viewDecimals)}
-          </td>
-          <td class="px-2 py-1">{es.chart.statusLabel[p.status]}</td>
-        </tr>
-      {/each}
-    </tbody>
-  </table>
+  <!-- The `mt-4` sits on THIS wrapper rather than on the table, exactly as
+       `IndicatorChart.astro` wraps `AccessibleDataTable` in its own
+       `<div class="mt-4">`. It is what lets the two tables — and the two
+       disclosures around them — carry byte-identical class lists, which
+       `test/design-system/data-table-disclosure-parity.test.ts` asserts. -->
+  <div class="mt-4">
+    <!-- CLOSED BY DEFAULT, and never bound to component state.
+         `AccessibleDataTable.astro`'s header carries the full rationale (the
+         table is the no-JavaScript route to the data, so its collapse may not
+         depend on script); what is specific to THIS copy is that the island
+         re-renders the table whenever the range narrows.
+         `open` is deliberately not a `$state` and not bound: the disclosure is
+         a DOM element that survives those re-renders, so the browser keeps
+         whatever the reader chose. Narrowing 98 rows to 26 must not reach in
+         and close a table the reader opened — the open/closed state is theirs,
+         not the range's. -->
+    <details data-testid="accessible-data-table-details">
+      <summary class="min-h-11 cursor-pointer py-2 text-body font-medium text-ink">{dataTableSummaryLabel(rangedPoints)}</summary>
+      <table id={tableId} class="w-full border-collapse text-body text-ink" data-testid="accessible-data-table">
+        <caption class="mb-2 text-left text-caption text-ink-muted">{es.chart.tableCaption(name)} ({viewUnit})</caption>
+        <thead>
+          <tr class="border-b border-ink/15">
+            <th scope="col" class="px-2 py-1 text-left font-semibold">{es.table.periodHeader}</th>
+            <th scope="col" class="px-2 py-1 text-right font-semibold">{es.table.valueHeader}</th>
+            <th scope="col" class="px-2 py-1 text-left font-semibold">{es.table.statusHeader}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each rangedPoints as p (p.period)}
+            <tr class="border-b border-ink/10" data-status={p.status}>
+              <!-- Compact register, matching `AccessibleDataTable.astro`'s own
+                   cell byte for byte: this is the same column, re-rendered by the
+                   other half of the same chart. The `{#each}` key above is still
+                   `p.period` — the CANONICAL label — because a keyed list is
+                   identity, not display. -->
+              <td class="px-2 py-1">{formatPeriodCompact(p.period)}</td>
+              <td
+                class="font-numeric px-2 py-1 text-right tabular-nums"
+                class:border-b-2={p.status === "P"}
+                class:border-dotted={p.status === "P"}
+                class:border-provisional={p.status === "P"}
+                class:text-provisional={p.status === "P"}
+                data-testid={`table-value-${p.status}`}
+              >
+                {p.value === null ? "—" : formatNumber(p.value, viewDecimals)}
+              </td>
+              <td class="px-2 py-1">{es.chart.statusLabel[p.status]}</td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    </details>
+  </div>
 </div>
 
 <style>

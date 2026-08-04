@@ -40,11 +40,23 @@ test.describe("IndicatorChart — no-JavaScript baseline", () => {
       await expect(band).toHaveCount(1);
       await expect(band).toHaveAttribute("data-break-key", "covid-2020");
 
-      // The accessible data table (the chart's textual equivalent).
+      // The accessible data table (the chart's textual equivalent), now
+      // PRESENT inside a native closed `<details>` and legible on demand
+      // through a control the browser operates with no script at all —
+      // `src/components/AccessibleDataTable.astro`'s header carries the
+      // rationale, and the same disclosure is proven to open here rather than
+      // merely asserted to exist.
+      const disclosure = section.locator('[data-testid="accessible-data-table-details"]');
       const table = section.locator('[data-testid="accessible-data-table"]');
-      await expect(table).toBeVisible();
+      await expect(disclosure).toHaveCount(1);
+      await expect(disclosure).not.toHaveAttribute("open", /.*/);
+      await expect(disclosure.locator("summary")).toBeVisible();
       const rows = table.locator("tbody tr");
-      await expect(rows).toHaveCount(12); // one per fixture observation
+      await expect(rows).toHaveCount(12); // one per fixture observation, present while collapsed
+
+      await disclosure.locator("summary").click();
+      await expect(table).toBeVisible();
+      await expect(rows.first()).toBeVisible();
 
       // The generated textual description.
       const description = section.locator('[data-testid="chart-description"]');
@@ -86,7 +98,10 @@ test.describe("IndicatorChart — no-JavaScript baseline", () => {
 
       // The island's own server-rendered markup really is here...
       await expect(section.getByTestId("indicator-chart-island")).toBeVisible();
-      await expect(section.locator('[data-testid="accessible-data-table"]')).toBeVisible();
+      // Present inside its own native disclosure — see the first test in this
+      // file, which is where the opening itself is proven.
+      await expect(section.locator('[data-testid="accessible-data-table"]')).toHaveCount(1);
+      await expect(section.locator('[data-testid="accessible-data-table-details"] > summary')).toBeVisible();
       // ...and the picker deliberately is not.
       await expect(section.getByTestId("chart-custom-range")).toHaveCount(0);
       await expect(section.getByTestId("custom-range-from")).toHaveCount(0);

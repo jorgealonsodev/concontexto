@@ -5,34 +5,31 @@
 // ── WHY THIS MODULE EXISTS ─────────────────────────────────────────────────
 //
 // It did not, and the cost was measurable in a browser. The rule was written
-// out three times, once inside each selector that needed it
-// (`selectGovernmentChanges`, `selectPolicyMeasures`, `selectEventSpans`), and
-// a FOURTH consumer had no copy at all: the annotation chips below the chart
-// listed every entry in the group, unconditionally. So on
-// /indicador/tasa-de-paro-epa narrowed to "Desde 2018", the drawing marked two
-// policy measures and the chip row underneath it listed three — including a
-// 2012 reform, presented to the reader as though it were in view. The
-// governments and exogenous groups did the same thing, and `governments` did
+// out once inside each selector that needed it (`selectGovernmentChanges`,
+// `selectEventSpans`), and a THIRD consumer had no copy at all: the annotation
+// chips below the chart listed every entry in the group, unconditionally. So
+// on /indicador/tasa-de-paro-epa narrowed to "Desde 2018", the drawing dropped
+// the 2008-2013 crisis rail and the chip row underneath it went on naming that
+// crisis, presented to the reader as though it were in view. `governments` did
 // it even at the FULL range: six chips over three rules, because three of the
 // six investitures predate the series' own first observation.
 //
-// Three copies of a rule plus one consumer that forgot it is not an accident
-// that happened once. This module is the fix for the shape of the problem
-// rather than for the one symptom: the three selectors now READ their rule
-// from here instead of restating it, so there is exactly one expression per
-// rule and a fifth consumer cannot invent a sixth answer.
+// Copies of a rule plus one consumer that forgot it is not an accident that
+// happened once. This module is the fix for the shape of the problem rather
+// than for the one symptom: the selectors now READ their rule from here
+// instead of restating it, so there is exactly one expression per rule and a
+// fourth consumer cannot invent a third answer.
 //
 // ── THE TWO RULES, AND WHY THERE ARE TWO ───────────────────────────────────
 //
 // An annotation is one of two shapes, and the honest test differs:
 //
-//   AN INSTANT — a change of government, a policy measure's entry into force,
-//   or an event the registry gave a start and no end. It is IN RANGE when its
-//   own date falls inside the span on screen, inclusive at both edges. The
-//   weaker test would be a lie here: `nearestPeriodIndex` snaps ANY date onto
-//   the nearest plotted period, so admitting a 2012 instrument to a 2020-2026
-//   chart pins it to the left edge and puts a mark under a date at which
-//   nothing was enacted.
+//   AN INSTANT — a change of government, or an event the registry gave a start
+//   and no end. It is IN RANGE when its own date falls inside the span on
+//   screen, inclusive at both edges. The weaker test would be a lie here:
+//   `nearestPeriodIndex` snaps ANY date onto the nearest plotted period, so
+//   admitting a 1996 investiture to a 2002-2026 chart pins it to the left edge
+//   and puts a mark under a date at which no government changed.
 //
 //   AN INTERVAL — an event the registry bounded with BOTH dates. It is in
 //   range when it INTERSECTS the span on screen, never requiring containment:

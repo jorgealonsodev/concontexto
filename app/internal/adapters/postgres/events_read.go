@@ -26,10 +26,11 @@ import (
 //
 // FOUR SCOPES, ONE QUERY, NO DUPLICATION IN STORAGE. 'global' covers every
 // series (a change of government and a worldwide shock are facts about the
-// calendar); 'series', 'dataset' and 'source' widen exactly as a break's do,
-// so one dataset-scoped policy measure resolves for every series under that
-// dataset and is stored once (spec editorial-config, "it is stored once, not
-// once per series").
+// calendar) and is what every entry the registry holds today declares;
+// 'series', 'dataset' and 'source' widen exactly as a break's do, so one
+// dataset-scoped entry resolves for every series under that dataset and is
+// stored once (spec editorial-config, "it is stored once, not once per
+// series").
 //
 // AN UNKNOWN SERIES IS NOT AN ERROR, and that differs deliberately from
 // ResolveActiveBreaksForSeries, which fails when the series/dataset join

@@ -42,8 +42,22 @@ test.describe("Indicator pages — no-JavaScript baseline", () => {
         const svg = indicator.chartSection.locator('[data-testid="indicator-chart-svg"]');
         await expect(svg).toBeVisible();
 
+        // PRESENT, which is the requirement's own word, and legible on demand
+        // through a control the browser operates by itself. The table now
+        // arrives inside a native closed `<details>` — same instrument, same
+        // `min-h-11` summary, that `MethodologySheet.astro` already meets this
+        // requirement with on mobile. It is asserted here as "in the document
+        // with its rows" plus "a visible control that opens it", which is
+        // strictly more than the bare `toBeVisible()` this line used to make:
+        // that assertion could not tell a rendered table from a rendered
+        // EMPTY one, and this one can. The opening itself is its own test
+        // below, because "the control exists" and "the control works with no
+        // script at all" are two different claims.
         const table = indicator.chartSection.locator('[data-testid="accessible-data-table"]');
-        await expect(table).toBeVisible();
+        await expect(table).toHaveCount(1);
+        expect(await table.locator("tbody tr").count()).toBeGreaterThan(0);
+        await expect(indicator.dataTableDisclosure).toHaveCount(1);
+        await expect(indicator.dataTableSummary).toBeVisible();
 
         const description = indicator.chartSection.locator('[data-testid="chart-description"]');
         await expect(description).toBeVisible();
@@ -63,6 +77,58 @@ test.describe("Indicator pages — no-JavaScript baseline", () => {
 
         await expect(page.locator("body")).not.toContainText("Cargando");
         await expect(page.locator("body")).not.toContainText("Error");
+      },
+    );
+
+    // THE LOAD-BEARING TEST FOR COLLAPSING THE TABLE AT ALL.
+    //
+    // The indicator-page spec requires the accessible data table to be
+    // "present and legible" with JavaScript disabled. Collapsing it is only
+    // compatible with that because `<details>` is native: the browser opens it
+    // by itself, so "legible on demand" costs a reader with no script exactly
+    // one activation and no bytes. A collapse that needed the island to
+    // hydrate would take the table away from precisely the readers this
+    // requirement exists for, and this test is what would catch that being
+    // done — it runs in a context where no script executes at all, so nothing
+    // but the browser's own disclosure behaviour can make it pass.
+    //
+    // Both gestures, because a reader without JavaScript is not necessarily a
+    // reader with a mouse: activating by pointer and activating by Enter are
+    // two separate native behaviours of the same element.
+    test(
+      `/indicador/${slug}: the data table's disclosure opens — by pointer and by keyboard — with JavaScript disabled`,
+      { tag: ["@indicator-page", "@a11y", "@no-js", "@data-table"] },
+      async ({ page }) => {
+        const indicator = new IndicatorPage(page, slug);
+        await indicator.goto();
+
+        await expect(indicator.dataTableDisclosure).not.toHaveAttribute("open", /.*/);
+        await expect(indicator.dataTable).not.toBeVisible();
+
+        await indicator.dataTableSummary.click();
+        await expect(indicator.dataTableDisclosure).toHaveAttribute("open", /.*/);
+        await expect(indicator.dataTable).toBeVisible();
+
+        // LEGIBLE, not merely displayed: the first row carries a period, a
+        // value and a status, and every one of them is on the screen.
+        const firstRowCells = indicator.dataTableRows.first().locator("td");
+        await expect(firstRowCells).toHaveCount(3);
+        for (let i = 0; i < 3; i++) {
+          await expect(firstRowCells.nth(i)).toBeVisible();
+          await expect(firstRowCells.nth(i)).not.toBeEmpty();
+        }
+        await expect(indicator.dataTable.locator("caption")).toBeVisible();
+
+        // Closes again, then opens from the keyboard alone.
+        await indicator.dataTableSummary.click();
+        await expect(indicator.dataTableDisclosure).not.toHaveAttribute("open", /.*/);
+        // `Locator.press` focuses the element and then sends the key through
+        // the browser's own input pipeline — deliberately not `page.evaluate`,
+        // which is exactly the thing a `javaScriptEnabled: false` context does
+        // not have.
+        await indicator.dataTableSummary.press("Enter");
+        await expect(indicator.dataTableDisclosure).toHaveAttribute("open", /.*/);
+        await expect(indicator.dataTableRows.last()).toBeVisible();
       },
     );
 
@@ -86,8 +152,11 @@ test.describe("Indicator pages — no-JavaScript baseline", () => {
         const indicator = new IndicatorPage(page, slug);
         await indicator.goto();
 
-        // The island's server-rendered markup really is here...
-        await expect(indicator.chartSection.locator('[data-testid="accessible-data-table"]')).toBeVisible();
+        // The island's server-rendered markup really is here (the table is
+        // inside its own native disclosure now, so presence is asserted as
+        // presence — see the previous test)...
+        await expect(indicator.chartSection.locator('[data-testid="accessible-data-table"]')).toHaveCount(1);
+        await expect(indicator.dataTableSummary).toBeVisible();
         // ...and neither hydration-only control is.
         await expect(indicator.governmentRange).toHaveCount(0);
         await expect(indicator.governmentSelect).toHaveCount(0);

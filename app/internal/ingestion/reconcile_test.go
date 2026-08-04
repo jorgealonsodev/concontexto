@@ -359,17 +359,17 @@ func TestReconcileEditorialConfig_MidTransactionFailureAcrossBreaksAndEventsLeav
 	}
 }
 
-// Re-scoping a policy measure is an EDIT of that measure, and must register
-// as one: a new digest, an in-place update, a visible count.
+// Re-scoping an event is an EDIT of that event, and must register as one: a
+// new digest, an in-place update, a visible count.
 //
 // The digest is what makes a reconcile idempotent, so anything reaching the
 // database that the digest does NOT cover is a field that can drift silently
 // — the YAML claiming one thing while the row holds another, with a repeat
-// run reporting zero changes. For a policy measure the scope decides WHICH
-// CHARTS the entry appears on and the citation is what makes its date
-// checkable, so a silent drift in either is a reader-facing defect rather
-// than a bookkeeping one.
-func TestReconcileEditorialConfig_ReScopingAMeasureIsAnInPlaceEditWithANewDigest(t *testing.T) {
+// run reporting zero changes. The scope decides WHICH CHARTS the entry
+// appears on and the citation is what makes it checkable by a reader, so a
+// silent drift in either is a reader-facing defect rather than a bookkeeping
+// one.
+func TestReconcileEditorialConfig_ReScopingAnEventIsAnInPlaceEditWithANewDigest(t *testing.T) {
 	ctx := context.Background()
 	tx := newTx(t)
 	if err := postgres.NewRunner(tx).Up(ctx); err != nil {
@@ -378,11 +378,11 @@ func TestReconcileEditorialConfig_ReScopingAMeasureIsAnInPlaceEditWithANewDigest
 	start := time.Date(2021, 12, 31, 0, 0, 0, 0, time.UTC)
 	cfg := config.Config{Events: []config.EventConfig{
 		{
-			ID: "rdl-32-2021", Group: config.EventGroupMeasures,
-			Name:      "Real Decreto-ley 32/2021, de 28 de diciembre",
+			ID: "cambio-metodologico-ecoicop", Group: "milestones",
+			Name:      "Cambio metodológico ECOICOP",
 			Scope:     config.EventScopeConfig{Kind: config.EventScopeDataset, Ref: "ine-epa"},
-			SourceURL: "https://www.boe.es/buscar/act.php?id=BOE-A-2021-21788",
-			NoteMD:    "Instrumento publicado en el BOE.", DateStart: &start,
+			SourceURL: "https://www.ine.es/metodologia",
+			NoteMD:    "Nota metodológica publicada por la fuente.", DateStart: &start,
 		},
 	}}
 	if _, err := ingestion.ReconcileEditorialConfig(ctx, tx, cfg); err != nil {
@@ -409,7 +409,7 @@ func TestReconcileEditorialConfig_ReScopingAMeasureIsAnInPlaceEditWithANewDigest
 		t.Fatalf("ListEvents (after): %v", err)
 	}
 	if after[0].ConfigDigest == before[0].ConfigDigest {
-		t.Error("ConfigDigest did not change after re-scoping the measure")
+		t.Error("ConfigDigest did not change after re-scoping the event")
 	}
 	if after[0].ScopeRef != "ine-ipc" {
 		t.Errorf("ScopeRef = %q, want ine-ipc", after[0].ScopeRef)
@@ -418,7 +418,7 @@ func TestReconcileEditorialConfig_ReScopingAMeasureIsAnInPlaceEditWithANewDigest
 	// The same argument, one field over: correcting a mis-typed citation
 	// must not be a silent no-op that leaves the row pointing at a document
 	// nobody approved.
-	cfg.Events[0].SourceURL = "https://www.boe.es/buscar/act.php?id=BOE-A-2021-21788#dfoctava"
+	cfg.Events[0].SourceURL = "https://www.ine.es/metodologia#ecoicop"
 	if _, err := ingestion.ReconcileEditorialConfig(ctx, tx, cfg); err != nil {
 		t.Fatalf("third reconcile: %v", err)
 	}

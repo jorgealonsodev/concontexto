@@ -98,17 +98,16 @@ func TestExport_ASeriesWithNoActiveBreaksOrEventsGetsEmptySlicesNotNil(t *testin
 	}
 }
 
-// A policy measure's CITATION travels into the artifact, because the reader
-// — not only the reviewer — is who has to be able to check it. Every measure
-// entry is a legal instrument with a real identifier, and the artifact is
-// the only channel the built page has: without this field the chart would
-// name an instrument and offer no way to reach it.
+// An event's CITATION travels into the artifact, because the reader — not
+// only the reviewer — is who has to be able to check it. The artifact is the
+// only channel the built page has, so without this field a chart could name
+// an entry and offer no way to reach the document behind it.
 //
-// The field is shared with every other event group rather than being
-// measure-only, for the same reason BreakRef has carried one since slice 3:
-// an entry that HAS a document to point at should point at it, whichever
-// group it belongs to, and a group-conditional field would be a second rule
-// for one fact.
+// The field is shared by every event group rather than being conditional on
+// one, for the same reason BreakRef has carried one since slice 3: an entry
+// that HAS a document to point at should point at it, whichever group it
+// belongs to, and a group-conditional field would be a second rule for one
+// fact.
 func TestExport_CarriesAnEventSourceURLIntoTheArtifact(t *testing.T) {
 	ps := fakePublishedSeries()
 	obs := map[string][]postgres.PublishedObservation{
@@ -120,12 +119,12 @@ func TestExport_CarriesAnEventSourceURLIntoTheArtifact(t *testing.T) {
 	}
 	deps := fakeDeps(t, []postgres.PublishedSeries{ps}, obs, freshness.StateFresh)
 
-	boe := "https://www.boe.es/buscar/act.php?id=BOE-A-2021-21788"
+	methodology := "https://www.ine.es/metodologia"
 	deps.ListActiveEvents = func(_ context.Context, _ string) ([]postgres.Event, error) {
 		return []postgres.Event{{
-			ID: "rdl-32-2021", Group: "measures", Name: "Real Decreto-ley 32/2021, de 28 de diciembre",
+			ID: "cambio-metodologico-ecoicop", Group: "milestones", Name: "Cambio metodológico ECOICOP",
 			DateStart: time.Date(2021, 12, 31, 0, 0, 0, 0, time.UTC),
-			ScopeKind: "dataset", ScopeRef: "ine-epa", SourceURL: &boe,
+			ScopeKind: "dataset", ScopeRef: "ine-epa", SourceURL: &methodology,
 		}}, nil
 	}
 
@@ -137,11 +136,11 @@ func TestExport_CarriesAnEventSourceURLIntoTheArtifact(t *testing.T) {
 		t.Fatalf("expected exactly one event on one series, got %+v", artifact.Series)
 	}
 	got := artifact.Series[0].Events[0]
-	if got.SourceURL == nil || *got.SourceURL != boe {
-		t.Fatalf("EventRef.SourceURL = %v, want %q", got.SourceURL, boe)
+	if got.SourceURL == nil || *got.SourceURL != methodology {
+		t.Fatalf("EventRef.SourceURL = %v, want %q", got.SourceURL, methodology)
 	}
-	if got.Group != "measures" {
-		t.Errorf("EventRef.Group = %q, want measures", got.Group)
+	if got.Group != "milestones" {
+		t.Errorf("EventRef.Group = %q, want milestones", got.Group)
 	}
 }
 

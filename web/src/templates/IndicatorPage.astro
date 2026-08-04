@@ -223,11 +223,10 @@ const perCapitaAttribution = content.transforms.perCapita ? es.chart.perCapita.a
         name: e.name,
         dateStart: e.dateStart,
         dateEnd: e.dateEnd ?? null,
-        // The registry's own citation, where it recorded one — the BOE
-        // reference for a policy measure, required of that group by
-        // validate-config. `?? null` narrows Zod's `string | undefined` to the
-        // `string | null` the island takes, at the one boundary that owns the
-        // decision, exactly as `breaks.sourceUrl` above already does.
+        // The registry's own citation, where it recorded one. `?? null`
+        // narrows Zod's `string | undefined` to the `string | null` the island
+        // takes, at the one boundary that owns the decision, exactly as
+        // `breaks.sourceUrl` above already does.
         href: e.sourceUrl ?? null,
       }))}
       transforms={content.transforms}

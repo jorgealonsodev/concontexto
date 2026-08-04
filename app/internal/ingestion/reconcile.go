@@ -157,12 +157,12 @@ func breakDigest(b config.BreakConfig) string {
 
 // eventDigest covers the SCOPE and the CITATION as well as the dates and
 // the prose, and both inclusions are load-bearing rather than completeness
-// for its own sake. The scope decides which charts a policy measure appears
-// on and the citation is what makes its date checkable by a reader; a field
-// that reaches the row without reaching the digest can drift silently, with
-// the YAML claiming one thing, the database holding another, and a repeat
-// reconcile reporting zero changes. That is the same reasoning
-// acknowledgementDigest already applies to its pinned value.
+// for its own sake. The scope decides which charts an entry appears on and
+// the citation is what makes it checkable by a reader; a field that reaches
+// the row without reaching the digest can drift silently, with the YAML
+// claiming one thing, the database holding another, and a repeat reconcile
+// reporting zero changes. That is the same reasoning acknowledgementDigest
+// already applies to its pinned value.
 func eventDigest(e config.EventConfig) string {
 	h := sha256.New()
 	fmt.Fprintf(h, "id=%s\ngroup=%s\nname=%s\ndate_start=%s\ndate_end=%s\nnote_md=%s\nscope.kind=%s\nscope.ref=%s\nsource_url=%s\n",
@@ -182,10 +182,10 @@ func eventDigest(e config.EventConfig) string {
 // predicate at all: an entry that reconciles cleanly, reports success and
 // renders on no chart, which is the quietest failure available here.
 //
-// validate-config, not this function, is what refuses a POLICY MEASURE that
-// declares no scope: "global" is a legitimate value for the three transversal
-// groups and a rejected one for measures, and that distinction belongs at the
-// gate where the message can name the file and the field.
+// validate-config, not this function, is what refuses an INCOHERENT scope —
+// a narrow kind with no ref, a ref resolving to nothing, a kind outside the
+// four. That belongs at the gate, where the message can name the file and
+// the field.
 func eventScopeKind(e config.EventConfig) string {
 	if e.Scope.Kind == "" {
 		return config.EventScopeGlobal

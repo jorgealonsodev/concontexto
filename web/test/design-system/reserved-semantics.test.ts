@@ -155,9 +155,6 @@ describe("reserved semantics: a dash in the chart means provisional data and not
     eventSpans: [
       { id: "hito-ejemplo", group: "milestones", name: "Hito de ejemplo", dateStart: "2019-04-01", dateEnd: "2019-09-30" },
     ],
-    policyMeasures: [
-      { id: "medida-ejemplo", group: "measures", name: "Medida de ejemplo", dateStart: "2019-08-01" },
-    ],
     frequency: "Q" as const,
     decimals: 1,
     unit: "% población activa",
@@ -221,33 +218,6 @@ describe("reserved semantics: a dash in the chart means provisional data and not
       // separation than this chart can afford now that it carries four.
       expect(rail).not.toContain("var(--color-ink)");
       expect(rail).toContain("var(--color-event-span)");
-    });
-
-    // The FIFTH treatment. Held to the same standard as the third and fourth,
-    // and to one more that only this layer has: it must stay OUT of the plot
-    // area. The other four annotate the data; this one annotates the calendar,
-    // and the distinction is the reason a date of entry into force can be
-    // shown at all without the drawing implying what followed it.
-    //
-    // Mutation-checked rather than assumed: give the stub a dash, repaint it
-    // in the provisional grey or the government ink, or move its y above the
-    // axis line in `svg.ts`, and one of these fails.
-    it(`the ${variantName} policy-measure mark is solid, hangs below the axis and borrows no other layer's encoding`, () => {
-      const svg = renderChartSVG(input);
-      const mark = /<g class="chart-measure-mark"[\s\S]*?<\/g>/.exec(svg)?.[0];
-      expect(mark, "no measure mark was rendered, so this guard would pass vacuously").toBeTruthy();
-      expect(mark).not.toContain("stroke-dasharray");
-      expect(mark).not.toContain("var(--color-provisional)");
-      expect(mark).not.toContain("var(--color-break-band)");
-      // Not the government rule's ink either. That mark is ALSO a vertical
-      // line at an instant, so sharing its colour would leave position as the
-      // single separation between two codes a reader has to tell apart.
-      expect(mark).not.toContain("var(--color-ink)");
-      expect(mark).toContain("var(--color-event-span)");
-
-      const axisY = Number(/class="chart-axis" x1="[\d.]+" y1="([\d.]+)"/.exec(svg)?.[1]);
-      const stubTop = Number(/y1="([\d.]+)" x2="[\d.]+" y2="[\d.]+"/.exec(mark as string)?.[1]);
-      expect(stubTop).toBeGreaterThan(axisY);
     });
   }
 });

@@ -154,8 +154,8 @@ export const indicatorChart: IndicatorChartProps = {
       // AND NO CHIP EITHER, which is what changed. The chip row used to name
       // this government on the argument that it genuinely governed the series
       // — but the row sits under a drawing that does not mark it, and on the
-      // island the same reasoning left a 2012 measure listed beneath a chart
-      // narrowed to 2018 onwards. A chip now names what the drawing marks
+      // island the same reasoning left a 2008-2013 crisis listed beneath a
+      // chart narrowed to 2018 onwards. A chip now names what the drawing marks
       // (`lib/chart/annotationWindow.ts`), so this entry demonstrates a
       // registry entry the current window has nothing to say about.
       id: "gob-2018",
@@ -236,21 +236,6 @@ export const indicatorChart: IndicatorChartProps = {
       dateStart: "2021-01-01",
       dateEnd: "2021-06-30",
       href: null,
-    },
-    {
-      // A POLICY MEASURE, inside the span and in a group that is open by
-      // default — so the catalog shows the gutter mark rather than only
-      // describing it. Illustrative like every other value in this file, and
-      // deliberately shaped like a real entry: a name, a date of entry into
-      // force, no end date (a law does not have one), and a citation, which
-      // `config/medidas.yaml` requires of every measure and which is what
-      // turns the chip into a link to the primary source.
-      id: "medida-ejemplo-2021",
-      group: "measures",
-      name: "Medida de política pública (ejemplo)",
-      dateStart: "2021-09-15",
-      dateEnd: null,
-      href: "https://www.boe.es/",
     },
   ],
 };

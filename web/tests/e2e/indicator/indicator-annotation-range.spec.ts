@@ -8,32 +8,29 @@ import { IndicatorPage } from "./indicator-page";
 // ── THE DEFECT ─────────────────────────────────────────────────────────────
 //
 // Measured in Chromium against the real full-history stack before it was
-// written down. On /indicador/tasa-de-paro-epa with the measures group open,
-// selecting "Desde 2018":
+// written down. On /indicador/tasa-de-paro-epa, selecting "Desde 2018":
 //
-//   series points   98 -> 34    narrowed, correct
-//   measure marks   12 ->  8    narrowed, correct
-//   measure chips    3 ->  3    NOT narrowed — still listing a 2012 reform
+//   series points     98 -> 34    narrowed, correct
+//   exogenous rails    2 ->  1    narrowed, correct
+//   exogenous chips    4 ->  4    NOT narrowed — still listing the 2008-2013 crisis
 //
 // The marks respected the visible window and the chip row did not, so a reader
-// who narrowed to 2018 onwards still saw a 2012 measure listed as though it
-// were in view. `governments` and `exogenous` behaved identically — and
-// `governments` was wrong even at the FULL range: six chips over three rules,
-// because three of this registry's six confirmed investitures predate the
-// series' own 2002 start. Fixing only the group that was reported would have
-// left the other two lying in the same way.
+// who narrowed to 2018 onwards still saw a crisis that ended in 2013 listed as
+// though it were in view. `governments` behaved identically — and was wrong
+// even at the FULL range: six chips over three rules, because three of this
+// registry's six confirmed investitures predate the series' own 2002 start.
+// Fixing only the group that was reported would have left the other lying in
+// the same way.
 //
-// ── WHICH GROUPS THIS FILE CAN PROVE, AND WHY NOT THE THIRD ────────────────
+// ── WHICH GROUPS THIS FILE PROVES ──────────────────────────────────────────
 //
 // `governments` and `exogenous`, on this page, against the built artifact's
 // own registry — which for those two groups carries exactly the entries the
 // real one does (same ids, same names, same dates, the same 2002-Q1..2026-Q2
-// span). `measures` is absent from that artifact entirely: the policy-measure
-// registry landed after the fixture was written, and the fixture is not this
-// slice's to change. That is not a gap left open — it is the same split
-// `chart-policy-measures.spec.ts` already documents and works within, and the
-// measures group's own range behaviour is proved there, in a browser, against
-// the workbench fixture that does carry one.
+// span). `milestones` carries no entry that this artifact scopes to this
+// series, so it has nothing here to assert against; its own shapes are held
+// by `test/chart/island-annotation-chips.test.ts` against a fixture that
+// does carry them.
 //
 // ── WHAT "AGREE" MEANS, PRECISELY ──────────────────────────────────────────
 //

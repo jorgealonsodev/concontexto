@@ -99,43 +99,30 @@ type BreakScopeConfig struct {
 	RefStatus string `yaml:"ref_status,omitempty"`
 }
 
-// EventConfig is one config/eventos.yaml, config/gobiernos.yaml or
-// config/medidas.yaml entry (PRD §9.6). It maps to one event row.
-// Government entries carry NO party-colour field anywhere in this type
-// (PRD §12.1 forbids colours readable as partisan) — only
-// id/name/dates/note/scope.
-//
-// WHAT THIS TYPE STILL REFUSES TO CARRY, and it is the reason the policy-
-// measures registry reuses it rather than getting a richer type of its own:
-// there is no field for an effect, an outcome, a direction, a magnitude, an
-// evaluation or an attribution of any of those to anyone. A measure entry
-// states which instrument, on what date, over which series, citable where.
-// Whether it worked is not expressible here, so no layer downstream — the
-// digest, the artifact, the chart, the generated Spanish sentence — can
-// project one, and none of them has to be trusted not to.
+// EventConfig is one config/eventos.yaml or config/gobiernos.yaml entry
+// (PRD §9.6). It maps to one event row. Government entries carry NO
+// party-colour field anywhere in this type (PRD §12.1 forbids colours
+// readable as partisan) — only id/name/dates/note/scope.
 type EventConfig struct {
-	ID    string `yaml:"id"`
-	Group string `yaml:"group,omitempty"` // exogenous | milestones | measures | governments
-	Name  string `yaml:"name"`
-
-	// NoteMD describes the entry itself — for a measure, what the
-	// instrument PROVIDES, never what followed it.
+	ID     string `yaml:"id"`
+	Group  string `yaml:"group,omitempty"` // exogenous | milestones | governments
+	Name   string `yaml:"name"`
 	NoteMD string `yaml:"note_md,omitempty"`
 
 	// Scope is the entry's applicability, mirroring BreakScopeConfig's
 	// shape and widened by one kind (design.md "series_break scope";
 	// postgres.ResolveActiveBreaksForSeries).
 	//
-	// It exists because a policy measure is NOT transversal the way a
-	// government change or a global shock is: a labour-market reform
-	// belongs on the EPA charts and is noise on an IPC chart, while the
-	// pandemic belongs on every one of them. Before this field, event
-	// carried no scope columns at all and postgres.ListActiveEvents said
-	// so in its own doc comment ("every currently active event is, by the
-	// schema this change inherited, global") — this closes exactly the gap
-	// that comment names, rather than routing around it with a second
-	// registry that would duplicate the parse → validate → reconcile →
-	// export → chart path this one already owns end to end.
+	// It closes a gap the code used to admit in its own words: before this
+	// field, event carried no scope columns at all and
+	// postgres.ListActiveEvents said so in its doc comment ("every
+	// currently active event is, by the schema this change inherited,
+	// global"), accepting a seriesID it did not read. Every entry authored
+	// today is still global — a change of government and a worldwide shock
+	// are facts about the calendar and apply wherever the calendar does —
+	// but "global" is now a value the registry states rather than a
+	// property of the schema, and an entry that applies to one series,
+	// dataset or source has somewhere to say so.
 	//
 	// The loader NORMALISES an omitted scope to Kind "global" (loader.go),
 	// so no consumer downstream ever has to decide what "" means.
@@ -143,10 +130,8 @@ type EventConfig struct {
 
 	// SourceURL is the document the entry was verified against — the same
 	// field, for the same reason, BreakConfig has carried since Phase 7.
-	// REQUIRED for a measure (validate.go): a measure is a legal instrument
-	// with a real date and a real identifier, and an entry a reader cannot
-	// check against a primary source is an editorial assertion, which is
-	// the one thing this portal does not publish.
+	// Optional: an event registry entry that HAS a document to point at
+	// should point at it, and a change of government has none.
 	SourceURL string `yaml:"source_url,omitempty"`
 
 	DateStart *time.Time `yaml:"date_start,omitempty"`
@@ -182,35 +167,25 @@ type EventScopeConfig struct {
 	Ref  string `yaml:"ref,omitempty"`
 }
 
-// The four scope kinds an event may declare, and the four groups it may
-// belong to. Named constants rather than bare literals because each value
-// crosses three layers unchanged — YAML, the `event` table's own columns,
-// and the export artifact — so a typo in any one of them would otherwise be
-// a silently-invisible entry rather than a compile error.
+// The four scope kinds an event may declare. Named constants rather than
+// bare literals because each value crosses three layers unchanged — YAML,
+// the `event` table's own columns, and the SQL predicate that reads them —
+// so a typo in any one of them would otherwise be a silently-invisible
+// entry rather than a compile error.
 const (
 	EventScopeGlobal  = "global"
 	EventScopeSeries  = "series"
 	EventScopeDataset = "dataset"
 	EventScopeSource  = "source"
-
-	// EventGroupMeasures is the policy-measures group: instruments with a
-	// date of entry into force, a citation and a scope. It is a group of
-	// the existing event registry and not a registry of its own precisely
-	// because everything downstream of the YAML — validation, digesting,
-	// transactional reconcile, soft retirement, export, the chart's own
-	// annotation toggles — is identical for a measure and already built.
-	EventGroupMeasures = "measures"
 )
 
-// eventGroups is every group an entry may declare. `governments` and
-// `measures` are never written by hand (the loader assigns them from the
-// file), but they are listed here because Validate sees the loaded value,
-// not the YAML.
+// eventGroups is every group an entry may declare. `governments` is never
+// written by hand (the loader assigns it from the file), but it is listed
+// here because Validate sees the loaded value, not the YAML.
 var eventGroups = map[string]bool{
-	"exogenous":        true,
-	"milestones":       true,
-	EventGroupMeasures: true,
-	"governments":      true,
+	"exogenous":   true,
+	"milestones":  true,
+	"governments": true,
 }
 
 // SourceConfig is one config/sources/{source}.yaml file (spec

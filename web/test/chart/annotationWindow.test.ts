@@ -1,14 +1,14 @@
 // The ONE window rule, tested where it now lives.
 //
-// Before this module the rule existed three times — once inside
-// `selectGovernmentChanges`, once inside `selectPolicyMeasures`, once inside
-// `selectEventSpans` — and a fourth consumer (the annotation chips below the
-// chart) had none, which is exactly how the chips came to list a 2012 measure
-// under a chart narrowed to 2018 onwards. These tests hold the extracted rule
-// to the behaviour those three selectors already had, so the refactor is
-// provably a move rather than a rewrite; `governmentMarkers.test.ts`,
-// `measureMarks.test.ts` and `eventSpans.test.ts` continue to hold each
-// selector to it from the other side.
+// Before this module the rule was written out once inside
+// `selectGovernmentChanges` and again inside `selectEventSpans`, and a third
+// consumer (the annotation chips below the chart) had none — which is exactly
+// how the chips came to list a 2008-2013 crisis under a chart narrowed to
+// 2018 onwards, and to list three pre-2002 investitures on a series beginning
+// in 2002. These tests hold the extracted rule to the behaviour those
+// selectors already had, so the refactor is provably a move rather than a
+// rewrite; `governmentMarkers.test.ts` and `eventSpans.test.ts` continue to
+// hold each selector to it from the other side.
 import { describe, expect, it } from "vitest";
 import {
   annotationInWindow,
@@ -125,16 +125,16 @@ describe("annotationsInWindow", () => {
     // this list and the artifact's own order is what the group already
     // printed. Selecting is this function's whole job.
     const entries = [
-      { id: "reforma-2012", group: "measures", dateStart: "2012-02-10", dateEnd: null },
-      { id: "covid-2020", group: "measures", dateStart: "2020-03-17", dateEnd: null },
-      { id: "reforma-2021", group: "measures", dateStart: "2021-12-30", dateEnd: null },
+      { id: "reforma-2012", group: "milestones", dateStart: "2012-02-10", dateEnd: null },
+      { id: "covid-2020", group: "milestones", dateStart: "2020-03-17", dateEnd: null },
+      { id: "reforma-2021", group: "milestones", dateStart: "2021-12-30", dateEnd: null },
     ];
     const kept = annotationsInWindow(entries, ["2018-Q1", "2020-Q1", "2021-Q4", "2026-Q2"], "Q");
     expect(kept.map((e) => e.id)).toEqual(["covid-2020", "reforma-2021"]);
   });
 
   it("returns nothing for an empty series rather than everything", () => {
-    const entries = [{ id: "a", group: "measures", dateStart: "2020-01-01", dateEnd: null }];
+    const entries = [{ id: "a", group: "milestones", dateStart: "2020-01-01", dateEnd: null }];
     expect(annotationsInWindow(entries, [], "Q")).toEqual([]);
   });
 });

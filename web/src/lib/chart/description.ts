@@ -5,17 +5,11 @@
 // — no DOM, no network — so it belongs under red-first testing per this
 // project's own Strict-TDD convention for pure render/transform functions.
 import { es } from "../../i18n/es";
-// The measures sentence prints a real calendar DAY ("31 de diciembre de
-// 2021"), not a period label — see `describePolicyMeasures` for why the day
-// is the whole content of that annotation — so it reaches for the date
-// formatter rather than the period one.
-import { formatCalendarDate } from "../format/date";
 import { formatNumber } from "../format/number";
 import { formatPeriodProse } from "../format/period";
 import type { EventSpan } from "./eventSpans";
 import type { ChartPoint } from "./geometry";
 import type { GovernmentChange } from "./governmentMarkers";
-import type { PolicyMeasure } from "./measureMarks";
 
 export interface DescribeSeriesInput {
   points: ChartPoint[];
@@ -206,49 +200,6 @@ export function describeEventSpans(spans: readonly EventSpan[]): string {
       : es.chart.eventSpan.listItem(span.name, from, to);
   });
   return joinSpanishList(items, es.chart.eventSpan.listConjunction, es.chart.eventSpan.projectedNote);
-}
-
-/**
- * The policy measures marked on the time axis, in one Spanish sentence — or
- * the empty string when the visible window marks none.
- *
- * WHY IT EXISTS AT ALL, and it is the same argument the two sentences above
- * make: the marks are drawn inside a single `role="img"` SVG, which prunes
- * its own descendants from the accessibility tree, so each stub's `<title>`
- * is reachable by a pointer and by nothing else. A visual annotation a
- * screen-reader reader cannot reach is a half-built feature. It is also the
- * ONLY identification a sighted reader gets: a measure carries no
- * on-drawing label at all (`annotationLabels.ts` places names for the
- * government rules and the event rails, both of which stand inside the plot
- * where there is room; the gutter has none), so this sentence names every
- * marked instrument in full, oldest first, which is the same left-to-right
- * order the stubs appear in.
- *
- * WHY IT PRINTS THE FULL DATE AND NOT THE PERIOD. The stub can only stand on
- * a period the series actually observed — a monthly instrument on a
- * quarterly chart snaps onto its quarter. The registry recorded a DAY, that
- * day is what "entrada en vigor" means, and it is the whole content of the
- * annotation, so it is what the words carry. `PolicyMeasure` keeps both
- * values precisely so this function does not have to choose between them.
- *
- * WHAT IT DELIBERATELY DOES NOT CLAIM, and this is the constrained part.
- * It states an instrument and a date and stops. There is no verb of change,
- * no comparison, no "since then", no figure for the periods after — and
- * nothing anywhere upstream to build one from: the registry, the `event`
- * table and the export artifact carry no field for an effect. The closing
- * `noClaimNote` then says outright that the drawing represents no relation
- * between the measures and the series. That sentence is a statement about
- * the CHART rather than about the measures, and it is the only device
- * available that forecloses the reading a mark beside a falling curve
- * otherwise invites — silence is not neutrality when the layout itself poses
- * the question.
- */
-export function describePolicyMeasures(measures: readonly PolicyMeasure[]): string {
-  if (measures.length === 0) return "";
-  const items = measures.map((measure) =>
-    es.chart.measure.listItem(measure.name, formatCalendarDate(measure.dateStart)),
-  );
-  return joinSpanishList(items, es.chart.measure.listConjunction, es.chart.measure.markedNote);
 }
 
 /** Spanish joins the final item of a list with "y", never with a comma. One

@@ -221,69 +221,6 @@ export const es = {
        * wording to the other's. */
       listConjunction: "y",
     },
-    /** ── The POLICY MEASURE marked on the time axis (the `measures`
-     * annotation group, config/medidas.yaml) — the chart's fifth annotation
-     * treatment, and the only one drawn outside the plot area.
-     *
-     * ALL NEW READER-FACING COPY — flagged for editorial sign-off, per this
-     * project's established convention. Register matched to the rest of this
-     * module: impersonal, no second person, every message a statement of fact
-     * rather than an instruction. The instrument's own name is never
-     * translated, shortened or rephrased: it arrives from config/medidas.yaml
-     * and is printed verbatim.
-     *
-     * THIS IS THE MOST CONSTRAINED VOCABULARY IN THE FILE, and the constraint
-     * is a product decision the owner stated outright: the site shows WHICH
-     * measures were taken and WHEN, and says nothing whatever about whether
-     * they worked. Prose is where that is easiest to break, because a
-     * sentence can imply by ordering what a drawing only suggests by
-     * position. So every string below states an instrument and a date and
-     * stops — there is no verb of change, no comparison, no "since then", no
-     * period-after figure, and nothing to fill one with: the registry, the
-     * table and the artifact carry no such field.
-     *
-     * `noClaimNote` IS THE ONE THAT EARNS ITS PLACE MOST. It is a statement
-     * about what the DRAWING does, not about the measures — and it is the
-     * only device available that forecloses the reading a mark beside a
-     * falling curve otherwise invites. Silence on that question is not
-     * neutrality when the layout itself poses it.
-     *
-     * `markTitle` is the stub's `<title>`, pointer-only: the drawing is a
-     * single `role="img"`, which prunes its own descendants from the
-     * accessibility tree. It prints the FULL calendar date rather than the
-     * year, because for a measure the day is the whole content of the
-     * annotation — a law's date of entry into force is not an approximation
-     * to a year the way a government's term is.
-     *
-     * `legendLabel` teaches the code. An unexplained stub under the axis is a
-     * smudge; the legend entry beside "Definitivo", "Provisional", "Cambio de
-     * gobierno" and "Periodo de un acontecimiento" is what makes it a mark
-     * with a meaning — and it names the mark as a date of ENTRY INTO FORCE,
-     * which is the fact, rather than as "a measure", which would leave the
-     * reader to supply the rest. */
-    measure: {
-      markTitle: (name: string, date: string) => `Entrada en vigor: ${name} (${date})`,
-      legendLabel: "Entrada en vigor de una medida",
-      /** One marked measure, as it reads inside `markedNote`'s list. */
-      listItem: (name: string, date: string) => `${name} (${date})`,
-      /** Spanish joins the last item of a list with "y", not with a comma.
-       * Its own key rather than a reference to the government or event-span
-       * layers' identical ones, for the reason those two already give: these
-       * are separate vocabularies that happen to share a conjunction, and
-       * reaching across would tie one sentence's wording to another's. */
-      listConjunction: "y",
-      /** "registradas para esta serie" is doing real work, and it is the same
-       * work `government.changesNote`'s "REGISTRADOS en el periodo
-       * representado" does: it says these are the measures the editorial
-       * registry records for this indicator inside the span on screen, and
-       * stops short of claiming they are all the measures there were. The
-       * registry is a small, deliberately partial seed; wording that implied
-       * completeness would turn an honest gap into a false assertion. */
-      markedNote: (list: string) =>
-        `Se señalan en el eje de tiempo las fechas de entrada en vigor de las medidas registradas para esta ` +
-        `serie: ${list}. ${es.chart.measure.noClaimNote}`,
-      noClaimNote: "El gráfico no representa ninguna relación entre esas medidas y la evolución de la serie.",
-    },
     transforms: {
       raw: "Serie original",
       yoy: "Variación interanual",
@@ -351,15 +288,32 @@ export const es = {
       verbStable: "se mantiene estable",
     },
     tableCaption: (name: string) => `Datos de ${name}`,
+    /** The `<summary>` of the disclosure the accessible data table now lives
+     * inside — see `lib/chart/tableSummary.ts` for the one function both
+     * renderers build it with, and `AccessibleDataTable.astro` for why the
+     * table is collapsed at all.
+     *
+     * ZERO-JS-HONEST PHRASING, the same rule `annotationToggleLabel` above
+     * states and for the same reason: a static build cannot know whether the
+     * reader has already opened this, and no script updates the text
+     * afterwards. "Ver la tabla de datos" would be a lie the moment it is
+     * open. A noun phrase is true in both states, and the browser's own
+     * disclosure triangle is what says which state it is in.
+     *
+     * IT DOES NOT REPEAT THE CAPTION. The caption inside says what the table
+     * is about ("Datos de Tasa de paro (% población activa)"); this says how
+     * much of it there is and which span it covers — the two facts a reader
+     * needs to decide whether opening 98 rows is worth it, and neither of
+     * them recoverable from the caption. */
+    tableDisclosure: {
+      span: (count: string, from: string, to: string) => `Tabla de datos (${count} periodos, de ${from} a ${to})`,
+      single: (period: string) => `Tabla de datos (1 periodo, ${period})`,
+      empty: "Tabla de datos (sin datos)",
+    },
     annotationGroupLabel: {
       governments: "gobiernos",
       exogenous: "shocks exógenos",
       milestones: "hitos normativos",
-      /** NEW reader-facing copy — flagged for editorial sign-off. "de
-       * política pública" rather than the bare "medidas": on a page about
-       * unemployment, "medidas" alone would as easily be read as units of
-       * measurement. */
-      measures: "medidas de política pública",
     } as const,
     /** Zero-JS-honest phrasing (correct whether the group is currently
      * shown or hidden) — used by the static toggle label. */
@@ -545,10 +499,6 @@ export const es = {
       governments: "Gobierno",
       exogenous: "Shock",
       milestones: "Hito",
-      /** NEW reader-facing copy — flagged for editorial sign-off. The terse
-       * per-entry prefix, matching its three siblings' register; the longer
-       * group NAME lives in `chart.annotationGroupLabel`. */
-      measures: "Medida",
     } as const,
   },
   /** verify-report CRITICAL-3 remediation: `IndicatorCard.astro`'s own

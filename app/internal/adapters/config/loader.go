@@ -138,23 +138,11 @@ func loadBreaks(fsys fs.FS) ([]BreakConfig, error) {
 }
 
 // loadEvents parses config/eventos.yaml (Group read per-entry from the
-// YAML: "exogenous"|"milestones"), config/medidas.yaml (Group always
-// "measures") and config/gobiernos.yaml (Group always "governments") —
-// the last two assigned here rather than repeated in every entry, since
-// each of those files is exactly one group (PRD §9.6).
-//
-// medidas.yaml is its own file rather than a fourth group inside
-// eventos.yaml for an editorial reason, not a technical one: config/** is
-// a documented four-eyes path, and a reviewer of a policy-measure change
-// should be reading a diff that contains policy measures and nothing else.
-// It costs one line here, which is exactly what gobiernos.yaml already
-// costs for the same benefit.
+// YAML: "exogenous"|"milestones") and config/gobiernos.yaml (Group
+// always "governments", assigned here rather than repeated in every
+// entry — the whole file is exactly one group, PRD §9.6).
 func loadEvents(fsys fs.FS) ([]EventConfig, error) {
 	exogenousAndMilestones, err := loadEventFile(fsys, "eventos.yaml", "")
-	if err != nil {
-		return nil, err
-	}
-	measures, err := loadEventFile(fsys, "medidas.yaml", "measures")
 	if err != nil {
 		return nil, err
 	}
@@ -162,8 +150,7 @@ func loadEvents(fsys fs.FS) ([]EventConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := append(exogenousAndMilestones, measures...)
-	return append(out, governments...), nil
+	return append(exogenousAndMilestones, governments...), nil
 }
 
 // loadEventFile parses one editorial event file. defaultGroup is applied

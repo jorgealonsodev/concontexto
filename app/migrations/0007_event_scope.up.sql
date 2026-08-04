@@ -11,11 +11,13 @@
 -- groups the registry held: a change of government and a worldwide shock
 -- are facts about the calendar and apply wherever the calendar does.
 --
--- It stops being honest the moment the registry holds a POLICY MEASURE.
--- A labour-market reform is addressed at a specific market: it belongs on
--- the EPA charts and is noise on an IPC chart. Without a scope the only
--- available behaviours were to publish every measure on every chart or to
--- publish none, and both are worse than the gap.
+-- It stops being honest the moment the registry holds an entry that is NOT
+-- transversal — anything addressed at one market, one dataset or one
+-- source. Without a scope the only available behaviours were to publish
+-- such an entry on every chart in the portal or on none, and both are worse
+-- than the gap. Every entry authored today is still 'global', which is the
+-- honest value for the three groups the registry holds; what changed is
+-- that it is now a value stated rather than a property of the schema.
 --
 -- SHAPE BORROWED WHOLESALE from series_break (migration 0001), which
 -- solved this exact problem for ruptures: scope_kind + scope_ref, widened

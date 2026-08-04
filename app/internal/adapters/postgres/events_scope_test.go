@@ -1,7 +1,7 @@
 package postgres_test
 
-// The scope the event registry gained so that a POLICY MEASURE can be
-// published on the charts it is addressed at and nowhere else.
+// The scope the event registry gained, and the per-series filter it makes
+// possible.
 //
 // WHAT THIS REPLACES. events_read_test.go's own package comment records the
 // prior state exactly: "migration 0001's event table carries no scope
@@ -10,6 +10,11 @@ package postgres_test
 // reading ... not a per-series filter this schema has no column to express",
 // and ListActiveEvents accepted seriesID "leaving room for a real
 // per-series scope in a future slice". This is that slice.
+//
+// EVERY ENTRY THE REGISTRY HOLDS TODAY IS GLOBAL, and these tests are what
+// keep the other three kinds correct while nothing in config/ uses them.
+// The read path is not dead either way: the predicate below runs on every
+// export, and 'global' is the branch it takes.
 //
 // THE WIDENING RULE IS THE BREAK REGISTRY'S, deliberately unchanged:
 // series ⊂ dataset ⊂ source, resolved in ONE query with no row ever
@@ -54,13 +59,13 @@ func TestListActiveEvents_ResolvesScopeForTheSeriesAsked(t *testing.T) {
 	mustExec(t, ctx, tx, `INSERT INTO event (id, event_group, name, date_start, config_digest, scope_kind, scope_ref)
 		VALUES ('pandemia', 'exogenous', 'Pandemia', '2020-03-14', 'd1', 'global', '')`)
 	mustExec(t, ctx, tx, `INSERT INTO event (id, event_group, name, date_start, config_digest, scope_kind, scope_ref, source_url)
-		VALUES ('rdl-32-2021', 'measures', 'RDL 32/2021', '2021-12-31', 'd2', 'dataset', 'ine-epa', 'https://www.boe.es/x')`)
+		VALUES ('hito-epa', 'milestones', 'Hito EPA', '2021-12-31', 'd2', 'dataset', 'ine-epa', 'https://www.ine.es/x')`)
 	mustExec(t, ctx, tx, `INSERT INTO event (id, event_group, name, date_start, config_digest, scope_kind, scope_ref)
-		VALUES ('rdl-6-2022', 'measures', 'RDL 6/2022', '2022-03-31', 'd3', 'dataset', 'ine-ipc')`)
+		VALUES ('hito-ipc', 'milestones', 'Hito IPC', '2022-03-31', 'd3', 'dataset', 'ine-ipc')`)
 	mustExec(t, ctx, tx, `INSERT INTO event (id, event_group, name, date_start, config_digest, scope_kind, scope_ref)
-		VALUES ('solo-paro', 'measures', 'Sólo paro', '2019-01-01', 'd4', 'series', 'tasa-de-paro-epa')`)
+		VALUES ('solo-paro', 'milestones', 'Sólo paro', '2019-01-01', 'd4', 'series', 'tasa-de-paro-epa')`)
 	mustExec(t, ctx, tx, `INSERT INTO event (id, event_group, name, date_start, config_digest, scope_kind, scope_ref)
-		VALUES ('todo-ine', 'measures', 'Todo INE', '2018-01-01', 'd5', 'source', 'ine')`)
+		VALUES ('todo-ine', 'milestones', 'Todo INE', '2018-01-01', 'd5', 'source', 'ine')`)
 
 	got, err := postgres.ListActiveEvents(ctx, tx, "tasa-de-paro-epa")
 	if err != nil {
@@ -70,24 +75,24 @@ func TestListActiveEvents_ResolvesScopeForTheSeriesAsked(t *testing.T) {
 	for _, ev := range got {
 		ids[ev.ID] = true
 	}
-	for _, want := range []string{"pandemia", "rdl-32-2021", "solo-paro", "todo-ine"} {
+	for _, want := range []string{"pandemia", "hito-epa", "solo-paro", "todo-ine"} {
 		if !ids[want] {
 			t.Errorf("expected %q to resolve for tasa-de-paro-epa, got %v", want, ids)
 		}
 	}
-	// The whole point: an IPC-scoped measure is noise on an EPA chart, and
+	// The whole point: an IPC-scoped entry is noise on an EPA chart, and
 	// this is the layer that keeps it off.
-	if ids["rdl-6-2022"] {
-		t.Errorf("an ine-ipc-scoped measure must NOT resolve for tasa-de-paro-epa, got %v", ids)
+	if ids["hito-ipc"] {
+		t.Errorf("an ine-ipc-scoped event must NOT resolve for tasa-de-paro-epa, got %v", ids)
 	}
 
 	// And the citation survives the read, because it is what makes the
 	// entry checkable by the reader rather than merely by the reviewer.
 	for _, ev := range got {
-		if ev.ID != "rdl-32-2021" {
+		if ev.ID != "hito-epa" {
 			continue
 		}
-		if ev.SourceURL == nil || *ev.SourceURL != "https://www.boe.es/x" {
+		if ev.SourceURL == nil || *ev.SourceURL != "https://www.ine.es/x" {
 			t.Errorf("event %q lost its source_url: %+v", ev.ID, ev.SourceURL)
 		}
 	}
@@ -121,8 +126,8 @@ func TestListActiveEvents_UnknownSeriesStillResolvesGlobalEntries(t *testing.T) 
 	}
 }
 
-// Reconcile carries the two new fields end to end. Without this, an edit to
-// a measure's scope or citation would leave the database holding the old
+// Reconcile carries the three columns end to end. Without this, an edit to
+// an entry's scope or citation would leave the database holding the old
 // value while the YAML claimed the new one — the drift config_digest exists
 // to make impossible.
 func TestReconcileEvents_PersistsScopeAndSourceURL(t *testing.T) {
@@ -132,12 +137,12 @@ func TestReconcileEvents_PersistsScopeAndSourceURL(t *testing.T) {
 		t.Fatalf("Up: %v", err)
 	}
 
-	measure := postgres.EventInput{
-		ID: "rdl-32-2021", Group: "measures", Name: "RDL 32/2021",
+	scoped := postgres.EventInput{
+		ID: "hito-epa", Group: "milestones", Name: "Hito EPA",
 		DateStart: time.Date(2021, 12, 31, 0, 0, 0, 0, time.UTC), ScopeKind: "dataset", ScopeRef: "ine-epa",
-		SourceURL: "https://www.boe.es/x", ConfigDigest: "d1",
+		SourceURL: "https://www.ine.es/x", ConfigDigest: "d1",
 	}
-	if _, err := postgres.ReconcileEvents(ctx, tx, []postgres.EventInput{measure}); err != nil {
+	if _, err := postgres.ReconcileEvents(ctx, tx, []postgres.EventInput{scoped}); err != nil {
 		t.Fatalf("ReconcileEvents: %v", err)
 	}
 
@@ -151,14 +156,14 @@ func TestReconcileEvents_PersistsScopeAndSourceURL(t *testing.T) {
 	if rows[0].ScopeKind != "dataset" || rows[0].ScopeRef != "ine-epa" {
 		t.Errorf("scope = %s/%s, want dataset/ine-epa", rows[0].ScopeKind, rows[0].ScopeRef)
 	}
-	if rows[0].SourceURL == nil || *rows[0].SourceURL != "https://www.boe.es/x" {
-		t.Errorf("SourceURL = %v, want the BOE url", rows[0].SourceURL)
+	if rows[0].SourceURL == nil || *rows[0].SourceURL != "https://www.ine.es/x" {
+		t.Errorf("SourceURL = %v, want the methodology url", rows[0].SourceURL)
 	}
 
 	// An in-place edit of the scope must UPDATE the same row, never insert
-	// a second one: event's natural key is its bare id, so a measure that
-	// moves from one dataset to another is the same instrument re-scoped.
-	moved := measure
+	// a second one: event's natural key is its bare id, so an entry that
+	// moves from one dataset to another is the same entry re-scoped.
+	moved := scoped
 	moved.ScopeRef = "ine-ipc"
 	moved.ConfigDigest = "d2"
 	counts, err := postgres.ReconcileEvents(ctx, tx, []postgres.EventInput{moved})

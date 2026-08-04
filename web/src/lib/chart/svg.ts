@@ -32,6 +32,7 @@ import {
 } from "./geometry";
 import { buildEventSpanRails, type EventSpanAnnotation } from "./eventSpans";
 import { buildGovernmentMarkers, type GovernmentChangeAnnotation } from "./governmentMarkers";
+import { buildPolicyMeasureMarks, type PolicyMeasureAnnotation } from "./measureMarks";
 import {
   NARROW_ANNOTATION_LABEL_FONT_SIZE,
   WIDE_ANNOTATION_LABEL_FONT_SIZE,
@@ -39,6 +40,10 @@ import {
   type PlacedAnnotationLabel,
 } from "./annotationLabels";
 import { formatPeriodProse } from "../format/period";
+// A measure's `<title>` states the DAY the instrument entered into force, not
+// the period its mark snapped onto — see `measureMarks.ts` for why the day is
+// the whole content of that annotation.
+import { formatCalendarDate } from "../format/date";
 import type { Frequency } from "./periods";
 // The marker's `<title>` is read by a person, so its words live where every
 // other reader-facing string does. (The `<title>` two elements above — "
@@ -82,6 +87,19 @@ export interface RenderChartSVGInput {
    * the renderer both consumers share. Omitted (or empty), the drawing carries
    * no rail and is byte-identical to what it was before this layer existed. */
   eventSpans?: EventSpanAnnotation[];
+  /** The editorial POLICY MEASURES whose date of entry into force may be
+   * marked on the time axis — the chart's fifth annotation treatment, and the
+   * only one drawn outside the plot area.
+   *
+   * Same contract as the two layers above: this list arrives ALREADY filtered
+   * to the annotation groups the reader has chosen to see, because that
+   * choice is the caller's state and not a property of the series. Which of
+   * the entries handed in may honestly be marked, and where, is
+   * `buildPolicyMeasureMarks`' single decision inside the renderer both
+   * consumers share. Omitted (or empty), the drawing carries no mark and is
+   * byte-identical to what it was before this layer existed — which is what
+   * keeps the committed golden fixture unchanged. */
+  policyMeasures?: PolicyMeasureAnnotation[];
   frequency: Frequency;
   decimals: number;
   unit: string;
@@ -358,6 +376,105 @@ export function renderChartSVG(input: RenderChartSVGInput): string {
     })
     .join("");
 
+  // The POLICY-MEASURE mark — the chart's FIFTH annotation treatment, and the
+  // only one drawn OUTSIDE the plot area. What a reader is meant to learn from
+  // each of the five, now:
+  //
+  //   dotted grey ALONG THE DATA PATH   "this observation is provisional; the
+  //                                      source may still revise it"
+  //                                      (RESERVED -- theme.css's own header)
+  //   wide translucent VERTICAL BAND    "the series changed methodology here;
+  //                                      the two sides are not directly
+  //                                      comparable"
+  //   thin SOLID vertical rule + flag   "a different government took office
+  //                                      here"
+  //   solid HORIZONTAL rail + serifs    "the editorial registry dates this
+  //                                      event from here to here"
+  //   short vertical STUB IN THE AXIS
+  //   GUTTER, detached from the axis    "a measure entered into force on this
+  //                                      date" (this)
+  //
+  // WHY THE GUTTER, AND NOT ANOTHER MARK ON THE PLOT. This is the one layer
+  // whose placement is a product requirement rather than a legibility one. The
+  // registry records which instrument entered into force on which date and
+  // records nothing about what followed; the site must not say otherwise. A
+  // full-height rule crossing the series at the exact period the curve turns
+  // says otherwise without a single word — it asserts an effect by adjacency,
+  // with no author and no source a reader could check, and no caption
+  // underneath undoes it.
+  //
+  // Confined to the gutter, the mark makes exactly the statement the registry
+  // supports: a date of entry into force is a fact about the CALENDAR, and the
+  // calendar is the axis. It touches no value, spans no interval on the data,
+  // and shades nothing.
+  //
+  // FIVE SEPARATIONS, AND NOT ONE OF THEM IS COLOUR:
+  //
+  //   AGAINST THE PROVISIONAL DASH -- solid, and drawn outside the plot
+  //   entirely. `test/design-system/reserved-semantics.test.ts` fails the
+  //   moment this stroke gains a dash.
+  //
+  //   AGAINST THE BREAK BAND -- a stroke against a fill, an instant against an
+  //   interval, and the gutter against the plot.
+  //
+  //   AGAINST THE GOVERNMENT RULE -- the near miss, and the one this layer was
+  //   designed around, because that mark is ALSO "a vertical line at an
+  //   instant". Three things separate them at once: it is outside the plot
+  //   where that one is inside it; it is a stub where that one spans the full
+  //   plot height; and it is DETACHED from the axis where that one ends on it.
+  //   The gap is load-bearing rather than decorative -- an investiture and a
+  //   measure on the same period would otherwise draw one continuous line
+  //   through the axis and collapse two codes into one.
+  //
+  //   AGAINST THE EVENT RAIL -- orientation and region: vertical below the
+  //   axis against horizontal near the top of the plot, an instant against an
+  //   interval. They share `--color-event-span` deliberately: both are the
+  //   editorial registry speaking about a stretch of the calendar, and one
+  //   voice in one ink is more legible than a fifth hue would be. Colour is
+  //   the second channel here as everywhere else in this drawing.
+  //
+  //   AGAINST THE DATA -- it is not in the plot area at all, and it introduces
+  //   no glyph shape, so the definitive circle, the provisional diamond and
+  //   the government triangle keep meaning exactly what they meant.
+  //
+  // NO ON-DRAWING LABEL, deliberately. The government rules and the event
+  // rails print their names inside the plot because the plot has vertical room
+  // to spare; the gutter has none, and a name squeezed in beside the tick
+  // labels would either be drawn over a numeral or pushed back onto the
+  // series -- which is the one place this mark must never reach. The
+  // identification is carried by the `<title>` (pointer), the sentence beside
+  // the chart (every reader, and the only channel a screen reader has), the
+  // chip below it and the legend entry: four places, all of them away from the
+  // curve.
+  const measureMarks = buildPolicyMeasureMarks(
+    input.policyMeasures ?? [],
+    periods,
+    input.frequency,
+    dims,
+    tickFontSize,
+    xTickLabelOffset,
+  );
+  const policyMeasureMarks = measureMarks
+    .map((mark) => {
+      const x = mark.x.toFixed(2);
+      return (
+        `<g class="chart-measure-mark" data-testid="chart-measure-mark${idSuffix}" ` +
+        `data-measure-id="${escapeXml(mark.id)}">` +
+        // Pointer-only, exactly like the government marker's and the rail's:
+        // the root `<svg>` is a single `role="img"`, which prunes its own
+        // descendants from the accessibility tree. It carries the FULL
+        // calendar date rather than the year -- for a law, the day IS the
+        // annotation, unlike a government term, which the chip already labels
+        // by year.
+        `<title>${escapeXml(es.chart.measure.markTitle(mark.name, formatCalendarDate(mark.dateStart)))}</title>` +
+        `<line class="chart-measure-mark__stub" x1="${x}" y1="${mark.y1.toFixed(2)}" ` +
+        `x2="${x}" y2="${mark.y2.toFixed(2)}" stroke="var(--color-event-span)" ` +
+        `stroke-width="${mark.strokeWidth.toFixed(2)}" stroke-linecap="butt" />` +
+        `</g>`
+      );
+    })
+    .join("");
+
   // Line: each individual EDGE (the segment between two consecutive
   // plotted points) is coloured/dashed on its own, based on whether the
   // point it arrives AT is provisional — not the whole contiguous run. A
@@ -509,6 +626,12 @@ export function renderChartSVG(input: RenderChartSVGInput): string {
     eventSpanRails +
     governmentMarkers +
     axisLine +
+    // After the axis, because the stub hangs BELOW it and the two touch
+    // nowhere -- and before the series, which shares the rule every other
+    // annotation follows here: annotation never obscures the data. In this
+    // layer's case the rule is satisfied by geometry rather than by ordering,
+    // since nothing it draws is inside the plot area at all.
+    policyMeasureMarks +
     linePaths +
     markers +
     annotationLabelMarkup +

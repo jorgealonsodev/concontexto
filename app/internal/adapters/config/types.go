@@ -99,15 +99,55 @@ type BreakScopeConfig struct {
 	RefStatus string `yaml:"ref_status,omitempty"`
 }
 
-// EventConfig is one config/eventos.yaml or config/gobiernos.yaml entry
-// (PRD §9.6). It maps to one event row. Government entries carry NO
-// party-colour field anywhere in this type (PRD §12.1 forbids colours
-// readable as partisan) — only id/name/dates/note.
+// EventConfig is one config/eventos.yaml, config/gobiernos.yaml or
+// config/medidas.yaml entry (PRD §9.6). It maps to one event row.
+// Government entries carry NO party-colour field anywhere in this type
+// (PRD §12.1 forbids colours readable as partisan) — only
+// id/name/dates/note/scope.
+//
+// WHAT THIS TYPE STILL REFUSES TO CARRY, and it is the reason the policy-
+// measures registry reuses it rather than getting a richer type of its own:
+// there is no field for an effect, an outcome, a direction, a magnitude, an
+// evaluation or an attribution of any of those to anyone. A measure entry
+// states which instrument, on what date, over which series, citable where.
+// Whether it worked is not expressible here, so no layer downstream — the
+// digest, the artifact, the chart, the generated Spanish sentence — can
+// project one, and none of them has to be trusted not to.
 type EventConfig struct {
-	ID     string `yaml:"id"`
-	Group  string `yaml:"group,omitempty"` // exogenous | milestones | governments
-	Name   string `yaml:"name"`
+	ID    string `yaml:"id"`
+	Group string `yaml:"group,omitempty"` // exogenous | milestones | measures | governments
+	Name  string `yaml:"name"`
+
+	// NoteMD describes the entry itself — for a measure, what the
+	// instrument PROVIDES, never what followed it.
 	NoteMD string `yaml:"note_md,omitempty"`
+
+	// Scope is the entry's applicability, mirroring BreakScopeConfig's
+	// shape and widened by one kind (design.md "series_break scope";
+	// postgres.ResolveActiveBreaksForSeries).
+	//
+	// It exists because a policy measure is NOT transversal the way a
+	// government change or a global shock is: a labour-market reform
+	// belongs on the EPA charts and is noise on an IPC chart, while the
+	// pandemic belongs on every one of them. Before this field, event
+	// carried no scope columns at all and postgres.ListActiveEvents said
+	// so in its own doc comment ("every currently active event is, by the
+	// schema this change inherited, global") — this closes exactly the gap
+	// that comment names, rather than routing around it with a second
+	// registry that would duplicate the parse → validate → reconcile →
+	// export → chart path this one already owns end to end.
+	//
+	// The loader NORMALISES an omitted scope to Kind "global" (loader.go),
+	// so no consumer downstream ever has to decide what "" means.
+	Scope EventScopeConfig `yaml:"scope,omitempty"`
+
+	// SourceURL is the document the entry was verified against — the same
+	// field, for the same reason, BreakConfig has carried since Phase 7.
+	// REQUIRED for a measure (validate.go): a measure is a legal instrument
+	// with a real date and a real identifier, and an entry a reader cannot
+	// check against a primary source is an editorial assertion, which is
+	// the one thing this portal does not publish.
+	SourceURL string `yaml:"source_url,omitempty"`
 
 	DateStart *time.Time `yaml:"date_start,omitempty"`
 	DateEnd   *time.Time `yaml:"date_end,omitempty"`
@@ -120,6 +160,57 @@ type EventConfig struct {
 
 	// FilePath is set by the loader, same rationale as SourceConfig.FilePath.
 	FilePath string `yaml:"-"`
+}
+
+// EventScopeConfig is an event's applicability. It is deliberately its OWN
+// type rather than a reuse of BreakScopeConfig, on two counts:
+//
+//   - It admits a fourth kind, "global", which a break cannot have. Every
+//     break is a fact about a specific series, dataset or source; a change
+//     of government or a worldwide shock is a fact about the calendar and
+//     applies wherever the calendar does. Widening BreakScopeConfig instead
+//     would have made "global" expressible in rupturas.yaml, where it means
+//     nothing.
+//   - It carries no RefStatus. That escape hatch exists for breaks because
+//     a real methodological rupture can be documented before the series it
+//     touches is configured (the ECOICOP v2 entries). An event's scope
+//     names series this portal already publishes — a scope pointing at
+//     nothing would simply mean the entry is invisible, which is a reason
+//     not to write it yet rather than a state to encode.
+type EventScopeConfig struct {
+	Kind string `yaml:"kind"` // global | series | dataset | source
+	Ref  string `yaml:"ref,omitempty"`
+}
+
+// The four scope kinds an event may declare, and the four groups it may
+// belong to. Named constants rather than bare literals because each value
+// crosses three layers unchanged — YAML, the `event` table's own columns,
+// and the export artifact — so a typo in any one of them would otherwise be
+// a silently-invisible entry rather than a compile error.
+const (
+	EventScopeGlobal  = "global"
+	EventScopeSeries  = "series"
+	EventScopeDataset = "dataset"
+	EventScopeSource  = "source"
+
+	// EventGroupMeasures is the policy-measures group: instruments with a
+	// date of entry into force, a citation and a scope. It is a group of
+	// the existing event registry and not a registry of its own precisely
+	// because everything downstream of the YAML — validation, digesting,
+	// transactional reconcile, soft retirement, export, the chart's own
+	// annotation toggles — is identical for a measure and already built.
+	EventGroupMeasures = "measures"
+)
+
+// eventGroups is every group an entry may declare. `governments` and
+// `measures` are never written by hand (the loader assigns them from the
+// file), but they are listed here because Validate sees the loaded value,
+// not the YAML.
+var eventGroups = map[string]bool{
+	"exogenous":        true,
+	"milestones":       true,
+	EventGroupMeasures: true,
+	"governments":      true,
 }
 
 // SourceConfig is one config/sources/{source}.yaml file (spec

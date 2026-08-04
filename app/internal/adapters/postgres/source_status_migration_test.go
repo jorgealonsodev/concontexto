@@ -75,12 +75,20 @@ func TestMigrationDown_SourceStatusColumnDropsWithoutLosingAnyObservation(t *tes
 	}
 
 	// Down rolls back exactly one step at a time (runner.go's own
-	// contract). Three later migrations now sit on top of 0003 --
+	// contract). Four later migrations now sit on top of 0003 --
+	// 0007_event_scope (the event registry's scope columns),
 	// 0006_validation_acknowledgement (the acknowledgement registry),
 	// 0005_series_discontinued (Remediation B) and 0004_source_licence_url
-	// (slice 4), none touching this test's own column -- so the fourth
+	// (slice 4), none touching this test's own column -- so the fifth
 	// Down is the one that reverts 0003, the migration this test actually
 	// asserts against.
+	//
+	// This count is what makes the assertion below meaningful, so it is
+	// maintained by hand on purpose: a new migration that forgot to add a
+	// step here would silently start asserting against the WRONG one.
+	if err := runner.Down(ctx); err != nil {
+		t.Fatalf("Down (0007): %v", err)
+	}
 	if err := runner.Down(ctx); err != nil {
 		t.Fatalf("Down (0006): %v", err)
 	}

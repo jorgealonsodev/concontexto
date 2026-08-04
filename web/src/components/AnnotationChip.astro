@@ -4,9 +4,10 @@
 // slice's D4 resolution (not fused with BreakBand into a single chart-only
 // partial).
 //
-// Represents one entry of the chart's three annotation groups (PRD §6.1.1,
+// Represents one entry of the chart's annotation groups (PRD §6.1.1,
 // indicator-page spec "Three separately toggleable annotation groups"):
-// (a) gobiernos, (b) shocks exógenos, (c) hitos normativos. This component
+// (a) gobiernos, (b) shocks exógenos, (c) hitos normativos, plus (d) medidas
+// de política pública, the scoped policy-measure registry. This component
 // renders ONE already-resolved, already-confirmed entry — group visibility
 // (groups a/b off by default, absent controls for empty groups) is the chart
 // island's job (slice 8), not this static presentational chip's.
@@ -18,7 +19,7 @@
 import { es } from "../i18n/es";
 
 export interface Props {
-  group: "governments" | "exogenous" | "milestones";
+  group: "governments" | "exogenous" | "milestones" | "measures";
   name: string;
   dateLabel: string;
   href?: string | null;

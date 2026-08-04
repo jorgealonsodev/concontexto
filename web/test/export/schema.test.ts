@@ -284,6 +284,40 @@ describe("export artifact schema — the break and event sections (Go BreakRef/E
     expect(parsed.events).toEqual([WELL_FORMED_EVENT]);
   });
 
+  // The POLICY-MEASURE group and its citation. `AnnotationGroupSchema` is
+  // deliberately TIGHTER than the Go half (which types the group as a bare
+  // string), and this is the only place a fourth group becomes expressible:
+  // an entry whose group the union does not carry matches nothing in the
+  // island, renders nowhere and reports nothing. A measure silently missing
+  // from a page is precisely the failure the loader contract exists to
+  // prevent, so the union has to admit it explicitly.
+  const WELL_FORMED_MEASURE = {
+    id: "rdl-32-2021-reforma-laboral",
+    group: "measures",
+    name: "Real Decreto-ley 32/2021, de 28 de diciembre",
+    dateStart: "2021-12-31",
+    noteMd: "Instrumento publicado en el BOE.",
+    sourceUrl: "https://www.boe.es/buscar/act.php?id=BOE-A-2021-21788",
+  } as const;
+
+  it("parses a policy measure, group and citation included", () => {
+    const parsed = parseSeriesDoc(docWith({ events: [WELL_FORMED_MEASURE] }));
+    expect(parsed.events).toEqual([WELL_FORMED_MEASURE]);
+  });
+
+  it("parses an event whose optional sourceUrl key is ABSENT, the way Go's omitempty writes it", () => {
+    // Required of a measure by validate-config, optional for the three
+    // transversal groups — so the SCHEMA has to accept its absence, and the
+    // requirement stays where it can name the file and the field.
+    const { sourceUrl: _sourceUrl, ...withoutCitation } = WELL_FORMED_MEASURE;
+    const parsed = parseSeriesDoc(docWith({ events: [withoutCitation] }));
+    expect(parsed.events[0].sourceUrl).toBeUndefined();
+  });
+
+  it("rejects an event carrying a group the page cannot render", () => {
+    expect(() => parseSeriesDoc(docWith({ events: [{ ...WELL_FORMED_MEASURE, group: "opiniones" }] }))).toThrow();
+  });
+
   // `SourceURL *string \`json:"sourceUrl,omitempty"\`` — a nil pointer OMITS
   // the key entirely, it never emits `null`. Same for EventRef's `dateEnd`
   // and `noteMd`. The schema therefore marks them `.optional()`, and these
@@ -331,19 +365,19 @@ describe("export artifact schema — the break and event sections (Go BreakRef/E
   // nothing on the Go side constrains its value (config/loader.go copies it
   // straight out of `eventos.yaml`, defaulting only gobiernos.yaml's).
   //
-  // `ChartIsland.svelte`'s `groupedAnnotations` iterates the three KNOWN
+  // `ChartIsland.svelte`'s `groupedAnnotations` iterates the KNOWN
   // groups and filters each one's entries out of `annotations`; an event
-  // carrying any fourth value matches no group and is silently dropped — an
+  // carrying any unlisted value matches no group and is silently dropped — an
   // editorial event that the artifact records and the page never shows,
   // with no error anywhere. A typo in `eventos.yaml` ("exogenus") is
   // exactly how that happens. Failing the build here is the whole point of
   // validating at the loader boundary, and it is also what lets
   // `IndicatorPage.astro` stop asserting the union with an `as` cast.
-  it("REJECTS an event whose group is not one of the three the page can render", () => {
+  it("REJECTS an event whose group is not one the page can render", () => {
     expect(() => parseSeriesDoc(docWith({ events: [{ ...WELL_FORMED_EVENT, group: "exogenus" }] }))).toThrow();
   });
 
-  it.each(["governments", "exogenous", "milestones"])("parses the renderable group %s", (group) => {
+  it.each(["governments", "exogenous", "milestones", "measures"])("parses the renderable group %s", (group) => {
     const parsed = parseSeriesDoc(docWith({ events: [{ ...WELL_FORMED_EVENT, group }] }));
     expect(parsed.events[0].group).toBe(group);
   });

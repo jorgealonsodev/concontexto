@@ -224,6 +224,14 @@ type BreakRef struct {
 	SourceURL *string `json:"sourceUrl,omitempty"`
 }
 
+// EventRef carries NO scope. The scope is what
+// postgres.ListActiveEvents already USED to decide that this entry belongs
+// on this series' document at all, so repeating it here would publish the
+// filter's input alongside its output — a second copy of a fact, for a
+// reader who has no question it answers.
+//
+// It carries no effect, outcome or evaluation either, for the policy-
+// measures group as for every other: there is nothing upstream to carry.
 type EventRef struct {
 	ID        string  `json:"id"`
 	Group     string  `json:"group"`
@@ -231,6 +239,12 @@ type EventRef struct {
 	DateStart string  `json:"dateStart"`
 	DateEnd   *string `json:"dateEnd,omitempty"`
 	NoteMD    *string `json:"noteMd,omitempty"`
+
+	// SourceURL is the document the entry was verified against — required
+	// of a policy measure by validate-config, optional for the other
+	// groups, and the same `*string` + `omitempty` shape BreakRef already
+	// uses so an absent citation OMITS the key rather than emitting null.
+	SourceURL *string `json:"sourceUrl,omitempty"`
 }
 
 // SeriesDoc is one series/{slug}.json document -- the per-series shape

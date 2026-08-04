@@ -17,13 +17,38 @@ rebuild + redeploy (see `config_embed_test.go` at the repository root).
   (spec editorial-config). Arrives in Phase 5b (INE) and Phase 6
   (Eurostat) of `phase-0-data-foundations`.
 - `rupturas.yaml`, `eventos.yaml`, `gobiernos.yaml` — editorial break/event
-  entries (PRD §9.6 filenames, kept in Spanish). Authored in Phase 7 (PR 7)
+  entries (PRD §9.6 filenames, kept in Spanish; `medidas.yaml` below is a
+  fourth file in the same family and under the same review discipline).
+  Authored in Phase 7 (PR 7)
   of `phase-0-data-foundations` and reconciled by
   `ingestion.ReconcileEditorialConfig` into `series_break`/`event`. An
   entry whose effective date is not yet confirmed against its source's own
   methodological note carries `date_status: unconfirmed` + `todo` instead
   of a guessed date; ReconcileEditorialConfig never projects such an entry
   into the database (see `app/internal/ingestion/reconcile.go`).
+- `medidas.yaml` — the policy-measures registry, reconciled by
+  `ingestion.ReconcileEditorialConfig` into `event` with
+  `event_group: measures` (assigned by the loader, like `gobiernos.yaml`'s
+  own group). One entry is one legal instrument: a stable id, the norm's
+  official name, its date of **entry into force**, the `source_url` the date
+  was verified against, and a `scope`.
+  **The scope is required and may not be `global`.** A measure is addressed
+  at a specific market — a labour-market reform belongs on the EPA charts and
+  is noise on an IPC chart — so `validate-config` rejects an unscoped one.
+  The scope widens `series` ⊂ `dataset` ⊂ `source` exactly as a break's does
+  (`postgres.ListActiveEvents`), so one `dataset: ine-epa` entry reaches every
+  EPA series without being written twice.
+  **`source_url` is required too.** The whole content of the annotation is a
+  date, and a date nobody can check against a primary source is an editorial
+  assertion rather than a fact.
+  **This registry says nothing about whether a measure worked, and cannot.**
+  There is no field for an effect, an outcome, a direction or an evaluation —
+  here, in `config.EventConfig`, in the `event` table, in the export artifact
+  or in the chart. The chart marks each date in the axis margin, below the
+  tick labels and outside the plot area, so the mark never crosses the data;
+  the sentence beside the chart states outright that the drawing represents no
+  relation between those measures and the series. Same structural refusal
+  `gobiernos.yaml` already applies to party colour (PRD §12.1).
 - `reconocimientos.yaml` — the editorial acknowledgement registry (spec
   data-validation, "Acknowledged findings"), reconciled by
   `ingestion.ReconcileEditorialConfig` into `validation_acknowledgement`.

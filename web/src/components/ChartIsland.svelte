@@ -29,9 +29,15 @@
     type ObservationStatus,
   } from "../lib/chart/geometry";
   import { narrowChartVariant, renderChartSVG } from "../lib/chart/svg";
-  import { describeEventSpans, describeGovernmentChanges, describeSeries } from "../lib/chart/description";
+  import {
+    describeEventSpans,
+    describeGovernmentChanges,
+    describePolicyMeasures,
+    describeSeries,
+  } from "../lib/chart/description";
   import { selectEventSpans } from "../lib/chart/eventSpans";
   import { selectGovernmentChanges } from "../lib/chart/governmentMarkers";
+  import { selectPolicyMeasures } from "../lib/chart/measureMarks";
   import { periodFromCalendarDate, periodOrdinalIndex, type Frequency } from "../lib/chart/periods";
   import { computeIntraPeriodRate, computeYoY } from "../lib/transform/yoy";
   import { computePerCapita } from "../lib/transform/perCapita";
@@ -73,7 +79,7 @@
   import { es } from "../i18n/es";
   import { onMount } from "svelte";
 
-  export type AnnotationGroup = "governments" | "exogenous" | "milestones";
+  export type AnnotationGroup = "governments" | "exogenous" | "milestones" | "measures";
 
   interface IndicatorChartBreak {
     key: string;
@@ -202,10 +208,17 @@
   // be ABSENT rather than present-but-dead — the same discipline the spec
   // states for a preset that cannot apply ("absent, not disabled").
   let hydrated = $state(false);
+  // The SAME default map `IndicatorChart.astro` holds -- that identity is what
+  // keeps this component's server-rendered drawing byte-identical to the
+  // static one (`test/chart/island-ssr.test.ts`'s golden parity). See that
+  // file for why `measures` opens by default: the owner asked to see which
+  // policy measures were taken and when, and the layer is scoped, so opening
+  // it adds nothing to a chart the measure was not addressed at.
   let openGroups: Record<AnnotationGroup, boolean> = $state({
     governments: false,
     exogenous: false,
     milestones: true,
+    measures: true,
   });
   let hoverIndex: number | null = $state(null);
   let focusIndex: number | null = $state(null);
@@ -503,6 +516,21 @@
   const eventSpans = $derived(selectEventSpans(shownAnnotations, rangedPeriods, frequency));
   const eventSpanNote = $derived(describeEventSpans(eventSpans));
 
+  // ---- The policy-measure marks (config/medidas.yaml, the `measures` group) ----
+  //
+  // Same three properties as the two layers above: gated on the reader's own
+  // group toggle, derived from `rangedPeriods` so narrowing the range
+  // re-selects them with no second filter to keep in step, and fed from ONE
+  // list so the stubs and the sentence can never disagree.
+  //
+  // What is different is WHERE they are drawn, and it is the whole design of
+  // this layer: entirely inside the bottom axis gutter, never across the data.
+  // A mark that crossed the series at the period a curve turns would assert an
+  // effect by adjacency, which is exactly what this feature must not do — see
+  // `lib/chart/measureMarks.ts`.
+  const policyMeasures = $derived(selectPolicyMeasures(shownAnnotations, rangedPeriods, frequency));
+  const policyMeasureNote = $derived(describePolicyMeasures(policyMeasures));
+
   const chartInput = $derived({
     points: rangedPoints,
     breaks: visibleBreaks.map((b) => ({ key: b.key, date: b.date })),
@@ -513,6 +541,7 @@
     // shared renderer, so the static half and this one cannot disagree.
     governmentChanges: shownAnnotations,
     eventSpans: shownAnnotations,
+    policyMeasures: shownAnnotations,
     frequency,
     decimals: viewDecimals,
     unit: viewUnit,
@@ -711,7 +740,7 @@
     return startYear === endYear ? startYear : `${startYear}–${endYear}`;
   }
 
-  const GROUPS: AnnotationGroup[] = ["governments", "exogenous", "milestones"];
+  const GROUPS: AnnotationGroup[] = ["governments", "exogenous", "milestones", "measures"];
   const groupedAnnotations = $derived(
     GROUPS.map((group) => ({
       group,
@@ -928,6 +957,27 @@
     {eventSpanNote}
   </p>
 
+  <!-- The policy-measure sentence. Same live-region reasoning as the event
+       spans one element above — it states transient selection state, so it
+       re-narrates as the reader opens and closes the group, and it is
+       deliberately not in the drawing's `aria-describedby`.
+
+       It carries more weight here than in either sibling, because a measure
+       has no on-drawing label at all: the gutter has no room for one without
+       putting words over the axis labels or back onto the series. So this is
+       the ONLY place any reader, sighted or not, learns which instrument a
+       stub stands for — and it is also where the chart states, in words, that
+       it represents no relation between those measures and the series. The
+       drawing already refuses to imply one by staying out of the plot area;
+       this says so. -->
+  <p
+    class="mt-1 text-caption text-ink-muted"
+    aria-live="polite"
+    data-testid="chart-measures-note"
+  >
+    {policyMeasureNote}
+  </p>
+
   {#if effectiveTransform !== "raw"}
     <p class="mt-1 text-caption text-ink-muted" data-testid="chart-derivation-note">
       {es.chart.transforms.derivationNote(transformLabel)}
@@ -978,6 +1028,20 @@
           <path d="M1 7 L1 2 L15 2 L15 7" stroke="currentColor" stroke-width="1.5" />
         </svg>
         {es.chart.eventSpan.legendLabel}
+      </li>
+    {/if}
+    <!-- The fifth entry, present only while the drawing really carries a mark.
+         The glyph is the mark in miniature WITH the axis line above it,
+         because the position is the meaning: this is the one annotation that
+         hangs below the axis and never enters the plot, which is what keeps a
+         date of entry into force from being read against the curve. -->
+    {#if policyMeasures.length > 0}
+      <li class="flex items-center gap-1.5" data-testid="chart-legend-measure">
+        <svg aria-hidden="true" viewBox="0 0 10 12" class="h-3 w-2.5 shrink-0" fill="none">
+          <line x1="0" y1="3" x2="10" y2="3" stroke="currentColor" stroke-width="1" class="text-ink-muted" />
+          <line x1="5" y1="6" x2="5" y2="12" stroke="currentColor" stroke-width="2" class="text-event-span" />
+        </svg>
+        {es.chart.measure.legendLabel}
       </li>
     {/if}
   </ul>
@@ -1225,11 +1289,32 @@
           </button>
           {#if openGroups[group]}
             <div id={`ann-content-${idBase}-${group}`} class="mt-2 flex flex-wrap gap-2" data-testid={`annotation-group-content-${group}`}>
+              <!-- A chip becomes a LINK when the registry recorded a document
+                   to link to, and stays plain text when it did not. That is
+                   the whole rule, and it matters most for a policy measure:
+                   the annotation's entire content is a date of entry into
+                   force, and `validate-config` requires every measure to carry
+                   the primary source that date was verified against. A date a
+                   reader cannot check is an editorial assertion — putting the
+                   citation one click away is what makes it a fact instead.
+                   The three transversal groups carry no citation today, so
+                   they render exactly as they did before. -->
               {#each entries as entry (entry.id)}
-                <span class="inline-flex items-center gap-1.5 rounded-pill border border-ink/15 bg-surface px-3 py-1 text-caption text-ink" data-testid="annotation-chip">
-                  <span class="font-medium text-ink-muted">{annotationDateLabel(entry)}:</span>
-                  {entry.name}
-                </span>
+                {#if entry.href}
+                  <a
+                    href={entry.href}
+                    class="inline-flex min-h-11 items-center gap-1.5 rounded-pill border border-ink/15 bg-surface px-3 py-1 text-caption text-ink hover:border-accent hover:text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                    data-testid="annotation-chip"
+                  >
+                    <span class="font-medium text-ink-muted">{annotationDateLabel(entry)}:</span>
+                    {entry.name}
+                  </a>
+                {:else}
+                  <span class="inline-flex items-center gap-1.5 rounded-pill border border-ink/15 bg-surface px-3 py-1 text-caption text-ink" data-testid="annotation-chip">
+                    <span class="font-medium text-ink-muted">{annotationDateLabel(entry)}:</span>
+                    {entry.name}
+                  </span>
+                {/if}
               {/each}
             </div>
           {/if}

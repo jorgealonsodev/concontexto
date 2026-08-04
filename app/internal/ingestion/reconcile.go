@@ -90,6 +90,7 @@ func ReconcileEditorialConfig(ctx context.Context, db postgres.TxBeginner, cfg c
 		eventInputs = append(eventInputs, postgres.EventInput{
 			ID: e.ID, Group: e.Group, Name: e.Name,
 			DateStart: *e.DateStart, DateEnd: e.DateEnd, NoteMD: e.NoteMD,
+			ScopeKind: eventScopeKind(e), ScopeRef: e.Scope.Ref, SourceURL: e.SourceURL,
 			ConfigDigest: eventDigest(e),
 		})
 	}
@@ -154,11 +155,42 @@ func breakDigest(b config.BreakConfig) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
+// eventDigest covers the SCOPE and the CITATION as well as the dates and
+// the prose, and both inclusions are load-bearing rather than completeness
+// for its own sake. The scope decides which charts a policy measure appears
+// on and the citation is what makes its date checkable by a reader; a field
+// that reaches the row without reaching the digest can drift silently, with
+// the YAML claiming one thing, the database holding another, and a repeat
+// reconcile reporting zero changes. That is the same reasoning
+// acknowledgementDigest already applies to its pinned value.
 func eventDigest(e config.EventConfig) string {
 	h := sha256.New()
-	fmt.Fprintf(h, "id=%s\ngroup=%s\nname=%s\ndate_start=%s\ndate_end=%s\nnote_md=%s\n",
-		e.ID, e.Group, e.Name, dateDigestString(e.DateStart), dateDigestString(e.DateEnd), e.NoteMD)
+	fmt.Fprintf(h, "id=%s\ngroup=%s\nname=%s\ndate_start=%s\ndate_end=%s\nnote_md=%s\nscope.kind=%s\nscope.ref=%s\nsource_url=%s\n",
+		e.ID, e.Group, e.Name, dateDigestString(e.DateStart), dateDigestString(e.DateEnd), e.NoteMD,
+		eventScopeKind(e), e.Scope.Ref, e.SourceURL)
 	return hex.EncodeToString(h.Sum(nil))
+}
+
+// eventScopeKind reads an entry's scope kind, treating an unset one as
+// "global".
+//
+// config's own loader already normalises this while parsing the YAML, so in
+// production the branch below never fires. It exists for a Config assembled
+// in Go — a test, or any future caller that does not come through Load — and
+// it resolves the SAME way the loader does rather than a second way. Writing
+// the empty string through instead would produce a row matching no scope
+// predicate at all: an entry that reconciles cleanly, reports success and
+// renders on no chart, which is the quietest failure available here.
+//
+// validate-config, not this function, is what refuses a POLICY MEASURE that
+// declares no scope: "global" is a legitimate value for the three transversal
+// groups and a rejected one for measures, and that distinction belongs at the
+// gate where the message can name the file and the field.
+func eventScopeKind(e config.EventConfig) string {
+	if e.Scope.Kind == "" {
+		return config.EventScopeGlobal
+	}
+	return e.Scope.Kind
 }
 
 // acknowledgementDigest is breakDigest/eventDigest's counterpart for the

@@ -223,6 +223,21 @@ export const indicatorChart: IndicatorChartProps = {
       dateEnd: "2021-06-30",
       href: null,
     },
+    {
+      // A POLICY MEASURE, inside the span and in a group that is open by
+      // default — so the catalog shows the gutter mark rather than only
+      // describing it. Illustrative like every other value in this file, and
+      // deliberately shaped like a real entry: a name, a date of entry into
+      // force, no end date (a law does not have one), and a citation, which
+      // `config/medidas.yaml` requires of every measure and which is what
+      // turns the chip into a link to the primary source.
+      id: "medida-ejemplo-2021",
+      group: "measures",
+      name: "Medida de política pública (ejemplo)",
+      dateStart: "2021-09-15",
+      dateEnd: null,
+      href: "https://www.boe.es/",
+    },
   ],
 };
 

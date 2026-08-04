@@ -575,9 +575,18 @@ func toEventRefs(events []postgres.Event) []EventRef {
 		if e.NoteMD != nil && *e.NoteMD != "" {
 			noteMD = e.NoteMD
 		}
+		// Same collapse as noteMD above, and for the same reason: an empty
+		// string reaching the artifact would be a key present with nothing
+		// behind it, which the web half's schema rejects and a rendered chip
+		// would turn into a link to nowhere.
+		var sourceURL *string
+		if e.SourceURL != nil && *e.SourceURL != "" {
+			sourceURL = e.SourceURL
+		}
 		out = append(out, EventRef{
 			ID: e.ID, Group: e.Group, Name: e.Name,
 			DateStart: dateOnly(e.DateStart), DateEnd: dateOnlyPtr(e.DateEnd), NoteMD: noteMD,
+			SourceURL: sourceURL,
 		})
 	}
 	return out

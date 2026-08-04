@@ -51,6 +51,7 @@ func Validate(cfg *Config) []Violation {
 	violations = append(violations, validateDuplicateBreakIDs(cfg.Breaks)...)
 	for _, ev := range cfg.Events {
 		violations = append(violations, validateEvent(ev)...)
+		violations = append(violations, validateEventScope(cfg, ev)...)
 	}
 	violations = append(violations, validateDuplicateEventIDs(cfg.Events)...)
 	for _, ack := range cfg.Acknowledgements {
@@ -453,38 +454,130 @@ func validateScopeRef(cfg *Config, b BreakConfig) []Violation {
 	}
 
 	switch b.Scope.Kind {
-	case "source":
-		if _, ok := cfg.Sources[b.Scope.Ref]; !ok {
+	case EventScopeSource:
+		if !scopeRefResolves(cfg, EventScopeSource, b.Scope.Ref) {
 			return []Violation{{
 				File: b.FilePath, Field: "scope.ref",
 				Message: fmt.Sprintf("break %q: scope.ref %q does not resolve to any configured source (no sources/%s.yaml with that id)", b.ID, b.Scope.Ref, b.Scope.Ref),
 			}}
 		}
-	case "dataset":
-		for _, s := range cfg.Series {
-			if s.Dataset == b.Scope.Ref {
-				return nil
-			}
+	case EventScopeDataset:
+		if !scopeRefResolves(cfg, EventScopeDataset, b.Scope.Ref) {
+			return []Violation{{
+				File: b.FilePath, Field: "scope.ref",
+				Message: fmt.Sprintf("break %q: scope.ref %q does not resolve to any configured series' dataset", b.ID, b.Scope.Ref),
+			}}
 		}
-		return []Violation{{
-			File: b.FilePath, Field: "scope.ref",
-			Message: fmt.Sprintf("break %q: scope.ref %q does not resolve to any configured series' dataset", b.ID, b.Scope.Ref),
-		}}
-	case "series":
-		for _, s := range cfg.Series {
-			if s.Slug == b.Scope.Ref {
-				return nil
-			}
+	case EventScopeSeries:
+		if !scopeRefResolves(cfg, EventScopeSeries, b.Scope.Ref) {
+			return []Violation{{
+				File: b.FilePath, Field: "scope.ref",
+				Message: fmt.Sprintf("break %q: scope.ref %q does not resolve to any configured series", b.ID, b.Scope.Ref),
+			}}
 		}
-		return []Violation{{
-			File: b.FilePath, Field: "scope.ref",
-			Message: fmt.Sprintf("break %q: scope.ref %q does not resolve to any configured series", b.ID, b.Scope.Ref),
-		}}
 	}
 	// An empty/unrecognised scope.kind is already reported by
 	// validateBreak's own "scope.kind" required-field check — never
 	// double-reported here.
 	return nil
+}
+
+// scopeRefResolves is the resolution rule itself, shared by the break and
+// the event registries so the two can never disagree about what "dataset:
+// ine-epa" means. The MESSAGES stay with each caller, because a break's
+// wording and an event's are read by the same person in different files and
+// each should name what it actually is.
+func scopeRefResolves(cfg *Config, kind, ref string) bool {
+	switch kind {
+	case EventScopeSource:
+		_, ok := cfg.Sources[ref]
+		return ok
+	case EventScopeDataset:
+		for _, s := range cfg.Series {
+			if s.Dataset == ref {
+				return true
+			}
+		}
+		return false
+	case EventScopeSeries:
+		for _, s := range cfg.Series {
+			if s.Slug == ref {
+				return true
+			}
+		}
+		return false
+	}
+	return false
+}
+
+// validateEventScope enforces the event registry's own scope rules, plus
+// the two extra requirements a POLICY MEASURE carries.
+//
+// WHY A MEASURE MUST BE SCOPED. It is the entire reason the scope column
+// exists. A government change and a global shock are facts about the
+// calendar and apply wherever the calendar does; a policy measure is
+// addressed at a specific market, and publishing a labour-market reform on
+// an IPC chart would be noise a reader has to filter themselves. An
+// unscoped measure would silently be that, on every chart in the portal, so
+// the schema refuses it rather than the reviewer having to catch it.
+//
+// WHY A MEASURE MUST BE CITED. Every entry is a legal instrument with a
+// real date and a real identifier. The date is the whole content of the
+// annotation, and a date nobody can check against a primary source is an
+// editorial assertion — which is precisely what date_status: "unconfirmed"
+// exists to keep OUT of the reader-facing artifact. Requiring the citation
+// makes the entry checkable at the gate rather than trusted at review.
+//
+// WHAT IS DELIBERATELY NOT REQUIRED, and its absence is the point: nothing
+// here asks for, permits or validates any statement about what FOLLOWED the
+// measure. There is no such field to require.
+func validateEventScope(cfg *Config, ev EventConfig) []Violation {
+	var out []Violation
+
+	switch ev.Scope.Kind {
+	case EventScopeGlobal:
+		if ev.Scope.Ref != "" {
+			out = append(out, Violation{
+				File: ev.FilePath, Field: "scope.ref",
+				Message: fmt.Sprintf("event %q: scope.kind is \"global\", which names nothing, so scope.ref %q cannot be resolved against anything", ev.ID, ev.Scope.Ref),
+			})
+		}
+	case EventScopeSeries, EventScopeDataset, EventScopeSource:
+		if ev.Scope.Ref == "" {
+			out = append(out, Violation{
+				File: ev.FilePath, Field: "scope.ref",
+				Message: fmt.Sprintf("event %q: scope.kind %q requires a scope.ref naming what it applies to", ev.ID, ev.Scope.Kind),
+			})
+			break
+		}
+		if !scopeRefResolves(cfg, ev.Scope.Kind, ev.Scope.Ref) {
+			out = append(out, Violation{
+				File: ev.FilePath, Field: "scope.ref",
+				Message: fmt.Sprintf("event %q: scope.ref %q does not resolve to any configured %s", ev.ID, ev.Scope.Ref, ev.Scope.Kind),
+			})
+		}
+	default:
+		out = append(out, Violation{
+			File: ev.FilePath, Field: "scope.kind",
+			Message: fmt.Sprintf("event %q: scope.kind %q is not one of global, series, dataset, source", ev.ID, ev.Scope.Kind),
+		})
+	}
+
+	if ev.Group == EventGroupMeasures {
+		if ev.Scope.Kind == EventScopeGlobal {
+			out = append(out, Violation{
+				File: ev.FilePath, Field: "scope.kind",
+				Message: fmt.Sprintf("measure %q: a policy measure must declare the series, dataset or source it applies to — a global measure would be published on every chart in the portal", ev.ID),
+			})
+		}
+		if ev.SourceURL == "" {
+			out = append(out, Violation{
+				File: ev.FilePath, Field: "source_url",
+				Message: fmt.Sprintf("measure %q: source_url is required — a policy measure is a legal instrument and its date must be checkable against a primary source", ev.ID),
+			})
+		}
+	}
+	return out
 }
 
 // validateDuplicateBreakIDs enforces spec editorial-config's "Duplicate
@@ -524,6 +617,19 @@ func validateEvent(ev EventConfig) []Violation {
 	require("id", ev.ID)
 	require("group", ev.Group)
 	require("name", ev.Name)
+
+	// The group is an ENUM in every consumer downstream — the export
+	// artifact's own Zod schema types it as a closed union, and an entry
+	// carrying a fourth value matches no group there, renders nowhere and
+	// reports nothing. That silence is the failure mode this check exists
+	// to convert into a named violation at the gate, which is the one place
+	// a person is looking.
+	if ev.Group != "" && !eventGroups[ev.Group] {
+		out = append(out, Violation{
+			File: ev.FilePath, Field: "group",
+			Message: fmt.Sprintf("event %q: group %q is not one of exogenous, milestones, measures, governments", ev.ID, ev.Group),
+		})
+	}
 
 	switch ev.DateStatus {
 	case "":

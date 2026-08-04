@@ -1,0 +1,123 @@
+# Registro de medidas de política pública, con su fecha de entrada en vigor
+# y la norma que las contiene. Reconciliado por
+# ingestion.ReconcileEditorialConfig a la tabla event con event_group
+# "measures" (asignado por el cargador, no repetido en cada entrada --
+# app/internal/adapters/config/loader.go), igual que config/gobiernos.yaml.
+#
+# Cambios en este fichero requieren revisión a cuatro ojos (PRD §9.6,
+# §15.2). Ver .github/CODEOWNERS y .github/BRANCH_PROTECTION.md.
+#
+# ── QUÉ DICE ESTE REGISTRO, Y QUÉ NO DICE NUNCA ─────────────────────────
+#
+# Dice: qué instrumento, con qué fecha de entrada en vigor, sobre qué
+# indicadores, y dónde puede comprobarlo cualquiera.
+#
+# NO dice, y no puede decir, si la medida funcionó. No hay campo para un
+# efecto, una dirección, una magnitud ni una valoración, ni aquí ni en el
+# tipo Go (EventConfig), ni en la tabla, ni en el artefacto publicado, ni
+# en el gráfico. La prohibición es estructural y no editorial: ninguna capa
+# posterior puede proyectar una afirmación que el almacenamiento no puede
+# contener. Es la misma decisión que ya toma config/gobiernos.yaml al no
+# tener ningún campo de color de partido (PRD §12.1).
+#
+# Tampoco lo dice el dibujo. La marca de una medida se traza EN EL MARGEN
+# del eje de tiempo, fuera del área de datos, y nunca cruza la serie: una
+# medida es un hecho sobre el calendario, no sobre los valores. Una línea
+# vertical atravesando la curva justo donde la curva gira afirmaría un
+# efecto por vecindad, sin autor y sin fuente. Ver
+# web/src/lib/chart/measureMarks.ts.
+#
+# ── EL ALCANCE (scope) ES OBLIGATORIO ───────────────────────────────────
+#
+# Una reforma del mercado de trabajo pertenece a los gráficos de la EPA y
+# es ruido en un gráfico de IPC. Por eso cada entrada declara `scope`
+# (series | dataset | source) y validate-config rechaza una medida sin él
+# o con `kind: global`. El ensanchamiento serie ⊂ dataset ⊂ source es el
+# mismo que ya usan las rupturas (postgres.ListActiveEvents).
+#
+# ── PROCEDENCIA DE LAS FECHAS -- léase antes de fusionar ────────────────
+#
+# A DIFERENCIA de config/eventos.yaml y config/gobiernos.yaml, cuyas
+# cabeceras advierten de que sus fechas provienen del conocimiento general
+# del autor, TODAS las fechas de este fichero se han comprobado en esta
+# sesión contra el texto consolidado publicado por el BOE, en la URL que
+# cada entrada recoge en su propio campo `source_url`. La fecha registrada
+# en `date_start` es la de ENTRADA EN VIGOR (no la de aprobación ni la de
+# publicación, que casi nunca coinciden).
+#
+# El contenido EDITORIAL de cada `note_md` -- qué materia regula el
+# instrumento y por qué se le asigna ese alcance -- es propuesta de esta
+# sesión y queda pendiente de la revisión a cuatro ojos, igual que
+# cualquier otra copia nueva del proyecto.
+#
+# NOTA SOBRE eventos.yaml: la entrada `reforma-laboral-2021` (grupo
+# milestones) se refiere al mismo Real Decreto-ley 32/2021 que la primera
+# medida de abajo. Sigue marcada `date_status: unconfirmed`, por lo que
+# nunca se proyecta a la base de datos ni llega al artefacto, y no produce
+# duplicado visible alguno. Se deja intacta a propósito: retirarla o
+# fusionarla es una decisión editorial del responsable del registro, no un
+# efecto colateral de este cambio.
+
+- id: rdl-3-2012-reforma-mercado-laboral
+  name: "Real Decreto-ley 3/2012, de 10 de febrero, de medidas urgentes para la reforma del mercado laboral"
+  scope: { kind: dataset, ref: ine-epa }
+  date_start: 2012-02-12
+  source_url: "https://www.boe.es/buscar/act.php?id=BOE-A-2012-2076"
+  note_md: >-
+    Norma de reforma del mercado de trabajo. Publicada en el «BOE» núm. 36,
+    de 11 de febrero de 2012; entrada en vigor el 12 de febrero de 2012,
+    fecha registrada aquí. Alcance: dataset ine-epa (Encuesta de Población
+    Activa), por regular materia laboral.
+
+- id: rdl-8-2020-covid-medidas-extraordinarias
+  name: "Real Decreto-ley 8/2020, de 17 de marzo, de medidas urgentes extraordinarias para hacer frente al impacto económico y social del COVID-19"
+  scope: { kind: dataset, ref: ine-epa }
+  date_start: 2020-03-18
+  source_url: "https://www.boe.es/buscar/act.php?id=BOE-A-2020-3824"
+  note_md: >-
+    Norma que regula, entre otras materias, los expedientes de regulación
+    temporal de empleo por causa de fuerza mayor derivada del COVID-19.
+    Publicada en el «BOE» núm. 73, de 18 de marzo de 2020; entrada en vigor
+    el mismo 18 de marzo de 2020, fecha registrada aquí. Alcance: dataset
+    ine-epa (Encuesta de Población Activa), por regular materia laboral.
+
+- id: rdl-12-2021-fiscalidad-energetica
+  name: "Real Decreto-ley 12/2021, de 24 de junio, por el que se adoptan medidas urgentes en el ámbito de la fiscalidad energética y en materia de generación de energía, y sobre gestión del canon de regulación y de la tarifa de utilización del agua"
+  scope: { kind: dataset, ref: ine-ipc }
+  date_start: 2021-06-26
+  source_url: "https://www.boe.es/buscar/act.php?id=BOE-A-2021-10584"
+  note_md: >-
+    Norma de fiscalidad energética; su artículo 1 fija el tipo del 10 % del
+    Impuesto sobre el Valor Añadido para determinados suministros de
+    energía eléctrica. Publicada en el «BOE» núm. 151, de 25 de junio de
+    2021; entrada en vigor el 26 de junio de 2021, fecha registrada aquí.
+    Alcance: dataset ine-ipc (Índice de Precios de Consumo), por afectar a
+    la imposición indirecta sobre un consumo incluido en la cesta.
+
+- id: rdl-6-2022-plan-nacional-respuesta-guerra-ucrania
+  name: "Real Decreto-ley 6/2022, de 29 de marzo, por el que se adoptan medidas urgentes en el marco del Plan Nacional de respuesta a las consecuencias económicas y sociales de la guerra en Ucrania"
+  scope: { kind: dataset, ref: ine-ipc }
+  date_start: 2022-03-31
+  source_url: "https://www.boe.es/buscar/act.php?id=BOE-A-2022-4972"
+  note_md: >-
+    Norma que articula el Plan Nacional de respuesta a las consecuencias
+    económicas y sociales de la guerra en Ucrania, con medidas en materia
+    de precios de la energía y de carburantes. Publicada en el «BOE» núm.
+    76, de 30 de marzo de 2022; entrada en vigor el 31 de marzo de 2022,
+    fecha registrada aquí. Alcance: dataset ine-ipc (Índice de Precios de
+    Consumo).
+
+- id: rdl-32-2021-reforma-laboral
+  name: "Real Decreto-ley 32/2021, de 28 de diciembre, de medidas urgentes para la reforma laboral, la garantía de la estabilidad en el empleo y la transformación del mercado de trabajo"
+  scope: { kind: dataset, ref: ine-epa }
+  date_start: 2021-12-31
+  source_url: "https://www.boe.es/buscar/act.php?id=BOE-A-2021-21788"
+  note_md: >-
+    Norma de reforma laboral. Publicada en el «BOE» núm. 313, de 30 de
+    diciembre de 2021; entrada en vigor el 31 de diciembre de 2021, fecha
+    registrada aquí. ADVERTENCIA DE PRECISIÓN, recogida del propio texto:
+    la disposición final octava establece una entrada en vigor escalonada
+    -- determinados preceptos quedan sujetos a una vacatio legis de tres
+    meses --, por lo que la fecha registrada es la de entrada en vigor
+    general de la norma y no la de aplicación de cada uno de sus preceptos.
+    Alcance: dataset ine-epa (Encuesta de Población Activa).

@@ -300,8 +300,19 @@ func ResolveActiveBreaksForSeries(ctx context.Context, db DBTX, seriesID string)
 	return out, nil
 }
 
-// EventInput is one already-digested eventos.yaml/gobiernos.yaml entry
-// ready to reconcile.
+// EventInput is one already-digested eventos.yaml/medidas.yaml/
+// gobiernos.yaml entry ready to reconcile.
+//
+// ScopeKind/ScopeRef and SourceURL arrived with the policy-measures group
+// (migration 0007). They are on this shared type rather than on a parallel
+// one because a measure IS an event by every property that matters here --
+// a stable id, a name, a date, a note, the same insert/update-in-place/
+// soft-retire discipline, the same transaction -- and the only thing it
+// needed that the type lacked was a way to say which charts it belongs on.
+//
+// There is still NO field for an effect, an outcome or an evaluation, on
+// this type or on the row it writes. That absence is a guarantee and not an
+// omission: no layer downstream can project a claim the storage cannot hold.
 type EventInput struct {
 	ID           string
 	Group        string
@@ -309,6 +320,9 @@ type EventInput struct {
 	DateStart    time.Time
 	DateEnd      *time.Time
 	NoteMD       string
+	ScopeKind    string // global | series | dataset | source
+	ScopeRef     string // id within ScopeKind; empty when global
+	SourceURL    string
 	ConfigDigest string
 }
 
@@ -320,15 +334,19 @@ type Event struct {
 	DateStart    time.Time
 	DateEnd      *time.Time
 	NoteMD       *string
+	ScopeKind    string
+	ScopeRef     string
+	SourceURL    *string
 	ConfigDigest string
 	RetiredAt    *time.Time
 }
 
-const eventColumns = `id, event_group, name, date_start, date_end, note_md, config_digest, retired_at`
+const eventColumns = `id, event_group, name, date_start, date_end, note_md, scope_kind, scope_ref, source_url, config_digest, retired_at`
 
 func scanEvent(row interface{ Scan(...any) error }) (Event, error) {
 	var ev Event
-	if err := row.Scan(&ev.ID, &ev.Group, &ev.Name, &ev.DateStart, &ev.DateEnd, &ev.NoteMD, &ev.ConfigDigest, &ev.RetiredAt); err != nil {
+	if err := row.Scan(&ev.ID, &ev.Group, &ev.Name, &ev.DateStart, &ev.DateEnd, &ev.NoteMD,
+		&ev.ScopeKind, &ev.ScopeRef, &ev.SourceURL, &ev.ConfigDigest, &ev.RetiredAt); err != nil {
 		return Event{}, err
 	}
 	return ev, nil
@@ -373,16 +391,19 @@ func reconcileEventsTx(ctx context.Context, tx DBTX, desired []EventInput) (Reco
 		current, exists := live[in.ID]
 		switch {
 		case !exists:
-			if _, err := tx.Exec(ctx, `INSERT INTO event (id, event_group, name, date_start, date_end, note_md, config_digest)
-				VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-				in.ID, in.Group, in.Name, in.DateStart, in.DateEnd, nullableString(in.NoteMD), in.ConfigDigest); err != nil {
+			if _, err := tx.Exec(ctx, `INSERT INTO event (id, event_group, name, date_start, date_end, note_md, scope_kind, scope_ref, source_url, config_digest)
+				VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+				in.ID, in.Group, in.Name, in.DateStart, in.DateEnd, nullableString(in.NoteMD),
+				in.ScopeKind, in.ScopeRef, nullableString(in.SourceURL), in.ConfigDigest); err != nil {
 				return ReconcileCounts{}, fmt.Errorf("postgres: inserting event %q: %w", in.ID, err)
 			}
 			counts.Inserted++
 		case current.ConfigDigest != in.ConfigDigest || current.RetiredAt != nil:
-			if _, err := tx.Exec(ctx, `UPDATE event SET event_group=$2, name=$3, date_start=$4, date_end=$5, note_md=$6, config_digest=$7, retired_at=NULL
+			if _, err := tx.Exec(ctx, `UPDATE event SET event_group=$2, name=$3, date_start=$4, date_end=$5, note_md=$6,
+				scope_kind=$7, scope_ref=$8, source_url=$9, config_digest=$10, retired_at=NULL
 				WHERE id=$1`,
-				in.ID, in.Group, in.Name, in.DateStart, in.DateEnd, nullableString(in.NoteMD), in.ConfigDigest); err != nil {
+				in.ID, in.Group, in.Name, in.DateStart, in.DateEnd, nullableString(in.NoteMD),
+				in.ScopeKind, in.ScopeRef, nullableString(in.SourceURL), in.ConfigDigest); err != nil {
 				return ReconcileCounts{}, fmt.Errorf("postgres: updating event %q: %w", in.ID, err)
 			}
 			counts.Updated++

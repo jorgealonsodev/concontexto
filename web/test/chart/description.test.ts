@@ -3,7 +3,7 @@
 // Y entre A y B, luego desciende…". Pure-function, red-first per this
 // project's Strict-TDD convention for pure render functions.
 import { describe, expect, it } from "vitest";
-import { describeEventSpans, describeGovernmentChanges, describeSeries } from "../../src/lib/chart/description";
+import { describePolicyMeasures, describeEventSpans, describeGovernmentChanges, describeSeries } from "../../src/lib/chart/description";
 import type { EventSpan } from "../../src/lib/chart/eventSpans";
 import type { ChartPoint } from "../../src/lib/chart/geometry";
 
@@ -221,5 +221,84 @@ describe("describeEventSpans (the projected-period sentence)", () => {
       span("Pandemia de COVID-19", "2020-Q1", "2021-Q2"),
     ]);
     expect(text).toMatch(/Crisis financiera[^,]*\) y Pandemia de COVID-19/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The POLICY-MEASURE sentence — the layer where the effectiveness prohibition
+// is most easily broken, because prose can imply what a drawing only suggests.
+//
+// The mark itself is a stub in the axis gutter that touches no value, so a
+// sighted reader is given a date and nothing else. This sentence is the only
+// route a screen-reader reader has to that layer (the drawing is a single
+// `role="img"`, which prunes its own descendants), so it has to carry exactly
+// the same amount of information — no less, and emphatically no more.
+describe("describePolicyMeasures", () => {
+  const measure = (name: string, dateStart: string) => ({
+    id: name.toLowerCase().replace(/\s+/g, "-"),
+    name,
+    dateStart,
+    period: "2021-Q4",
+    index: 3,
+  });
+
+  it("is the empty string when the visible window marks none, so no empty paragraph is announced", () => {
+    expect(describePolicyMeasures([])).toBe("");
+  });
+
+  it("names the instrument verbatim and states its date of entry into force", () => {
+    const text = describePolicyMeasures([measure("Real Decreto-ley 32/2021, de 28 de diciembre", "2021-12-31")]);
+    expect(text).toContain("Real Decreto-ley 32/2021, de 28 de diciembre");
+    // The REAL calendar date, in the prose register — not the period the mark
+    // snapped onto. What entered into force did so on a day, and the day is
+    // the entire content of the annotation.
+    expect(text).toContain("31 de diciembre de 2021");
+  });
+
+  it("says these are dates of entry into force, and NOTHING about what followed", () => {
+    const text = describePolicyMeasures([
+      measure("Real Decreto-ley 8/2020", "2020-03-18"),
+      measure("Real Decreto-ley 32/2021", "2021-12-31"),
+    ]);
+    expect(text).toContain("entrada en vigor");
+    // The prohibition, asserted rather than assumed. Every one of these is a
+    // word that would turn a date into a claim about the series, and none of
+    // them may appear in a sentence generated beside the data.
+    for (const forbidden of [
+      "efecto",
+      "impacto",
+      "consecuencia",
+      "resultado",
+      "gracias",
+      "debido",
+      "logr",
+      "consigui",
+      "mejor",
+      "empeor",
+      "redu",
+      "aument",
+      "desde entonces",
+      "a partir de entonces",
+      "tras la medida",
+    ]) {
+      expect(text.toLowerCase(), `the measures sentence must not contain "${forbidden}"`).not.toContain(forbidden);
+    }
+  });
+
+  it("states explicitly that the chart makes no claim about the measures' effects", () => {
+    // A refusal, not a claim: it is a statement about what the DRAWING does,
+    // which is the one thing that can foreclose the reading a mark beside a
+    // falling curve would otherwise invite. Without it the layer would be
+    // silent on exactly the question it provokes.
+    const text = describePolicyMeasures([measure("Real Decreto-ley 8/2020", "2020-03-18")]);
+    expect(text).toContain("no representa");
+  });
+
+  it("joins the last of several with 'y', as Spanish lists do", () => {
+    const text = describePolicyMeasures([
+      measure("Real Decreto-ley 8/2020", "2020-03-18"),
+      measure("Real Decreto-ley 32/2021", "2021-12-31"),
+    ]);
+    expect(text).toMatch(/Real Decreto-ley 8\/2020[^,]*\) y Real Decreto-ley 32\/2021/);
   });
 });

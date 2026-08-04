@@ -31,9 +31,15 @@
 import AccessibleDataTable, { type AccessibleDataTablePoint } from "./AccessibleDataTable.astro";
 import BreakBand from "./BreakBand.astro";
 import AnnotationChip from "./AnnotationChip.astro";
-import { describeEventSpans, describeGovernmentChanges, describeSeries } from "../lib/chart/description";
+import {
+  describeEventSpans,
+  describeGovernmentChanges,
+  describePolicyMeasures,
+  describeSeries,
+} from "../lib/chart/description";
 import { selectEventSpans } from "../lib/chart/eventSpans";
 import { selectGovernmentChanges } from "../lib/chart/governmentMarkers";
+import { selectPolicyMeasures } from "../lib/chart/measureMarks";
 import { narrowChartVariant, renderChartSVG } from "../lib/chart/svg";
 import { periodFromCalendarDate, type Frequency } from "../lib/chart/periods";
 import { formatPeriodProse } from "../lib/format/period";
@@ -54,7 +60,7 @@ export interface IndicatorChartBreak {
   sourceUrl?: string | null;
 }
 
-export type AnnotationGroup = "governments" | "exogenous" | "milestones";
+export type AnnotationGroup = "governments" | "exogenous" | "milestones" | "measures";
 
 export interface IndicatorChartAnnotation {
   id: string;
@@ -62,6 +68,11 @@ export interface IndicatorChartAnnotation {
   name: string;
   dateStart: string;
   dateEnd?: string | null;
+  /** Where the chip links, when the registry recorded a document to link to.
+   * For a policy measure this is its BOE citation, required by
+   * validate-config: the whole content of the annotation is a date, and a
+   * date a reader cannot check against the primary source is an editorial
+   * assertion rather than a fact. */
   href?: string | null;
 }
 
@@ -103,11 +114,24 @@ const tableId = `chart-table-${idBase}`;
 
 const description = describeSeries({ points, unit, decimals });
 
-const GROUPS: AnnotationGroup[] = ["governments", "exogenous", "milestones"];
+const GROUPS: AnnotationGroup[] = ["governments", "exogenous", "milestones", "measures"];
+// `measures` opens BY DEFAULT, joining `milestones`, and the reason is the
+// product requirement itself: the owner asked to see, on each chart, which
+// policy measures were taken and when. A layer the reader has to discover
+// behind a closed toggle does not answer that.
+//
+// What makes opening it by default safe is the same thing that makes the
+// layer safe at all -- the mark is a stub in the axis gutter that touches no
+// value, and the sentence rendered beside it closes by stating that the chart
+// represents no relation between those measures and the series. It is also,
+// unlike the three transversal groups, SCOPED: only measures whose registry
+// scope covers this series ever reach this component, so opening it adds
+// nothing to a chart the measure was not addressed at.
 const DEFAULT_OPEN: Record<AnnotationGroup, boolean> = {
   governments: false,
   exogenous: false,
   milestones: true,
+  measures: true,
 };
 
 // The annotation entries this drawing may project, over the groups that are
@@ -144,6 +168,12 @@ const governmentNote = describeGovernmentChanges(governmentChanges);
 const eventSpans = selectEventSpans(shownAnnotations, points.map((p) => p.period), frequency);
 const eventSpanNote = describeEventSpans(eventSpans);
 
+// The same discipline one layer over: ONE list feeds the marks and the
+// sentence, so the stubs a sighted reader counts and the instruments a
+// screen-reader reader hears can never disagree.
+const policyMeasures = selectPolicyMeasures(shownAnnotations, points.map((p) => p.period), frequency);
+const policyMeasureNote = describePolicyMeasures(policyMeasures);
+
 const chartInput = {
   points,
   breaks: breaks.map((b) => ({ key: b.key, date: b.date })),
@@ -153,6 +183,7 @@ const chartInput = {
   // this component and the island share.
   governmentChanges: shownAnnotations,
   eventSpans: shownAnnotations,
+  policyMeasures: shownAnnotations,
   frequency,
   decimals,
   unit,
@@ -257,6 +288,21 @@ const breakDisplay = breaks.map((b) => ({
     {eventSpanNote}
   </p>
 
+  {/*
+    The policy-measure sentence — the only place a reader learns WHICH
+    instruments the gutter stubs stand for, since a measure carries no
+    on-drawing label (see `svg.ts` for why the gutter has no room for one).
+    It closes by stating that the chart represents no relation between those
+    measures and the series: the drawing already refuses to imply one by
+    staying out of the plot area, and this says so in words for the reader who
+    only hears the page. `aria-live` here purely so this component's markup
+    stays a faithful catalog of the island's; nothing on a static page can
+    change it.
+  */}
+  <p class="mt-1 text-caption text-ink-muted" aria-live="polite" data-testid="chart-measures-note">
+    {policyMeasureNote}
+  </p>
+
   <ul class="chart-legend mt-2 flex flex-wrap gap-4 text-caption text-ink-muted" data-testid="chart-legend">
     <li class="flex items-center gap-1.5">
       {/* The authored --radius-pill token via its own utility, never
@@ -289,6 +335,23 @@ const breakDisplay = breaks.map((b) => ({
             <line x1="5" y1="0" x2="5" y2="14" stroke="currentColor" stroke-width="1" />
           </svg>
           {es.chart.government.markerLegendLabel}
+        </li>
+      )
+    }
+    {
+      /* The fifth entry, on the same terms as the third and fourth: present
+         only while the drawing really carries a mark, and carrying the mark's
+         own glyph in miniature rather than a swatch. What the legend shows
+         first is the property that separates this mark from the government
+         rule above — it hangs BELOW the axis line and does not touch it,
+         where that one stands on the plot and runs its full height. */
+      policyMeasures.length > 0 && (
+        <li class="flex items-center gap-1.5" data-testid="chart-legend-measure">
+          <svg aria-hidden="true" viewBox="0 0 10 12" class="h-3 w-2.5 shrink-0" fill="none">
+            <line x1="0" y1="3" x2="10" y2="3" stroke="currentColor" stroke-width="1" class="text-ink-muted" />
+            <line x1="5" y1="6" x2="5" y2="12" stroke="currentColor" stroke-width="2" class="text-event-span" />
+          </svg>
+          {es.chart.measure.legendLabel}
         </li>
       )
     }

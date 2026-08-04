@@ -67,9 +67,13 @@ describe("Home page — the six frozen indicators are reachable from `/`", () =>
     // grouping point. The homepage shipped `49687120` and `22779` before
     // this, which is the same digits and a different reading task.
     expect(html).toContain("9,87");
-    expect(html).toContain("2026-Q2");
+    // The period, in the same reader's vocabulary as the value beside it: a
+    // card is a labelled field, so it takes the prose register — which for a
+    // quarter is the T form INE itself publishes.
+    expect(html).toContain("T2 2026");
+    expect(html).not.toContain("2026-Q2");
     expect(html).toContain("121,9959");
-    expect(html).toContain("2026-Q1");
+    expect(html).toContain("T1 2026");
     expect(html).toContain(es.indicatorCard.periodLabel);
   });
 

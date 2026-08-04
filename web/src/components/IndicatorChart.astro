@@ -34,6 +34,7 @@ import AnnotationChip from "./AnnotationChip.astro";
 import { describeSeries } from "../lib/chart/description";
 import { narrowChartVariant, renderChartSVG } from "../lib/chart/svg";
 import { periodFromCalendarDate, type Frequency } from "../lib/chart/periods";
+import { formatPeriodProse } from "../lib/format/period";
 import { es } from "../i18n/es";
 import type { ObservationStatus } from "../lib/export/schema";
 
@@ -150,9 +151,14 @@ const groupedAnnotations = GROUPS.map((group) => ({
   defaultOpen: DEFAULT_OPEN[group],
 })).filter((g) => g.entries.length > 0);
 
+// The break's calendar date is snapped onto the series' own period axis
+// (canonical — that is what the snap is defined on) and only then rendered,
+// in the PROSE register: `BreakBand` puts it in a phrase ("Ruptura: T2 2021"),
+// not in a column. `ChartIsland.svelte` derives the identical value the
+// identical way, which is what `break-band-parity.test.ts` holds it to.
 const breakDisplay = breaks.map((b) => ({
   ...b,
-  displayPeriod: periodFromCalendarDate(b.date, frequency),
+  displayPeriod: formatPeriodProse(periodFromCalendarDate(b.date, frequency)),
 }));
 ---
 

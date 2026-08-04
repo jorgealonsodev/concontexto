@@ -24,6 +24,7 @@ import {
   type ChartDimensions,
   type ChartPoint,
 } from "../../src/lib/chart/geometry";
+import { formatPeriodCompact } from "../../src/lib/format/period";
 
 const DIMS: ChartDimensions = DEFAULT_DIMENSIONS;
 
@@ -165,8 +166,10 @@ describe("buildXTicks / buildYTicks", () => {
   it("always includes the first and last period", () => {
     const periods = Array.from({ length: 40 }, (_, i) => `${2000 + Math.floor(i / 4)}-Q${(i % 4) + 1}`);
     const ticks = buildXTicks(periods, DIMS);
-    expect(ticks[0].label).toBe(periods[0]);
-    expect(ticks[ticks.length - 1].label).toBe(periods[periods.length - 1]);
+    // The FIRST and LAST period, in the register the axis draws them in — the
+    // ticks are reader-facing text, and only their text changed here.
+    expect(ticks[0].label).toBe(formatPeriodCompact(periods[0]));
+    expect(ticks[ticks.length - 1].label).toBe(formatPeriodCompact(periods[periods.length - 1]));
   });
 
   it("never exceeds a small, legible tick count for a long series", () => {
@@ -401,6 +404,62 @@ describe("wide-viewport geometry — the published chart's own margins", () => {
       expect(dims.height).toBe(DEFAULT_DIMENSIONS.height);
       expect(dims.marginTop).toBe(DEFAULT_DIMENSIONS.marginTop);
       expect(dims.marginBottom).toBe(DEFAULT_DIMENSIONS.marginBottom);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The x axis speaks to a reader, so it is drawn in the reader's own period
+// vocabulary ("T2 2026", "jun 2026") rather than in the database's storage
+// format ("2026-Q2", "2026-06") — see `src/lib/format/period.ts`.
+//
+// The load-bearing part is not the text: it is that the DERIVED MARGINS are
+// sized from the labels that are really drawn. Those margins were derived
+// (rather than fixed at a constant) precisely to stop the last x tick being
+// clipped, and measuring one alphabet while drawing another would reopen that
+// defect from the other side.
+describe("x-axis tick labels are reader-facing, and the margins are sized from what is drawn", () => {
+  const QUARTERS = ["2019-Q1", "2019-Q2", "2019-Q3", "2019-Q4", "2020-Q1"];
+  const MONTHS = ["2026-01", "2026-06", "2026-09", "2026-12"];
+  const flatPoints = (periods: string[]): ChartPoint[] =>
+    periods.map((period) => ({ period, value: 10, status: "D" as const }));
+
+  it("labels quarters as INE's own T, first tick and last", () => {
+    const ticks = buildXTicks(QUARTERS, DIMS);
+    expect(ticks[0].label).toBe("T1 2019");
+    expect(ticks[ticks.length - 1].label).toBe("T1 2020");
+  });
+
+  it("labels months with the abbreviated Spanish month name", () => {
+    const ticks = buildXTicks(MONTHS, DIMS);
+    expect(ticks.map((t) => t.label)).toEqual(["ene 2026", "jun 2026", "sept 2026", "dic 2026"]);
+  });
+
+  it("leaves a quarterly series' derived margins exactly where they were", () => {
+    // "T2 2026" is seven glyphs, like the "2026-Q2" it replaces — so every
+    // quarterly page's geometry is unchanged, and the golden SVG fixture moves
+    // only in its tick text.
+    const dims = wideDimensions(QUARTERS, flatPoints(QUARTERS), 1);
+    expect(dims.marginRight).toBe(27);
+    expect(dims.marginLeft).toBe(WIDE_MIN_MARGIN_LEFT);
+  });
+
+  it("widens a monthly series' right gutter to hold the longest month name it will draw", () => {
+    // "sept 2026" is nine glyphs against "2026-09"'s seven. The last tick is
+    // centred on the plot area's right edge, so half of it has to fit beyond
+    // that edge — which is exactly what deriving the gutter buys.
+    const dims = wideDimensions(MONTHS, flatPoints(MONTHS), 1);
+    const halfWidest = ("sept 2026".length * GLYPH_ADVANCE_RATIO * WIDE_TICK_FONT_SIZE) / 2;
+    expect(dims.marginRight).toBeGreaterThanOrEqual(halfWidest);
+  });
+
+  it("keeps every drawn tick inside the box for a monthly series, which the storage format never had to prove", () => {
+    const dims = wideDimensions(MONTHS, flatPoints(MONTHS), 1);
+    const ticks = buildXTicks(MONTHS, dims);
+    for (const tick of ticks) {
+      const half = (tick.label.length * GLYPH_ADVANCE_RATIO * WIDE_TICK_FONT_SIZE) / 2;
+      expect(tick.x - half, `"${tick.label}" runs off the left edge`).toBeGreaterThanOrEqual(0);
+      expect(tick.x + half, `"${tick.label}" runs off the right edge`).toBeLessThanOrEqual(dims.width);
     }
   });
 });

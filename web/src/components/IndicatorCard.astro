@@ -11,6 +11,7 @@
 import FreshnessSemaphore from "./FreshnessSemaphore.astro";
 import type { ArtifactFreshness } from "../lib/export/schema";
 import { formatNumber } from "../lib/format/number";
+import { formatPeriodProse } from "../lib/format/period";
 import { es } from "../i18n/es";
 
 export interface Props {
@@ -74,7 +75,12 @@ const NameTag = (headingLevel === undefined ? "span" : `h${headingLevel}`) as "s
   <span class="font-numeric text-heading-md tabular-nums text-ink">
     {formattedValue}{" "}<span class="text-body text-ink-muted">{unit}</span>
   </span>
-  <span class="text-caption text-ink-muted">{es.indicatorCard.periodLabel} {latestPeriod}</span>
+  {/* PROSE register. This is the same labelled field the indicator page's
+      own header carries ("Periodo: junio de 2026"), rendered on a card that
+      wraps freely — not a column whose alignment a long month would break.
+      The prop stays the CANONICAL label so a caller can keep computing with
+      it; only this render site formats. */}
+  <span class="text-caption text-ink-muted">{es.indicatorCard.periodLabel} {formatPeriodProse(latestPeriod)}</span>
   {
     /* `mt-auto`: the freshness badge sits on the card's BOTTOM edge, not
        directly under the period.

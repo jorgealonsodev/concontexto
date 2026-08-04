@@ -54,6 +54,14 @@
   // table and the point announcements client-side, so anything it formatted
   // differently would flip under the reader the moment the island hydrated.
   import { formatNumber } from "../lib/format/number";
+  // Both period registers, for the same reason: this component re-renders
+  // the table, the break list, the range disclosures and the point
+  // announcements client-side, so a period it spelled differently from the
+  // static half would flip under the reader the moment the island hydrated.
+  // Which register goes where is `lib/format/period.ts`'s rule — compact in
+  // the data table (a column), prose everywhere the label sits in a sentence
+  // or is spoken aloud.
+  import { formatPeriodCompact, formatPeriodProse } from "../lib/format/period";
   import { es } from "../i18n/es";
   import { onMount } from "svelte";
 
@@ -280,8 +288,11 @@
   const customRangeStatus = $derived.by((): string => {
     if (customError !== null) return es.chart.customRange.error[customError];
     if (!customActive || rangedPoints.length === 0) return "";
-    const from = rangedPoints[0].period;
-    const to = rangedPoints[rangedPoints.length - 1].period;
+    // Prose register: this line is a sentence in a polite live region, read
+    // aloud as often as it is read on screen. The bounds it names are for the
+    // reader only — the ones written to the permalink below stay canonical.
+    const from = formatPeriodProse(rangedPoints[0].period);
+    const to = formatPeriodProse(rangedPoints[rangedPoints.length - 1].period);
     return customClamped ? es.chart.customRange.clampedNote(from, to) : es.chart.customRange.appliedNote(from, to);
   });
 
@@ -403,7 +414,18 @@
   function pointLabel(p: ChartPoint): string {
     // Same formatting as the static table below and as the page header:
     // a value a reader hears announced must be the value they can read.
-    return es.chart.pointAnnouncement(p.period, formatNumber(p.value as number, viewDecimals), viewUnit, p.status);
+    //
+    // The PROSE register for the period, deliberately, even though the table
+    // two elements down uses the compact one: this string is an
+    // `aria-label` spoken by a screen reader and a tooltip floating over the
+    // plot area. Neither is a column, so neither has any width to save — and
+    // "jun 2026" read aloud is a saving that costs the listener the word.
+    return es.chart.pointAnnouncement(
+      formatPeriodProse(p.period),
+      formatNumber(p.value as number, viewDecimals),
+      viewUnit,
+      p.status,
+    );
   }
 
   function onPointFocus(i: number) {
@@ -499,7 +521,14 @@
     })).filter((g) => g.entries.length > 0),
   );
 
-  const breakDisplay = $derived(visibleBreaks.map((b) => ({ ...b, displayPeriod: periodFromCalendarDate(b.date, frequency) })));
+  // `displayPeriod` is named for what it is and is now genuinely one: the
+  // break's calendar date is snapped onto the series' own period axis
+  // (canonical, because that is what the snap needs) and only then rendered.
+  // Prose register — "Ruptura: junio de 2021" is a phrase in a band, not a
+  // cell in a column.
+  const breakDisplay = $derived(
+    visibleBreaks.map((b) => ({ ...b, displayPeriod: formatPeriodProse(periodFromCalendarDate(b.date, frequency)) })),
+  );
 
   // series-transformations spec, "Transformations recompute in the browser
   // with no network request": neither this initialization nor any toggle
@@ -621,7 +650,10 @@
 
   {#if effectiveTransform === "perCapita" && perCapitaResult.coverage}
     <p class="mt-1 text-caption text-ink-muted" data-testid="chart-percapita-disclosure">
-      {es.chart.perCapita.coverageDisclosure(perCapitaResult.coverage.from, perCapitaResult.coverage.to)}
+      {es.chart.perCapita.coverageDisclosure(
+        formatPeriodProse(perCapitaResult.coverage.from),
+        formatPeriodProse(perCapitaResult.coverage.to),
+      )}
     </p>
   {/if}
 
@@ -840,7 +872,12 @@
     <tbody>
       {#each rangedPoints as p (p.period)}
         <tr class="border-b border-ink/10" data-status={p.status}>
-          <td class="px-2 py-1">{p.period}</td>
+          <!-- Compact register, matching `AccessibleDataTable.astro`'s own
+               cell byte for byte: this is the same column, re-rendered by the
+               other half of the same chart. The `{#each}` key above is still
+               `p.period` — the CANONICAL label — because a keyed list is
+               identity, not display. -->
+          <td class="px-2 py-1">{formatPeriodCompact(p.period)}</td>
           <td
             class="font-numeric px-2 py-1 text-right tabular-nums"
             class:border-b-2={p.status === "P"}

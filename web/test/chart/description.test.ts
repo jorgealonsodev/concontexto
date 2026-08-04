@@ -22,14 +22,19 @@ describe("describeSeries", () => {
     // `lib/format/number.ts` every other reader-facing numeral does.
     expect(text).toContain("10,0 %");
     expect(text).not.toContain("10.0 %");
-    expect(text).toContain("2020-Q1");
+    // And "T1 2020", not "2020-Q1": this description is prose, so its dates
+    // go through `lib/format/period.ts`'s PROSE register exactly as its
+    // numerals go through `formatNumber`. `Q` is the English abbreviation
+    // for *quarter*; INE — the source of every figure here — publishes T.
+    expect(text).toContain("T1 2020");
+    expect(text).not.toContain("2020-Q1");
   });
 
   it("names start, end and a monotonic rise", () => {
     const text = describeSeries({ points: points([10, 11, 12, 15]), unit: "%", decimals: 1 });
     expect(text).toContain("sube");
     expect(text).toContain("10,0 %");
-    expect(text).toContain("2020-Q1");
+    expect(text).toContain("T1 2020");
     expect(text).toContain("15,0 %");
   });
 

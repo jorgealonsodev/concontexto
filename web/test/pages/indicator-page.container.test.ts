@@ -122,7 +122,7 @@ describe("IndicatorPage — page anatomy (task 9a.3)", () => {
     expect(headerHtml).toContain('data-testid="page-latest-period"');
     expect(headerHtml).toContain('data-testid="page-yoy-variation"');
     expect(headerHtml).toContain('data-testid="page-intra-annual-variation"');
-    expect(headerHtml).toContain("2026-Q2"); // this fixture's latest period
+    expect(headerHtml).toContain("T2 2026"); // this fixture's latest period, as a reader reads it
     expect(headerHtml).toContain("9,87"); // this fixture's latest value, Spanish-formatted
     // The latest value and period above are REAL published INE figures —
     // the newest three observations of every series in the fixture are
@@ -1144,5 +1144,111 @@ describe("IndicatorPage — the methodology sheet reads as Spanish prose, not as
     // locale-formatting vocabulary for dates. It has one now.
     expect(html).toContain("Última actualización correcta: 29 de julio de 2026.");
     expect(html).not.toContain("Última actualización correcta: 2026-07-29");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The period label a reader actually sees.
+//
+// THE DEFECT THIS DRIVES, counted on the built /indicador/tasa-de-paro-epa:
+// `2026-Q2` appeared twenty-two times on one page — in the header, in every
+// row of the accessible data table, on every x-axis tick and inside the
+// generated Spanish prose. That is the database's canonical storage format
+// (`'2026-Q2' | '2026-06' | '2025'`, migration 0001's own comment) reaching
+// the screen, and its `Q` is the English abbreviation for *quarter*. INE's
+// API — this project's own source — returns `T3_Periodo` with the values
+// "T1"–"T4", and INE's press releases write "el segundo trimestre de 2020".
+//
+// Not the spec's "technical identifiers are not translated" case: that
+// scenario protects "indicator slugs, configuration filenames, source names
+// and origin series identifiers", and a period is none of the four.
+//
+// These assertions are deliberately about the WHOLE page rather than about
+// one component, because the failure was a whole-page one: eight render sites
+// in five files, each individually plausible.
+describe("IndicatorPage — periods read as Spanish dates, never as the database's storage format", () => {
+  async function renderSlug(slug: string): Promise<string> {
+    const { seriesBySlug } = await loadFixtureArtifact();
+    const container = await AstroContainer.create({ renderers: [{ name: "@astrojs/svelte", ssr: svelteServerRenderer }] });
+    return container.renderToString(IndicatorPage, {
+      props: {
+        doc: docFor(slug, seriesBySlug),
+        content: INDICATOR_CONTENT[slug],
+        methodology: METHODOLOGY_CONTENT[slug],
+        relatedCards: [],
+        canonicalPath: `/indicador/${slug}`,
+      },
+    });
+  }
+
+  it("the header names the latest period in prose", async () => {
+    const html = await renderSlug("tasa-de-paro-epa");
+    expect(renderedText(html, "page-latest-period")).toBe(`${es.page.latestPeriodLabel}: T2 2026`);
+  });
+
+  it("the header of a MONTHLY series spells its month out, because a header is a labelled field and not a column", async () => {
+    const html = await renderSlug("ipc-general");
+    expect(renderedText(html, "page-latest-period")).toBe(`${es.page.latestPeriodLabel}: junio de 2026`);
+  });
+
+  it("the generated description reads as a Spanish sentence about dates", async () => {
+    const description = (await renderSlug("ipc-general")) .match(
+      /data-testid="chart-description"[^>]*>([\s\S]*?)<\/p>/,
+    )?.[1];
+    expect(description).toBeTruthy();
+    // "…de 71,8 en enero de 2002 a …" — the prose register, spelled out,
+    // exactly where PRD §12.5's worked example puts a period.
+    expect(description).toMatch(/ en [a-záéíóú]+ de \d{4}/);
+    expect(description).not.toMatch(/\d{4}-\d{2}/);
+  });
+
+  it("the accessible data table's Periodo column uses the compact register", async () => {
+    const html = await renderSlug("tasa-de-paro-epa");
+    // A column, not a sentence: the width is load-bearing at 375 px, and
+    // "T2 2026" is exactly as wide as the "2026-Q2" it replaces.
+    expect(html).toContain(">T2 2026<");
+    expect(html).toContain(">T1 2002<");
+  });
+
+  it("a monthly series' Periodo column abbreviates the month rather than wrapping it", async () => {
+    const html = await renderSlug("ipc-general");
+    expect(html).toContain(">jun 2026<");
+    expect(html).toContain(">ene 2002<");
+    // The prose form must NOT be what lands in the column — that is the
+    // whole reason there are two registers.
+    expect(html).not.toContain(">junio de 2026<");
+  });
+
+  it("the chart's x-axis ticks are drawn in the compact register too", async () => {
+    const html = await renderSlug("tasa-de-paro-epa");
+    const xTicks = [...html.matchAll(/class="chart-tick chart-tick--x"[^>]*>([^<]+)</g)].map((m) => m[1]);
+    expect(xTicks.length).toBeGreaterThan(0);
+    for (const label of xTicks) {
+      expect(label, `x tick "${label}" is still the storage format`).toMatch(/^T[1-4] \d{4}$/);
+    }
+  });
+
+  it("no reader-facing position on any of the six pages still shows the storage format", async () => {
+    for (const slug of ALL_SIX_SLUGS) {
+      const html = await renderSlug(slug);
+      // Attribute values are machine surfaces and are inspected separately
+      // below; this sweep is about what is RENDERED, so it reads the text
+      // nodes only.
+      const textNodes = [...html.matchAll(/>([^<>]+)</g)].map((m) => m[1]);
+      const leaked = textNodes.filter((text) => /\b\d{4}-(Q[1-4]|0[1-9]|1[0-2])\b/.test(text));
+      expect(leaked, `${slug}: storage-format periods still rendered: ${JSON.stringify(leaked.slice(0, 5))}`).toEqual([]);
+    }
+  });
+
+  it("keeps the machine value in the markup wherever the markup carries one", async () => {
+    const html = await renderSlug("tasa-de-paro-epa");
+    // The `<time datetime>` boundary, re-asserted from this angle: the
+    // methodology sheet's extraction instant is prose in the text node and
+    // an ISO instant in the attribute, and reformatting periods must not
+    // have disturbed either half.
+    expect(html).toMatch(/<time datetime="2026-07-29T12:00:00Z"[^>]*>/);
+    // And the two export links still name the pipeline's real files.
+    expect(html).toContain('href="/data-derived/csv/tasa-de-paro-epa.csv"');
+    expect(html).toContain('href="/data-derived/series/tasa-de-paro-epa.json"');
   });
 });

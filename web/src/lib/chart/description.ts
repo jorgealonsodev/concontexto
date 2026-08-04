@@ -6,6 +6,7 @@
 // project's own Strict-TDD convention for pure render/transform functions.
 import { es } from "../../i18n/es";
 import { formatNumber } from "../format/number";
+import { formatPeriodProse } from "../format/period";
 import type { ChartPoint } from "./geometry";
 
 export interface DescribeSeriesInput {
@@ -19,6 +20,15 @@ export interface DescribeSeriesInput {
  * is — "sube de 22.779 miles de personas", never "22779". */
 function formatValue(value: number, decimals: number, unit: string): string {
   return `${formatNumber(value, decimals)} ${unit}`;
+}
+
+/** And the same argument one field over, for the dates in the same sentence.
+ * This description is prose — PRD §12.5's own worked example is a sentence —
+ * so it takes the PROSE register: "…sube de 71,8 índice en enero de 2002 a
+ * …", never "en 2002-01", which is how the storage format was reaching a
+ * screen reader. */
+function formatPeriod(period: string): string {
+  return formatPeriodProse(period);
 }
 
 function directionVerb(from: number, to: number): string {
@@ -48,7 +58,7 @@ export function describeSeries(input: DescribeSeriesInput): string {
 
   if (valid.length === 0) return es.chart.description.noData;
   if (valid.length === 1) {
-    return es.chart.description.singlePoint(formatValue(valid[0].value, decimals, unit), valid[0].period);
+    return es.chart.description.singlePoint(formatValue(valid[0].value, decimals, unit), formatPeriod(valid[0].period));
   }
 
   const start = valid[0];
@@ -82,12 +92,12 @@ export function describeSeries(input: DescribeSeriesInput): string {
       return es.chart.description.withTurningPoint(
         firstVerb,
         formatValue(start.value, decimals, unit),
-        start.period,
+        formatPeriod(start.period),
         formatValue(turningValue, decimals, unit),
-        turning.period,
+        formatPeriod(turning.period),
         secondVerb,
         formatValue(end.value, decimals, unit),
-        end.period,
+        formatPeriod(end.period),
       );
     }
   }
@@ -96,8 +106,8 @@ export function describeSeries(input: DescribeSeriesInput): string {
   return es.chart.description.simple(
     overall,
     formatValue(start.value, decimals, unit),
-    start.period,
+    formatPeriod(start.period),
     formatValue(end.value, decimals, unit),
-    end.period,
+    formatPeriod(end.period),
   );
 }

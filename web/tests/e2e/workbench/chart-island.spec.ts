@@ -21,7 +21,10 @@ test.describe("ChartIsland — interactive behaviour", () => {
 
       const tooltip = island.getByTestId("chart-island-tooltip");
       await expect(tooltip).toBeVisible();
-      await expect(tooltip).toContainText("2019-Q1");
+      // The tooltip is prose a reader reads and a screen reader announces, so
+      // it names the period in the prose register — "T1 2019", INE's own
+      // vocabulary — never the database's "2019-Q1" storage format.
+      await expect(tooltip).toContainText("T1 2019");
       await expect(tooltip).toContainText("Definitivo");
     },
   );
@@ -171,9 +174,14 @@ test.describe("ChartIsland — interactive behaviour", () => {
       const status = island.getByTestId("custom-range-status");
       await expect(status).toContainText("más allá del periodo con datos");
       // The disclosed span is the one actually rendered, not the one asked for.
-      await expect(status).toContainText("2019-Q1");
-      await expect(status).toContainText("2020-Q4");
+      await expect(status).toContainText("T1 2019");
+      await expect(status).toContainText("T4 2020");
+      // …and the URL still carries the CANONICAL bounds. This pair of
+      // assertions is the boundary in one place: the sentence is for the
+      // reader, the query parameter is parsed back by `resolveCustomRange`,
+      // and they must not be the same string.
       await expect(page).toHaveURL(/from=2019-Q1/);
+      await expect(page).not.toHaveURL(/from=T1/);
     },
   );
 
@@ -389,8 +397,8 @@ test.describe("ChartIsland — interactive behaviour", () => {
       await island.getByTestId("transform-toggle-perCapita").click();
       const disclosure = island.getByTestId("chart-percapita-disclosure");
       await expect(disclosure).toBeVisible();
-      await expect(disclosure).toContainText("2019-Q1");
-      await expect(disclosure).toContainText("2020-Q4");
+      await expect(disclosure).toContainText("T1 2019");
+      await expect(disclosure).toContainText("T4 2020");
     },
   );
 });

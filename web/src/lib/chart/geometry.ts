@@ -11,6 +11,12 @@ import { type Frequency, nearestPeriodIndex, periodFromCalendarDate } from "./pe
 // path `d` attribute above -- keeps `toFixed`, because those are SVG machine
 // values where a grouping separator would be a syntax error.
 import { formatNumber } from "../format/number";
+// The x-axis labels are read by a person too, and by the same argument: the
+// axis said "2026-Q2" — the database's storage format, carrying the English
+// abbreviation for *quarter* — beside a source that publishes "T2". The
+// COMPACT register is the right one here and not the prose one: a tick has a
+// width, and this module's own margins are derived from it.
+import { formatPeriodCompact } from "../format/period";
 
 export type ObservationStatus = "P" | "D";
 
@@ -192,19 +198,26 @@ export interface AxisTick {
 
 /** A small, readable set of x-axis ticks (never every period — that would
  * be illegible for a 294-point monthly series) always including the first
- * and last plotted period. */
+ * and last plotted period.
+ *
+ * `periods` arrives, and is indexed, in the CANONICAL storage form — that is
+ * what every caller holds and what `buildBreakBands` positions against. Only
+ * the `label` is formatted, at the last possible moment, which is what keeps
+ * the display decision from leaking into the axis arithmetic. The
+ * duplicate-tick check below compares INDICES rather than labels for exactly
+ * that reason: two distinct periods can never share an index, whereas
+ * comparing rendered text would be comparing the wrong thing. */
 export function buildXTicks(periods: string[], dims: ChartDimensions, maxTicks = 6): AxisTick[] {
   if (periods.length === 0) return [];
   const step = Math.max(1, Math.ceil((periods.length - 1) / Math.max(1, maxTicks - 1)));
-  const ticks: AxisTick[] = [];
-  for (let i = 0; i < periods.length; i += step) {
-    ticks.push({ x: xForIndex(i, periods.length, dims), label: periods[i] });
-  }
+  const indices: number[] = [];
+  for (let i = 0; i < periods.length; i += step) indices.push(i);
   const lastIndex = periods.length - 1;
-  if (ticks[ticks.length - 1]?.label !== periods[lastIndex]) {
-    ticks.push({ x: xForIndex(lastIndex, periods.length, dims), label: periods[lastIndex] });
-  }
-  return ticks;
+  if (indices[indices.length - 1] !== lastIndex) indices.push(lastIndex);
+  return indices.map((i) => ({
+    x: xForIndex(i, periods.length, dims),
+    label: formatPeriodCompact(periods[i]),
+  }));
 }
 
 export interface ValueTick {
@@ -382,7 +395,14 @@ function derivedMargins(input: {
   tickFontSize: number;
   minMarginLeft?: number;
 }): { marginLeft: number; marginRight: number } {
-  const halfPeriodLabel = widestLabelWidth(input.periods, input.tickFontSize) / 2;
+  // MEASURED ON WHAT IS DRAWN, not on what is stored. `buildXTicks` renders
+  // each period through `formatPeriodCompact`, and a gutter sized from the
+  // canonical label would be measuring a different alphabet: "sept 2026" is
+  // nine glyphs where "2026-09" was seven, so a monthly page's final tick
+  // would have hung outside the box — the exact defect this derivation was
+  // introduced to end. Quarters are unaffected ("T2 2026" is seven glyphs,
+  // like "2026-Q2"), which is why no quarterly page's coordinates move.
+  const halfPeriodLabel = widestLabelWidth(input.periods.map(formatPeriodCompact), input.tickFontSize) / 2;
   const yLabelGutter =
     Math.ceil(widestLabelWidth(input.yLabels, input.tickFontSize)) +
     Y_LABEL_ANCHOR_GAP +

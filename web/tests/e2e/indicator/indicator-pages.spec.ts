@@ -180,11 +180,19 @@ for (const slug of SLUGS) {
         // The chart really is showing the requested window, not merely the
         // right NUMBER of points: the first and last rendered periods both
         // fall inside it.
+        //
+        // The YEAR is asserted at the END of the label, not at the start.
+        // These announcements are reader-facing text and now carry the prose
+        // period register ("T1 2010", "enero de 2010" — see
+        // `src/lib/format/period.ts`), where the year comes last; the two
+        // `toHaveURL` assertions above are what still hold the CANONICAL
+        // "2010-Q1" bounds, in the one place that is parsed back.
         const periods = await reloaded.points.evaluateAll((nodes) =>
           nodes.map((n) => n.getAttribute("aria-label")?.split(":")[0] ?? ""),
         );
-        expect(periods[0].startsWith("2010")).toBe(true);
-        expect(periods[periods.length - 1].startsWith("2015")).toBe(true);
+        expect(periods[0].endsWith("2010"), `${slug}: first rendered period is "${periods[0]}"`).toBe(true);
+        const last = periods[periods.length - 1];
+        expect(last.endsWith("2015"), `${slug}: last rendered period is "${last}"`).toBe(true);
       },
     );
 
@@ -323,6 +331,75 @@ for (const slug of SLUGS) {
         });
 
         expect(clipped, `axis labels clipped by the wide viewBox: ${clipped.join(", ")}`).toEqual([]);
+      },
+    );
+
+    // The period a reader sees, proved on the REAL built page rather than in
+    // a container render.
+    //
+    // THE DEFECT: `/indicador/tasa-de-paro-epa` printed `2026-Q2` twenty-two
+    // times — the database's canonical storage format (migration 0001's own
+    // comment), carrying `Q`, the English abbreviation for *quarter*. INE's
+    // API returns `T3_Periodo` with "T1"–"T4" and INE writes "el segundo
+    // trimestre de 2020": every figure here comes from a source that says T.
+    //
+    // This walks TEXT NODES, not markup, so it says something a `toContain`
+    // over the HTML cannot: no reader-facing position — header, table cell,
+    // axis tick, generated prose, break band, tooltip label — still shows the
+    // storage form, while attributes (`datetime`, `?from=`, `href`) are
+    // deliberately out of scope and are asserted to keep it.
+    test(
+      "no period reaches the reader in the database's storage format, and the machine values keep it",
+      { tag: ["@indicator-page", "@i18n"] },
+      async ({ page }) => {
+        const indicator = new IndicatorPage(page, slug);
+        await indicator.goto();
+        await indicator.waitForChartHydrated();
+
+        const leaked = await page.evaluate(() => {
+          const STORAGE_FORMAT = /\b\d{4}-(Q[1-4]|0[1-9]|1[0-2])\b/;
+          const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+          const found: string[] = [];
+          for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+            const text = (node.textContent ?? "").trim();
+            if (text && STORAGE_FORMAT.test(text)) found.push(text.slice(0, 60));
+          }
+          // SVG tick labels are text nodes too and are already covered by the
+          // walk above; the accessible names of the point buttons are not, so
+          // they are swept explicitly — that string is what a screen-reader
+          // reader actually receives.
+          for (const button of document.querySelectorAll('[data-testid="chart-island-point"]')) {
+            const label = button.getAttribute("aria-label") ?? "";
+            if (STORAGE_FORMAT.test(label)) found.push(label.slice(0, 60));
+          }
+          return found;
+        });
+        expect(leaked, `${slug}: storage-format periods still visible: ${leaked.slice(0, 5).join(" | ")}`).toEqual([]);
+
+        // Quarterly pages say T, monthly pages say a Spanish month name —
+        // the positive half, so this test cannot pass by rendering nothing.
+        const tickText = await page
+          .locator('[data-testid="indicator-chart-svg"] .chart-tick--x')
+          .allTextContents();
+        expect(tickText.length).toBeGreaterThan(0);
+        for (const label of tickText) {
+          expect(label, `${slug}: unexpected x tick "${label}"`).toMatch(
+            /^(T[1-4] \d{4}|[a-záéíóú]{3,10} \d{4}|\d{4})$/,
+          );
+        }
+
+        // And the machine surfaces, unmoved. `<time datetime>` exists exactly
+        // so the prose beside it can be reformatted without the machine value
+        // being lost, and the export links must still name real files.
+        const datetimes = await page.locator("time[datetime]").evaluateAll((nodes) =>
+          nodes.map((n) => n.getAttribute("datetime") ?? ""),
+        );
+        expect(datetimes.length).toBeGreaterThan(0);
+        for (const value of datetimes) {
+          expect(value, `${slug}: <time datetime> is no longer machine-readable`).toMatch(
+            /^\d{4}-\d{2}-\d{2}(T[\d:.]+Z?)?$/,
+          );
+        }
       },
     );
 

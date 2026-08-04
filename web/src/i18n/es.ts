@@ -242,6 +242,28 @@ export const es = {
   dates: {
     instant: (date: string, time: string) => `${date} a las ${time} (hora peninsular)`,
   },
+  /** Period vocabulary. `lib/format/period.ts` produces month names and years
+   * through `Intl` (the same `es-ES` authority `lib/format/date.ts` already
+   * uses for "29 de julio de 2026"); the QUARTER has no `Intl` field of its
+   * own, so its one authored letter lives here.
+   *
+   * NEW reader-facing copy — flagged for editorial sign-off, per this
+   * project's established convention.
+   *
+   * "T" for *trimestre*, and it is not this project's invention: INE's own
+   * API returns `T3_Periodo` with the values "T1"–"T4", so every quarterly
+   * figure on this site arrives already labelled T and was being re-labelled
+   * Q on the way to the screen. `Q` is the English abbreviation for
+   * *quarter*; Spanish official statistics do not use it.
+   *
+   * ORDINAL FIRST, YEAR SECOND ("T2 2026") rather than the storage order
+   * ("2026-T2"): the reader's question at a glance is which quarter, and the
+   * form is the one INE prints in its own tables. It is also exactly seven
+   * glyphs, like the "2026-Q2" it replaces — which is what keeps the chart's
+   * derived x-axis margins and the data table's Periodo column unchanged. */
+  periods: {
+    quarter: (ordinal: number, year: string) => `T${ordinal} ${year}`,
+  },
   /** verify-report CRITICAL-3 remediation: the shared column-header
    * vocabulary for every rendered data table (`AccessibleDataTable.astro`'s
    * own table AND `ChartIsland.svelte`'s island-rendered copy of the same

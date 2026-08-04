@@ -15,6 +15,7 @@ import { render } from "svelte/server";
 import ChartIsland from "../../src/components/ChartIsland.svelte";
 import { narrowChartVariant, renderChartSVG } from "../../src/lib/chart/svg";
 import type { ChartPoint } from "../../src/lib/chart/geometry";
+import { formatPeriodCompact } from "../../src/lib/format/period";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -120,7 +121,11 @@ describe("ChartIsland — island-parity golden test (task 8.12)", () => {
     // Every raw point's own period is present -- the default view was never
     // narrowed by a range preset or replaced by a derived transform series.
     for (const p of GOLDEN_POINTS) {
-      expect(body).toContain(p.period);
+      // Present as the READER sees it. The point is still that no period was
+      // dropped by a range preset or replaced by a derived series; the label
+      // it is looked for under is now the compact register the island's data
+      // table and axis both draw (`src/lib/format/period.ts`).
+      expect(body).toContain(formatPeriodCompact(p.period));
     }
   });
 

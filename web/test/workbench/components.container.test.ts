@@ -31,7 +31,7 @@ describe("IndicatorCard (workbench)", () => {
     const html = await container.renderToString(IndicatorCard, { props: { ...fx.indicatorCardFresh } });
     expect(html).toContain("Tasa de paro");
     expect(html).toContain("10,98");
-    expect(html).toContain("2026-Q1");
+    expect(html).toContain("T1 2026");
     expect(html).toContain('href="/indicador/tasa-de-paro-epa"');
     expect(html).toContain("Al día");
   });

@@ -40,6 +40,7 @@ import { INDICATOR_CONTENT, routeSlugForArtifactSlug } from "../content/indicato
 import { computeYoY, computeIntraPeriodRate } from "../lib/transform/yoy";
 import { periodFromCalendarDate } from "../lib/chart/periods";
 import { formatNumber, formatSignedPercent } from "../lib/format/number";
+import { formatPeriodProse } from "../lib/format/period";
 import { es } from "../i18n/es";
 
 export interface RelatedCardData {
@@ -104,7 +105,11 @@ const successorRouteSlug = isDiscontinued && pageState.successorSlug !== null
 const successorName = successorRouteSlug ? INDICATOR_CONTENT[successorRouteSlug]?.name ?? successorRouteSlug : null;
 
 const breakDisplay = doc.breaks.map((b) => ({
-  date: periodFromCalendarDate(b.date, doc.frequency),
+  // Snapped onto the series' period axis in the canonical form, then rendered
+  // in the PROSE register — this list is read as sentences in the methodology
+  // sheet, not scanned as a column. Same derivation, same order, as the two
+  // chart components' own break lists.
+  date: formatPeriodProse(periodFromCalendarDate(b.date, doc.frequency)),
   note: b.noteMd,
 }));
 
@@ -177,7 +182,11 @@ const perCapitaAttribution = content.transforms.perCapita ? es.chart.perCapita.a
         <span class="text-body text-ink-muted">{content.unit}</span>
       </span>
       <span class="text-caption text-ink-muted" data-testid="page-latest-period">
-        {es.page.latestPeriodLabel}: {latest?.period ?? "—"}
+        {/* PROSE register: this is a labelled field in a page header, not a
+            column — "Periodo: junio de 2026" has all the room it needs, and
+            the header is the one place a reader looks to learn WHEN the
+            figure above it is from. It printed `2026-Q2` until now. */}
+        {es.page.latestPeriodLabel}: {latest ? formatPeriodProse(latest.period) : "—"}
       </span>
     </div>
     <dl class="flex flex-wrap gap-4 text-caption text-ink-muted">

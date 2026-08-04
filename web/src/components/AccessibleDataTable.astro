@@ -25,8 +25,19 @@
 // pipeline's own CSV and JSON, whose bytes this component never produces.
 // The chart's own tooltip/point announcements are formatted the same way, so
 // hearing a value and reading it give the same number.
+//
+// PERIODS ARE FORMATTED HERE TOO, in the COMPACT register, and the register
+// is the whole decision. This column printed `2026-Q2` — the database's
+// storage shape, with the English abbreviation for *quarter* — for every one
+// of up to 294 rows. It is a COLUMN: at a 375 px viewport it shares the width
+// with a value and a status, so "septiembre de 2026" would wrap and break the
+// alignment the tabular figures beside it exist to create. "T2 2026" is
+// exactly as wide as the label it replaces, and "sept 2026" is two glyphs
+// wider — see `lib/format/period.ts` for the rule and for where the prose
+// register applies instead.
 import type { ObservationStatus } from "../lib/export/schema";
 import { formatNumber } from "../lib/format/number";
+import { formatPeriodCompact } from "../lib/format/period";
 import { es } from "../i18n/es";
 
 export interface AccessibleDataTablePoint {
@@ -59,7 +70,7 @@ const { id, caption, unit, decimals = 1, points } = Astro.props;
     {
       points.map((point) => (
         <tr class="border-b border-ink/10" data-status={point.status}>
-          <td class="px-2 py-1">{point.period}</td>
+          <td class="px-2 py-1">{formatPeriodCompact(point.period)}</td>
           <td
             class:list={[
               "font-numeric px-2 py-1 text-right tabular-nums",

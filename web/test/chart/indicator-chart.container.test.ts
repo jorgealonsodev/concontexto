@@ -17,8 +17,11 @@ describe("IndicatorChart", () => {
   it("default render spans the whole series (first to last observation)", async () => {
     const container = await AstroContainer.create();
     const html = await container.renderToString(IndicatorChart, { props: { ...fx.indicatorChart } });
-    expect(html).toContain("2019-Q1"); // first observation
-    expect(html).toContain("2026-Q1"); // last observation
+    // Read as the reader reads them: the data table's column and the axis
+    // ticks are drawn in the compact period register, never in the database's
+    // "2019-Q1" storage format (see `src/lib/format/period.ts`).
+    expect(html).toContain("T1 2019"); // first observation
+    expect(html).toContain("T1 2026"); // last observation
   });
 
   it("renders exactly one break band for one resolved break, at the correct period", async () => {

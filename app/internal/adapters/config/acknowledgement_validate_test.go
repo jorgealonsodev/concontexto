@@ -176,6 +176,42 @@ func TestValidateAcknowledgement_RejectsAPlaceholderShapedSignature(t *testing.T
 	}
 }
 
+// TestValidateAcknowledgement_RejectsAnAgentAsTheSigner: an agent is not a
+// person, so it can never be the human rule4_revision.go hands the decision
+// to. Before this check the ONLY thing standing between an agent and a
+// signature was the agent choosing not to write one, which is not a
+// protection at all -- and the exact-token placeholder list could not have
+// helped, because an agent signing would not write a bare "Claude". It would
+// write a sentence. The first case below is the literal `drafted_by` string
+// this repository's own registry carried while the record was a draft.
+func TestValidateAcknowledgement_RejectsAnAgentAsTheSigner(t *testing.T) {
+	for _, signer := range []string{
+		"Claude (agente), bajo autoridad delegada — no es una firma",
+		"Claude (agent), under delegated authority",
+		"Claude", "claude", "Anthropic", "GPT-5", "ChatGPT", "Copilot",
+		"Gemini", "an autonomous agent", "el agente de turno",
+		"ingest-bot", "AI", "IA", "LLM", "assistant", "asistente editorial",
+	} {
+		a := validAck()
+		a.AcknowledgedBy = signer
+		if !violatesField(ackViolations(ackFixtureConfig(a)), "acknowledged_by") {
+			t.Errorf("acknowledged_by %q names an agent, not a person, and must be rejected", signer)
+		}
+	}
+
+	// The converse, and the reason the agent words are matched as WHOLE
+	// words: a real person whose name merely contains those letters must
+	// still be able to sign. A check that cried wolf here would be worked
+	// around, and a worked-around check protects nothing.
+	for _, signer := range []string{"Ada Lovelace", "Alberto Botella", "Agnès Bota", "Ai Weiwei", "Iago Bottino"} {
+		a := validAck()
+		a.AcknowledgedBy = signer
+		if got := ackViolations(ackFixtureConfig(a)); len(got) != 0 {
+			t.Errorf("%q is a person's name and must validate, got %v", signer, got)
+		}
+	}
+}
+
 // TestValidateAcknowledgement_RequiresFullProvenance: a SIGNED
 // acknowledgement with no named human, no date or no stated reason is an
 // anonymous override, which is the thing this registry exists NOT to be.
@@ -303,25 +339,34 @@ func TestValidateAcknowledgement_RejectsTwoRecordsCoveringTheSameFinding(t *test
 	}
 }
 
-// TestRealAcknowledgementRegistry_ShipsExactlyOneUNSIGNEDDraft reads the
-// REAL embedded registry (licensing_test.go's discipline).
+// TestRealAcknowledgementRegistry_ShipsExactlyOneRecordSignedByARealHuman
+// reads the REAL embedded registry (licensing_test.go's discipline).
 //
-// This test asserts the OPPOSITE of what a reader might expect, and that is
-// the point. The portal ships exactly one acknowledgement record today, and
-// it MUST be unsigned. The research behind it -- the measured delta
-// distribution, the pinned figure, INE's own press release -- was done by
-// an agent under delegated authority. No human has reviewed and signed it.
-// Writing a person's name into that record would fabricate the one fact the
-// whole mechanism rests on, and would defeat rule4_revision.go's stated
-// purpose of handing the decision to a HUMAN rather than guessing.
+// WHY THIS TEST INVERTED, AND WHAT IT USED TO ASSERT. It was
+// TestRealAcknowledgementRegistry_ShipsExactlyOneUNSIGNEDDraft, and it
+// required the shipped record to carry `signature_status: unsigned`, no
+// `acknowledged_by`, no `acknowledged_on`, a `drafted_by` and a `todo`. That
+// was correct for as long as it was true: the research behind the record --
+// the measured delta distribution, the pinned figure, INE's own press
+// release -- was written by an agent under delegated authority, and no human
+// had reviewed it. The guard existed because of a REAL failure that had
+// already happened once: an earlier version of this record shipped SIGNED,
+// with this same person's name, for a review he had never performed, and
+// only a human reading a diff caught it.
 //
-// So this test is the guard against exactly that regression: if anyone --
-// agent or human -- ever adds a signature to a shipped record without a
-// real review, or ships a record whose drafted/signed status is ambiguous,
-// this fails. `ocupados-epa` consequently stays blocked and absent from the
-// artifact. That is the correct state: a human decision genuinely IS
-// pending, and the pipeline says so instead of pretending otherwise.
-func TestRealAcknowledgementRegistry_ShipsExactlyOneUNSIGNEDDraft(t *testing.T) {
+// The record has since been reviewed and signed by the repository's
+// maintainer, so "unsigned" is no longer the correct state. The failure mode
+// the guard was built for is unchanged, though: a signature that is PRESENT
+// BUT NOT REAL. So the test now asserts the signed shape and, more
+// importantly, keeps interrogating the signature itself -- it must be a
+// genuine human handle, never an agent, never a placeholder, never blank --
+// and asserts that the two draft-only fields are gone, so a half-edited
+// record that reads as approved at a glance cannot ship either.
+//
+// What is deliberately NOT asserted is the identity of the signer. Pinning a
+// specific name would make the test a test of who happens to maintain the
+// repository rather than of whether the mechanism was honoured.
+func TestRealAcknowledgementRegistry_ShipsExactlyOneRecordSignedByARealHuman(t *testing.T) {
 	cfg := realConfig(t)
 
 	if len(cfg.Acknowledgements) != 1 {
@@ -329,20 +374,56 @@ func TestRealAcknowledgementRegistry_ShipsExactlyOneUNSIGNEDDraft(t *testing.T) 
 	}
 	a := cfg.Acknowledgements[0]
 
-	if a.SignatureStatus != "unsigned" {
-		t.Errorf("the shipped record MUST be unsigned — no human has reviewed it; got signature_status=%q", a.SignatureStatus)
+	// THE SIGNED SHAPE. signature_status and drafted_by must both be gone:
+	// the first because the record is no longer awaiting anyone, the second
+	// because leaving "drafted by an agent" beside a human signature invites
+	// exactly the confusion about who decided that this registry exists to
+	// prevent. A todo would say the record is still pending; it is not.
+	if a.SignatureStatus != "" {
+		t.Errorf("the shipped record is signed, so signature_status must be absent entirely; got %q", a.SignatureStatus)
 	}
-	if a.AcknowledgedBy != "" || a.AcknowledgedOn != nil {
-		t.Errorf("the shipped record must carry NO signature: by=%q on=%v", a.AcknowledgedBy, a.AcknowledgedOn)
+	if a.DraftedBy != "" {
+		t.Errorf("drafted_by must be gone from a signed record — the signature, not the drafting, is what carries authority; got %q", a.DraftedBy)
 	}
-	if a.DraftedBy == "" {
-		t.Error("an unsigned draft must name who drafted it")
+	if a.Todo != "" {
+		t.Errorf("a signed record must not still state something pending; got %q", a.Todo)
 	}
-	if a.Todo == "" {
-		t.Error("an unsigned draft must state what is pending")
+	if a.AcknowledgedOn == nil {
+		t.Error("a signed record must record WHEN the review happened — a reviewer who cannot say when they reviewed the datum did not review it")
 	}
 
-	// The research it carries must still be the real, verified research.
+	// THE HALF THIS GUARD HAS ALWAYS BEEN FOR: is the signature real? An
+	// empty string, a placeholder, or an agent's name in acknowledged_by is
+	// the regression that already happened once, and it must fail here rather
+	// than in a diff somebody happens to read carefully.
+	signer := strings.TrimSpace(a.AcknowledgedBy)
+	if signer == "" {
+		t.Fatal("acknowledged_by is empty: a record with no signer carries no authority and must never ship signed")
+	}
+	for _, forbidden := range []string{
+		// Agents. An agent cannot review a datum on a human's behalf; the
+		// whole mechanism (rule4_revision.go) exists to hand the decision to
+		// a person, and an agent-signed record hands it back to whoever
+		// wrote the argument for it.
+		"claude", "anthropic", "gpt", "chatgpt", "openai", "copilot",
+		"gemini", "agent", "agente", "bot", "llm", "assistant", "asistente",
+		// Placeholders. A vacant signature passes a careless review and then
+		// authorises a guard override forever.
+		"todo", "tbd", "fixme", "xxx", "n/a", "unknown", "pending",
+		"someone", "anon", "nobody", "unsigned", "sin firmar",
+	} {
+		if strings.Contains(strings.ToLower(signer), forbidden) {
+			t.Errorf("acknowledged_by %q contains %q: that is not a human signature, and a signature that is present but not real is the exact regression this test guards", signer, forbidden)
+		}
+	}
+	// The same judgement the validator makes, applied to the shipped bytes:
+	// whatever the list above misses, the config gate must still refuse.
+	if v := ackViolations(cfg); len(v) != 0 {
+		t.Errorf("the shipped registry must satisfy the acknowledgement validator, got %v", v)
+	}
+
+	// The research it carries must still be the real, verified research: the
+	// signature changed, the evidence behind it did not.
 	if a.Series != "ocupados-epa" || a.Period != "2020-Q2" || a.Rule != "rule3-plausibility" {
 		t.Errorf("expected the record scoped to ocupados-epa/2020-Q2/rule3-plausibility, got %s/%s/%s", a.Series, a.Period, a.Rule)
 	}
@@ -352,13 +433,17 @@ func TestRealAcknowledgementRegistry_ShipsExactlyOneUNSIGNEDDraft(t *testing.T) 
 	if !strings.Contains(strings.ToUpper(a.NoteMD), "COVID") {
 		t.Errorf("expected the note to name the COVID-19 lockdown as the real cause, got %q", a.NoteMD)
 	}
+	if !strings.Contains(a.NoteMD, "1074,1") || !strings.Contains(a.NoteMD, "18607,2") {
+		t.Errorf("expected the note to keep the measured fall and the pinned figure it was signed against, got %q", a.NoteMD)
+	}
 	if !strings.Contains(a.SourceURL, "ine.es") {
 		t.Errorf("expected the record to cite INE's own publication, got %q", a.SourceURL)
 	}
-	// The note must not assert a review that did not happen.
-	for _, forbidden := range []string{"Revisado y confirmado", "revisado y confirmado"} {
+	// The converse of the old assertion: a signed note must no longer say the
+	// record is waiting for anybody.
+	for _, forbidden := range []string{"PENDIENTE DE REVISIÓN", "pendiente de revisión", "no surte ningún efecto"} {
 		if strings.Contains(a.NoteMD, forbidden) {
-			t.Errorf("the note claims a human review that has not happened: %q", a.NoteMD)
+			t.Errorf("the note still declares the record pending while the record is signed: %q", a.NoteMD)
 		}
 	}
 

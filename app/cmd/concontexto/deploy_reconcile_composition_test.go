@@ -233,6 +233,24 @@ func TestDockerComposeReconcile_TheCommittedCommandProjectsEditorialRows(t *test
 			breakRows)
 	}
 
+	// The signed acknowledgement, by key. It used to be asserted as a PENDING
+	// identifier in the command's output, because the record shipped unsigned
+	// and a record waiting on a human had to read as waiting rather than as
+	// absent. It has since been signed, so it projects: the thing worth
+	// pinning is now the row itself, since it is what unblocks ocupados-epa's
+	// ingest and therefore what puts the slug in the export artifact at all.
+	var ackRows int
+	if err := pool.QueryRow(ctx,
+		"SELECT count(*) FROM validation_acknowledgement WHERE ack_key = $1 AND retired_at IS NULL",
+		"ocupados-epa-2020-q2-covid").Scan(&ackRows); err != nil {
+		t.Fatalf("looking up ocupados-epa-2020-q2-covid: %v", err)
+	}
+	if ackRows != 1 {
+		t.Errorf("expected exactly 1 active validation_acknowledgement row for ocupados-epa-2020-q2-covid, got %d: "+
+			"without it every real ingest of ocupados-epa blocks on the COVID quarter and the slug never reaches the artifact",
+			ackRows)
+	}
+
 	// THE OPERATOR-VISIBLE HALF (spec editorial-config, "Reconciliation MUST
 	// report the count and identifiers of unprojected entries to operators
 	// through the run's structured output"). This output is what reaches the
@@ -242,10 +260,9 @@ func TestDockerComposeReconcile_TheCommittedCommandProjectsEditorialRows(t *test
 		"pending=",
 		// A government whose date is genuinely unconfirmed today.
 		"gobierno-suarez-1976",
-		// The unsigned acknowledgement: a record waiting on a human
-		// signature must read as waiting, not as absent.
-		"acknowledgements inserted=",
-		"ocupados-epa-2020-q2-covid",
+		// The acknowledgement counts, so an operator can see the registry
+		// took effect rather than inferring it from a series that published.
+		"acknowledgements inserted=1",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the reconcile command's output does not contain %q, so an operator reading the "+

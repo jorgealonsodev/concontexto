@@ -37,6 +37,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // AcknowledgementConfig is one config/reconocimientos.yaml entry: a named
@@ -312,16 +313,71 @@ var placeholderSignatures = map[string]bool{
 	"n/a": true, "na": true, "-": true, "--": true, "?": true, "???": true,
 	"unknown": true, "pending": true, "someone": true, "anon": true,
 	"anonymous": true, "none": true, "nobody": true, "tbc": true,
+	// Whole-string agent identities. An agent is not a person and can
+	// therefore never be the signer, whatever the surrounding process
+	// claimed. "ai"/"ia" are rejected only as the ENTIRE signature: as a
+	// word inside a longer name they are ordinary given names (Ai) and
+	// rejecting those would be a false accusation, so they are absent from
+	// agentSignatureWords below.
+	"ai": true, "ia": true, "llm": true, "bot": true, "agent": true,
+	"agente": true, "claude": true, "anthropic": true, "gpt": true,
+	"chatgpt": true, "openai": true, "copilot": true, "gemini": true,
+	"assistant": true, "asistente": true,
+}
+
+// agentSignatureWords are the tokens that make a signature an AGENT's,
+// matched as whole words ANYWHERE in the string rather than against the
+// whole string.
+//
+// The whole-string check above is not enough on its own, and the record
+// this registry ships is the proof: the drafted entry read `Claude
+// (agente), bajo autoridad delegada — no es una firma`, which no
+// exact-token list would ever have caught. An agent that decided to sign
+// would not write a bare "Claude"; it would write a sentence, and the
+// sentence would pass. A mechanism whose only protection against an agent
+// signing is the agent choosing not to is not a protection.
+//
+// Word-boundary matching, not substring: a substring test would reject
+// "Botella" for containing "bot" and "Agente" is a real Spanish surname
+// component only in phrases, not in names. The set is kept deliberately
+// small and unambiguous for the same reason the placeholder list is a
+// closed set — a false rejection here is loud, printed with the offending
+// string, and one edit away from fixed; a false acceptance is silent and
+// authorises a guard override forever.
+var agentSignatureWords = map[string]bool{
+	"claude": true, "anthropic": true, "gpt": true, "chatgpt": true,
+	"openai": true, "copilot": true, "gemini": true, "llm": true,
+	"bot": true, "agent": true, "agente": true, "assistant": true,
+	"asistente": true,
+}
+
+// signatureWordSplit splits a signature into lowercase word tokens. Every
+// rune that is neither a letter nor a digit is a boundary, so
+// `Claude (agente), bajo autoridad delegada` yields
+// [claude agente bajo autoridad delegada].
+func signatureWordSplit(signer string) []string {
+	return strings.FieldsFunc(strings.ToLower(signer), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	})
 }
 
 // isPlaceholderSignature reports whether signer is empty, whitespace-only,
-// implausibly short, or one of the known vacant tokens.
+// implausibly short, one of the known vacant tokens, or names an agent
+// rather than a person.
 func isPlaceholderSignature(signer string) bool {
 	trimmed := strings.TrimSpace(signer)
 	if len(trimmed) < 2 {
 		return true
 	}
-	return placeholderSignatures[strings.ToLower(trimmed)]
+	if placeholderSignatures[strings.ToLower(trimmed)] {
+		return true
+	}
+	for _, word := range signatureWordSplit(trimmed) {
+		if agentSignatureWords[word] {
+			return true
+		}
+	}
+	return false
 }
 
 // validateAcknowledgementSignature enforces the two mutually exclusive

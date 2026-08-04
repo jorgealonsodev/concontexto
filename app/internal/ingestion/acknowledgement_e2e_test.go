@@ -93,13 +93,13 @@ func ocupadosCovidCase() sixSeriesCase {
 	}
 }
 
-// covidAcknowledgementConfig is the editorial entry as it would look ONCE A
-// HUMAN HAS SIGNED IT. The signer is a test fixture name, deliberately not
-// any real person: the checked-in config/reconocimientos.yaml ships this
-// record UNSIGNED (see covidDraftConfig below and
-// TestRealAcknowledgementRegistry_ShipsExactlyOneUNSIGNEDDraft), because no
-// human has reviewed it. This fixture exists to test the signed path, not
-// to assert that anybody signed anything.
+// covidAcknowledgementConfig is the editorial entry in its SIGNED shape,
+// which is the shape config/reconocimientos.yaml now ships (the record was
+// reviewed and signed by the repository's maintainer; see
+// TestRealAcknowledgementRegistry_ShipsExactlyOneRecordSignedByARealHuman).
+// The signer here is a fixture name and deliberately not the real one: this
+// file tests the MECHANISM, and pinning the live signer's name into a unit
+// test would make an editorial fact into a test dependency.
 func covidAcknowledgementConfig() config.AcknowledgementConfig {
 	a := covidDraftConfig()
 	on := time.Date(2026, 7, 30, 0, 0, 0, 0, time.UTC)
@@ -108,9 +108,11 @@ func covidAcknowledgementConfig() config.AcknowledgementConfig {
 	return a
 }
 
-// covidDraftConfig is the entry in the exact shape
-// config/reconocimientos.yaml actually carries it today: researched and
-// drafted by an agent, awaiting a named human's signature.
+// covidDraftConfig is the entry in the shape it had while it was still
+// awaiting review: researched and drafted by an agent, unsigned. The shipped
+// registry has moved past this state, but the state itself must stay
+// exercised -- a draft is a legitimate thing to check in, and what must
+// remain impossible is a draft resolving anything.
 func covidDraftConfig() config.AcknowledgementConfig {
 	value := covidPinnedValue
 	return config.AcknowledgementConfig{
@@ -266,15 +268,15 @@ func TestIngestSeries_AnAcknowledgementPublishesTheCovidQuarterAsAnOverride(t *t
 }
 
 // TestIngestSeries_AnUnsignedDraftLeavesTheCovidQuarterBlocked proves
-// inertness against the REAL pipeline, not only in the pure gate: the
-// record checked into config/reconocimientos.yaml today, with all its
-// research and its verified citation, changes nothing at all until a human
-// signs it.
+// inertness against the REAL pipeline, not only in the pure gate: a record
+// with all its research and its verified citation changes nothing at all
+// until a human signs it.
 //
-// This is the state the repository actually ships. `ocupados-epa` stays
-// blocked, absent from the export artifact and its page absent with it, and
-// that is CORRECT: a human decision is genuinely pending, and the pipeline
-// says so rather than manufacturing the approval it is waiting for.
+// The shipped registry is now signed, so this is no longer the repository's
+// live state -- which is precisely why the assertion has to stay. The
+// property under test is that the RESEARCH never overrides anything on its
+// own; if it ever did, the signature would have become decoration and the
+// next drafted record would go live unreviewed.
 func TestIngestSeries_AnUnsignedDraftLeavesTheCovidQuarterBlocked(t *testing.T) {
 	ctx := context.Background()
 	tx := newTx(t)

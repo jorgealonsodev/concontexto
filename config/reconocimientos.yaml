@@ -44,13 +44,6 @@
 # código rutinarios. Ver .github/CODEOWNERS y .github/BRANCH_PROTECTION.md.
 
 # ---------------------------------------------------------------------------
-# BORRADOR SIN FIRMAR. Redactado por un agente (Claude) bajo autoridad
-# delegada; NINGUNA persona lo ha revisado todavía. Mientras siga así,
-# ocupados-epa permanece bloqueada, ausente del artefacto de exportación y
-# su página ausente con ella. Ese es el estado correcto: hay una decisión
-# humana genuinamente pendiente, y la tubería lo dice en lugar de fabricar
-# la aprobación que está esperando.
-#
 # CIFRAS LEÍDAS EN VIVO (2026-07-30) de la propia fuente por el agente que
 # redacta. Esto es lectura de datos, no una revisión editorial:
 # DATOS_SERIE/EPA387796 devuelve 2020-T1 = 19681,3 y 2020-T2 = 18607,2
@@ -77,32 +70,15 @@
   period: 2020-Q2
   rule: rule3-plausibility
   value: 18607.2
-  signature_status: unsigned
-  drafted_by: "Claude (agente), bajo autoridad delegada — no es una firma"
-  todo: >-
-    PARA FIRMAR. Revisión (1) abrir la nota de prensa del INE citada en
-    source_url; (2) comprobar que la caída de la ocupación del segundo
-    trimestre de 2020 es real y atribuible al confinamiento por la
-    COVID-19, y no a un cambio metodológico ni a un fallo del analizador;
-    (3) comprobar que el valor fijado 18607,2 coincide con el que el INE
-    publica para 2020-T2. Edición, si la revisión es conforme (a)
-    sustituir las tres líneas signature_status, drafted_by y todo por
-    acknowledged_by, con nombre y apellidos, y acknowledged_on, con la
-    fecha de la revisión; (b) borrar de note_md la última frase, la que
-    dice que el registro está pendiente de revisión y firma, y ajustar la
-    primera frase para que describa una conclusión revisada y no una
-    lectura; (c) borrar el bloque de comentario "BORRADOR SIN FIRMAR" de
-    encima de esta entrada. Si la revisión NO es conforme, borrar la
-    entrada entera: un registro rechazado no se deja a medias.
+  acknowledged_by: "jorgealonsodev"
+  acknowledged_on: 2026-08-04
   note_md: >-
-    Caída intertrimestral de 1074,1 miles de ocupados en el segundo
-    trimestre de 2020, coincidente con el confinamiento por la COVID-19.
-    Las cifras (2020-T1 = 19681,3; 2020-T2 = 18607,2) se leyeron de la
-    serie EPA387796 del INE y de su nota de prensa de 28 de julio de 2020,
-    que titula el epígrafe "Efectos de la COVID-19 en la EPA de este
-    trimestre" y cifra la bajada de la ocupación en 1.074.000 personas.
-    Sobre esa lectura, el salto parece movimiento económico real y no un
-    cambio metodológico ni un error del analizador. ESTE REGISTRO ESTÁ
-    PENDIENTE DE REVISIÓN Y FIRMA HUMANA: nadie lo ha aprobado todavía y
-    no surte ningún efecto sobre la validación.
+    Revisada y confirmada la caída intertrimestral de 1074,1 miles de
+    ocupados en el segundo trimestre de 2020: es movimiento económico real,
+    provocado por el confinamiento por la COVID-19, y no un cambio
+    metodológico ni un error del analizador. Las cifras (2020-T1 = 19681,3;
+    2020-T2 = 18607,2) se leyeron de la serie EPA387796 del INE y de su
+    nota de prensa de 28 de julio de 2020, que titula el epígrafe "Efectos
+    de la COVID-19 en la EPA de este trimestre" y cifra la bajada de la
+    ocupación en 1.074.000 personas.
   source_url: "https://www.ine.es/daco/daco42/daco4211/epa0220.pdf"

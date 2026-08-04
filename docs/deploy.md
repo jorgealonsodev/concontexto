@@ -24,7 +24,8 @@ enforces:
 |---|---|---|---|
 | 1 | `postgres` | Postgres starts | `condition: service_healthy` |
 | 2 | `migrate` | `concontexto migrate up`, then exits | `condition: service_completed_successfully` |
-| 3 | `app` | `concontexto serve` — HTTP server **plus** the in-process scheduler, whose first cycle runs immediately | — |
+| 3 | `reconcile` | `concontexto ingest --reconcile`, then exits | `condition: service_completed_successfully` |
+| 4 | `app` | `concontexto serve` — HTTP server **plus** the in-process scheduler, whose first cycle runs immediately | — |
 
 Measured on a clean slate (`docker compose down -v`, then up): `up` returned
 in **7 seconds**, and all three sources (INE, Seguridad Social, Eurostat —
@@ -52,6 +53,103 @@ a human who has to know to. `serve` still never migrates on boot.
 `migrate up` is idempotent (applied versions are recorded in
 `migration_state.schema_migrations`), so re-running it on every `up` and
 every Portainer redeploy is a no-op once the schema is current.
+
+### Why reconciliation is a one-shot service
+
+`config/rupturas.yaml`, `config/eventos.yaml`, `config/gobiernos.yaml` and
+`config/reconocimientos.yaml` are the authoritative editorial registries;
+the `series_break`, `event` and `validation_acknowledgement` tables are a
+projection of them (`ingestion.ReconcileEditorialConfig`). Until this
+service existed, **nothing in a deployed stack ever produced that
+projection.** The reconcile had exactly one call site — the
+`ingest --reconcile` flag path — and the stack ran `migrate up` and then
+`serve`, whose in-process scheduler only ever runs per-source *ingestion*.
+Measured on the live stack:
+
+```
+SELECT count(*) FROM event;        -> 0
+SELECT count(*) FROM series_break; -> 0
+```
+
+Three separately-built, separately-tested features were dead as a
+consequence, none of them visibly: the break band (`BreakBand.astro` and
+the chart's shaded geometry render from the artifact's `breaks` array,
+which `publishing.Export` reads back out of `series_break`), event
+annotations, and validation **rule 3's break exemption** — `breakAt` always
+received an empty slice, so a jump at a genuinely recorded methodological
+break blocked exactly as if no break had ever been recorded.
+
+Three shapes were available. The one-shot service was chosen:
+
+- **A one-shot Compose service (chosen).** The editorial YAML is *embedded
+  in the binary* (ADR-1, `//go:embed`), so it cannot change without a new
+  image, and a new image cannot arrive without a container recreation.
+  "Reconcile when the image changes" and "run a one-shot service on `up`"
+  are therefore the same instant. It also mirrors `migrate`, which the
+  stack already uses for exactly this "run once, to completion, before the
+  app starts" shape, and it turns a failed reconcile into a non-zero exit
+  that *gates the app* rather than a log line nobody reads.
+- **The scheduler's cycle (rejected).** Idempotent, but it re-does
+  byte-identical work every fifteen minutes forever, and it couples
+  editorial reconciliation to per-source ingest scheduling — a source in
+  backoff would delay the registries reaching the database, for no reason
+  related to the registries.
+- **`serve` reconciling at boot (rejected).** Fewest moving parts, but it
+  puts a database write in the boot path of a process whose entire job is
+  to serve static files. The reasoning that keeps `migrate` out of `serve`
+  transfers only partly — a reconcile is not a schema migration, and spec
+  platform-runtime's "migrations run only on explicit command" does not
+  cover it — but the operational half transfers exactly: `runServe` is
+  deliberately resilient to every missing prerequisite (no `STATIC_ROOT`,
+  no `DATABASE_URL`), so a failed reconcile there would have to be
+  swallowed to preserve that resilience, and a silently swallowed reconcile
+  is the defect this section exists to describe.
+
+**Ordering is declared, never timed.** `reconcile` writes to tables the
+migrations create, so it gates on `migrate` having *exited 0*. `app` gates
+on `reconcile` having exited 0 in turn, because the scheduler's first ingest
+cycle runs *at boot* and that cycle both validates against `series_break`
+(rule 3) and exports the breaks and events into the artifact the pages
+render. A reconcile landing after that cycle would publish an artifact with
+empty `breaks`/`events` arrays and leave it that way until the next cycle.
+
+`ingest --reconcile` is idempotent — rows are matched on their
+`config_digest` and updated in place, never deleted and re-inserted
+(`app/internal/adapters/postgres/editorial.go`) — so re-running it on every
+`up` and every Portainer redeploy changes zero rows once the database
+already matches the embedded YAML.
+
+It contacts **no third-party API**: the registries are embedded, not
+fetched. That is why it still runs, and must still run, in a stack brought
+up with `APP_SCHEDULE_DISABLED=true`.
+
+#### What the reconcile container logs
+
+`docker compose logs reconcile` is the whole operator-facing record of what
+the editorial YAML did to the database:
+
+```
+ingest --reconcile: breaks inserted=5 updated=0 retired=0; events inserted=10 updated=0 retired=0; acknowledgements inserted=0 updated=0 retired=0
+ingest --reconcile: breaks pending=4 (unconfirmed date), not projected: epa-cnae2025-doble-codificacion, cn-revision-base-sept-2025, sec-cambios-deuda-deficit, ss-cnae2025-afiliacion
+ingest --reconcile: events pending=2 (unconfirmed date), not projected: reforma-laboral-2021, gobierno-suarez-1976
+ingest --reconcile: acknowledgements pending=1 (no human signature), not projected: ocupados-epa-2020-q2-covid
+```
+
+Both the **count and the identifiers** are printed, which is what spec
+editorial-config asks for verbatim: the count is not derivable at a glance
+from a list, and the identifiers are the only part an operator can act on.
+An entry appears here instead of in the database because its effective date
+is not yet confirmed against the source's methodological note — a guessed
+break date silently corrupts every comparison that crosses it (PRD
+principle P4).
+
+The **acknowledgements** line is the newest of the three. A series blocked
+by a validation rule has two very different explanations — "the resolving
+record is waiting on a human signature" and "there is no record at all" —
+with opposite next actions, and until this line existed the log could not
+tell them apart. `ocupados-epa-2020-q2-covid` is currently in the first
+state: `config/reconocimientos.yaml` carries the record, drafted and cited,
+with `signature_status: unsigned`.
 
 ### Why the scheduler runs inside `serve` rather than in its own container
 

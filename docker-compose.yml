@@ -106,6 +106,78 @@ services:
         max-file: "3"
         compress: "true"
 
+  # ---------------------------------------------------------------------
+  # reconcile — one-shot editorial bootstrap, runs after `migrate` and
+  # before `app`.
+  #
+  # ingestion.ReconcileEditorialConfig had exactly ONE production call
+  # site, the `ingest --reconcile` flag path, and NOTHING in a deployed
+  # stack ever issued that invocation: this file ran `migrate up` and then
+  # `serve`, and `serve`'s in-process scheduler only ever runs per-source
+  # ingestion. Measured on the live stack before this service existed,
+  # `SELECT count(*)` returned 0 for BOTH `event` and `series_break`, so
+  # config/rupturas.yaml, config/eventos.yaml and config/gobiernos.yaml
+  # never reached the database at all. Three separately-built features were
+  # silently dead as a result: the break band, event annotations, and
+  # validation rule 3's break exemption (which saw an empty break slice and
+  # therefore blocked a jump at a genuinely recorded methodological break
+  # exactly as if no break existed).
+  #
+  # WHY A ONE-SHOT SERVICE AND NOT THE SCHEDULER OR `serve`'s BOOT PATH.
+  # The editorial YAML is EMBEDDED in the binary (ADR-1, //go:embed), so it
+  # cannot change without a new image, and a new image cannot arrive
+  # without a container recreation. Reconciliation therefore has to happen
+  # exactly when the image changes — which is exactly when Compose runs a
+  # one-shot service. Putting it on the scheduler's 15-minute loop would
+  # re-do byte-identical work forever; putting it in `serve` would put a
+  # database write in the boot path of a process whose job is to serve
+  # static files, and would make a failed reconcile either kill the static
+  # site or vanish into a log line nothing gates on. See docs/deploy.md,
+  # "Why reconciliation is a one-shot service".
+  #
+  # ORDERING IS DECLARED, NOT TIMED. It writes to series_break/event, which
+  # the migrations create, so it gates on `migrate` having EXITED 0; and
+  # `app`'s scheduler runs its first ingest cycle AT BOOT — a cycle that
+  # both validates against those rows and exports them into the artifact
+  # the site renders — so `app` in turn gates on this having exited 0.
+  #
+  # `ingest --reconcile` is idempotent by construction (rows are matched on
+  # their config_digest and updated in place, never deleted and re-inserted
+  # — app/internal/adapters/postgres/editorial.go), so re-running it on
+  # every `up` and every redeploy changes zero rows once the database
+  # already matches the embedded YAML.
+  reconcile:
+    image: *app_image
+    build: *app_build
+    # Same one-shot discipline as `migrate` above, for the same reason:
+    # `app` gates on this exiting 0, and a restart loop would block the
+    # stack instead of surfacing the failure.
+    restart: "no"
+    environment:
+      DATABASE_URL: "postgres://${POSTGRES_USER:-concontexto}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-concontexto}?sslmode=disable"
+    command: ["ingest", "--reconcile"]
+    # `internal` only: like `migrate`, this job talks to postgres and
+    # nothing else. In particular it contacts NO third-party API — the
+    # editorial registries are embedded, not fetched — which is why it
+    # still runs in a stack brought up with APP_SCHEDULE_DISABLED=true.
+    networks:
+      - internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+        compress: "true"
+
   app:
     image: *app_image
     build: *app_build
@@ -208,6 +280,14 @@ services:
       # migration having EXITED 0 — not merely started — is what makes a
       # clean `docker compose up` reach a working site with no manual step.
       migrate:
+        condition: service_completed_successfully
+      # And the editorial rows must exist before that same first cycle,
+      # because it BOTH validates against them (rule 3's break exemption)
+      # and exports them into the artifact the pages render (the `breaks`
+      # and `events` arrays publishing.Export writes). A reconcile landing
+      # after the first cycle would publish an artifact with empty arrays
+      # and leave it that way until the next cycle, 24h later.
+      reconcile:
         condition: service_completed_successfully
     deploy:
       resources:

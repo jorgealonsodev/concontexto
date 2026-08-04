@@ -41,26 +41,57 @@ import (
 	"github.com/jorgealonsodev/concontexto/app/internal/publishing"
 )
 
+// reconcileLogPrefix tags every line runIngestReconcile writes. In a
+// deployed stack this command IS a container (docker-compose.yml's
+// one-shot `reconcile` service), so these lines are the entire operator-
+// facing record of what the editorial YAML did to the database.
+const reconcileLogPrefix = "ingest --reconcile"
+
 // runIngestReconcile reconciles cfg's editorial YAML into
-// series_break/event via ingestion.ReconcileEditorialConfig and reports
-// the resulting counts plus any still-pending (unconfirmed-date) entries
-// on stdout.
+// series_break/event/validation_acknowledgement via
+// ingestion.ReconcileEditorialConfig and reports the resulting counts plus
+// every still-pending entry on stdout.
+//
+// ACKNOWLEDGEMENTS ARE REPORTED HERE, alongside breaks and events.
+// ReconcileResult has carried Acknowledgements and PendingAcknowledgementIDs
+// since the registry landed, and this line printed neither: an operator
+// looking at a series blocked by a validation rule could not tell "the
+// resolving record is waiting on a signature" from "there is no record at
+// all", which are opposite situations with opposite next actions. The
+// pending list is the only place the waiting-on-a-human state is visible.
 func runIngestReconcile(ctx context.Context, db postgres.TxBeginner, cfg *config.Config, stdout, stderr io.Writer) int {
 	result, err := ingestion.ReconcileEditorialConfig(ctx, db, *cfg)
 	if err != nil {
-		fmt.Fprintln(stderr, "ingest --reconcile:", err)
+		fmt.Fprintln(stderr, reconcileLogPrefix+":", err)
 		return 1
 	}
-	fmt.Fprintf(stdout, "ingest --reconcile: breaks inserted=%d updated=%d retired=%d; events inserted=%d updated=%d retired=%d\n",
+	fmt.Fprintf(stdout, "%s: breaks inserted=%d updated=%d retired=%d; events inserted=%d updated=%d retired=%d; acknowledgements inserted=%d updated=%d retired=%d\n",
+		reconcileLogPrefix,
 		result.Breaks.Inserted, result.Breaks.Updated, result.Breaks.Retired,
-		result.Events.Inserted, result.Events.Updated, result.Events.Retired)
-	if len(result.PendingBreakIDs) > 0 {
-		fmt.Fprintf(stdout, "ingest --reconcile: pending (unconfirmed date) breaks: %s\n", strings.Join(result.PendingBreakIDs, ", "))
-	}
-	if len(result.PendingEventIDs) > 0 {
-		fmt.Fprintf(stdout, "ingest --reconcile: pending (unconfirmed date) events: %s\n", strings.Join(result.PendingEventIDs, ", "))
-	}
+		result.Events.Inserted, result.Events.Updated, result.Events.Retired,
+		result.Acknowledgements.Inserted, result.Acknowledgements.Updated, result.Acknowledgements.Retired)
+	printPending(stdout, "breaks", "unconfirmed date", result.PendingBreakIDs)
+	printPending(stdout, "events", "unconfirmed date", result.PendingEventIDs)
+	printPending(stdout, "acknowledgements", "no human signature", result.PendingAcknowledgementIDs)
 	return 0
+}
+
+// printPending renders one pending list as COUNT AND IDENTIFIERS, which is
+// what spec editorial-config asks for verbatim: "Reconciliation MUST report
+// the count and identifiers of unprojected entries to operators through the
+// run's structured output". The count is not derivable at a glance from a
+// comma-separated list of eight identifiers, and the identifiers are the
+// only part an operator can act on, so neither substitutes for the other.
+//
+// Nothing is printed when the list is empty: a "pending=0" line on every
+// cycle is a line readers learn to skip, and the backlog this exists to
+// surface is precisely the non-empty case.
+func printPending(stdout io.Writer, kind, why string, ids []string) {
+	if len(ids) == 0 {
+		return
+	}
+	fmt.Fprintf(stdout, "%s: %s pending=%d (%s), not projected: %s\n",
+		reconcileLogPrefix, kind, len(ids), why, strings.Join(ids, ", "))
 }
 
 // appDataRoot returns the directory raw files and the archive-side hash

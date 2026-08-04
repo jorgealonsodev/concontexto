@@ -65,6 +65,15 @@ func TestEndToEndIngestExportBuild(t *testing.T) {
 		t.Fatalf("Up: %v", err)
 	}
 
+	// STEP 3 OF THE DEPLOY SEQUENCE, IN THE SAME ORDER THE STACK RUNS IT:
+	// migrations, then the editorial reconcile, then ingestion. The order is
+	// load-bearing twice over -- validation rule 3 consults series_break
+	// while each ingest below runs, and publishing.Export reads the same
+	// rows back into the artifact's `breaks`/`events` arrays afterwards --
+	// which is exactly why docker-compose.yml gates `app` on the `reconcile`
+	// service having exited 0 rather than letting the scheduler race it.
+	reconcileShippedEditorialConfig(t, ctx, tx)
+
 	sc := sixSeriesCase{slug: "test-e2e-export", datasetID: "test-e2e-dataset", unit: "índice", frequency: indicators.FrequencyQuarterly, decimals: 2}
 	cod := "TESTE2E001"
 	seedDimensions(t, ctx, tx, sc, cod)
@@ -152,6 +161,66 @@ func TestEndToEndIngestExportBuild(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(outDir, "manifest.json")); err != nil {
 		t.Errorf("expected manifest.json on disk -- the loader reads it first: %v", err)
 	}
+
+	// THE EDITORIAL HALF OF THE HAND-OFF. Everything above proves the
+	// OBSERVATIONS reach the Astro build. The artifact carries two more
+	// arrays the site renders from -- `breaks` (BreakBand.astro and the
+	// chart's shaded band geometry) and `events` (annotations) -- and this
+	// test used to export both EMPTY, because nothing here ever called
+	// ingestion.ReconcileEditorialConfig. The CI job whose stated purpose is
+	// "the test that kills the 'built, tested, never connected' shape" was
+	// therefore building a site in which the break band could not render,
+	// and asserting nothing about it. The deployed stack was in the same
+	// state for the same reason (docker-compose.yml's `reconcile` service
+	// closes that half; app/cmd/concontexto/deploy_reconcile_composition_test.go
+	// pins it).
+	//
+	// epa-metodologia-2021 is the assertion target because it is scoped to
+	// DATASET ine-epa, so it must resolve for every series in that dataset
+	// via ResolveActiveBreaksForSeries' scope expansion -- proving the
+	// reconcile, the scope expansion and the export all line up, not merely
+	// that a row exists.
+	assertExportedBreak(t, artifact, "tasa-de-paro-epa", "epa-metodologia-2021")
+	assertExportedBreak(t, artifact, "ocupados-epa", "epa-metodologia-2021")
+}
+
+// reconcileShippedEditorialConfig projects the SHIPPED config/*.yaml
+// registries onto tx, exactly as the deployed stack's one-shot `reconcile`
+// service does (docker-compose.yml -> `concontexto ingest --reconcile` ->
+// ingestion.ReconcileEditorialConfig). The shipped config is used rather
+// than a hand-built one on purpose: an invented break would prove that the
+// export can carry SOME break, not that the break this project actually
+// publishes reaches the page.
+func reconcileShippedEditorialConfig(t *testing.T, ctx context.Context, tx pgx.Tx) {
+	t.Helper()
+	cfg, err := shippedConfig()
+	if err != nil {
+		t.Fatalf("loading the shipped config: %v", err)
+	}
+	if _, err := ingestion.ReconcileEditorialConfig(ctx, tx, *cfg); err != nil {
+		t.Fatalf("ReconcileEditorialConfig: %v", err)
+	}
+}
+
+// assertExportedBreak fails unless slug's exported doc carries breakKey.
+func assertExportedBreak(t *testing.T, artifact publishing.Artifact, slug, breakKey string) {
+	t.Helper()
+	for i := range artifact.Series {
+		if artifact.Series[i].Slug != slug {
+			continue
+		}
+		for _, b := range artifact.Series[i].Breaks {
+			if b.Key == breakKey {
+				return
+			}
+		}
+		t.Errorf("the exported %s doc carries breaks %+v, which does not include %q: "+
+			"the Astro build renders BreakBand from this array, so an empty or incomplete one means "+
+			"no band on the page no matter how correct the component is",
+			slug, artifact.Series[i].Breaks, breakKey)
+		return
+	}
+	t.Errorf("no exported doc for %q, so its breaks cannot be asserted", slug)
 }
 
 // exportDeps binds every publishing port against tx, exactly as

@@ -1334,8 +1334,9 @@ assumes the control is live.
       was opened for — the guard is now demonstrably able to go red — and it cannot be closed by CI at all
       while the fixtures are frozen files. Tracked with the archive blocker, which clears it: once
       `ocupados-epa` publishes, the honest arm builds a real six-series artifact.
-- [ ] **New (slice 15/16) — the change cannot currently produce a deployable site, and the remedy is a human
-      signature rather than a commit (verify-report pass-5 CRITICAL-37, the one archive blocker).** The
+- [x] **New (slice 15/16) — the change cannot currently produce a deployable site, and the remedy is a human
+      signature rather than a commit (verify-report pass-5 CRITICAL-37, the one archive blocker).
+      RESOLVED, slice 30 (`4e11378`, 2026-08-04), by the first of the two acts this entry named.** The
       chain, each link measured by the pass-5 verifier: `ocupados-epa` is blocked by `rule3-plausibility`;
       the acknowledgement that would resolve it is unsigned and therefore inert in both layers; `export.go`
       skips a series with zero observations, so the slug is in neither `series/` nor `manifest.series`; and
@@ -1353,6 +1354,34 @@ assumes the control is live.
 
       This entry stays open until the signature or the deletion exists on disk. It is the only thing standing
       between this change and archive.
+
+      **CLOSED, slice 30 (`4e11378`).** The repository owner reviewed the record and instructed that it be
+      signed in his name: `acknowledged_by: "jorgealonsodev"`, `acknowledged_on: 2026-08-04`. The first of
+      the two named acts, taken by the person entitled to take it. **None of the four forbidden shortcuts
+      was used** — `max_delta_abs` is unchanged, no break was added to `config/rupturas.yaml`,
+      `resolveIndicatorRouteSlugs` was not weakened (slice 21 in fact extended its reach to the homepage),
+      and the signature is a human's. `jorgealonsodev` rather than the project name, because a handle
+      resolves to a person who can be asked about it in two years and a project name resolves to itself.
+
+      **And the mechanism was strengthened by the same commit, which is the part worth keeping.** The guard
+      that required the shipped record to be UNSIGNED **inverts rather than being deleted** — same test,
+      same purpose, opposite correct state — and the hole the original fabrication went through is closed:
+      the validator's nineteen placeholder tokens contained not one agent-shaped name, so the exact string
+      the draft had carried would have passed every one of them. Agent words are now matched at word
+      boundaries anywhere in the string, with `ai`/`ia` kept whole-string-only so "Ai Weiwei" still
+      validates. *A mechanism whose only defence against an agent signing is an agent choosing not to is not
+      a defence.*
+
+      **Verified by attack rather than by reading.** Verify-report pass 7 §D mutated the record: the exact
+      original fabrication → `validate-config` exit 1; `"TODO"` → exit 1; an ordinary human name → exit 0,
+      so the guard is not simply rejecting everything; and un-signing the record leaves `validate-config`
+      green while the inverted test fails with five distinct assertions. Pass 7 records **CRITICAL-37
+      CLOSED, both halves**, with `ocupados-epa` in the artifact and a production build at exit 0 emitting
+      all seven pages.
+
+      **What did NOT close with it**: the four-eyes gap below (WARNING-39), which is now materially more
+      relevant rather than less, because a human signature is the thing being protected and
+      `.github/CODEOWNERS:17` still names an unresolvable placeholder as the second reviewer.
 - [ ] **New (slice 16) — one acknowledgement can resolve more than one finding (verify-report pass-5
       WARNING-38).** `Acknowledgement.covers` matches on `(series, period, rule)`, and `Rule3Plausibility`
       emits two semantically distinct findings under that one rule name — a min/max range breach and a
@@ -1501,6 +1530,26 @@ assumes the control is live.
       verifying this: the file is **1,002 bytes** (`wc -c`), not the 490 that reached this writer
       second-hand. **Open** as a two-line comment correction plus a decision, in a later milestone, about
       whether `/` should reach the indicator pages at all.
+
+      **RESOLVED, slice 21 (`ac69a29`), and the entry above is now stale in every particular — corrected
+      here rather than deleted, per this change's superseding discipline.** Re-measured 2026-08-04 at
+      `5af95c5`: `web/src/pages/index.astro` is **2,713 bytes** (`wc -c`), not 1,002; the false
+      "replaced starting slice 9" comment is gone, the file having been rewritten as a real route that owns
+      one build-time artifact read and delegates rendering to `templates/HomePage.astro`; and `/` now
+      reaches all six permalinks — verify-report pass 7 §B.4 measured the built `dist/index.html` linking
+      exactly the six frozen slugs, through `IndicatorCard.astro:62`'s `href={`/indicador/${slug}`}`.
+
+      **The "do not invent a requirement" instruction in this entry was correct when written and is
+      superseded by a change of fact, not by a change of mind.** Pass 6 was right that no spec defined a
+      homepage and that manufacturing one for a placeholder page would have been worse than the stale
+      comment. What changed is that a real homepage now ships, tested and reader-facing, and pass 7 raised
+      its unspecced status as **WARNING-47**. The requirement written in this pass
+      (`specs/indicator-page/spec.md`, "The homepage lists all six indicators or the build fails") describes
+      shipped behaviour and is bounded by construction to milestone 1.2's six frozen slugs — it names them
+      and asserts an all-or-nothing derivation, so it cannot grow into the catalogue, search or category
+      navigation `proposal.md` places in milestones 1.3–1.7. The decision this entry deferred to a later
+      milestone — whether `/` should reach the indicator pages at all — was taken by the owner in `ac69a29`
+      and is now recorded rather than pending.
 - [ ] **New (slice 19, verify-report pass-6 SUGGESTION-48/49) — two narrow gaps around the prune, recorded
       together because both are about a second call site rather than about the prune itself.**
       **SUGGESTION-48**: concurrent exports have no lock, and `Export`'s doc comment reasons about
@@ -1512,3 +1561,134 @@ assumes the control is live.
       report (`ingest_cmd.go:506-508`) has no test; only `runExport`'s two are covered. `pruneOutcomeMessage`
       is shared, so the **rendering** is proven and the **wiring** is not — which is exactly the distinction
       the slice-18 entry's generalisable rule is about. Both are follow-ups, neither blocks archive.
+- [ ] **New (slice 32, `d5cfbed`) — an editorial entry with `date_status: unconfirmed` reaches the published
+      artifact, and two doc comments in shipped source say it cannot.** Disclosed in `d5cfbed`'s own commit
+      body, carried into no record until now, and **re-verified at `5af95c5` for this entry rather than
+      accepted second-hand**:
+
+      - `config/eventos.yaml:52-56` — `ngeu-primer-desembolso` carries `date_start: 2021-08-01` **and**
+        `date_status: unconfirmed`.
+      - `web/data-derived/series/tasa-de-paro-epa.json` — its `events` array contains that entry, read here
+        directly out of the published artifact.
+      - `app/internal/ingestion/reconcile.go:86` — the projection guard is `if e.DateStart == nil`. It never
+        reads `e.DateStatus`.
+
+      **The two contradicted claims are in shipped source, not in a record.** `reconcile.go:10-12`: *"A break
+      or event whose DateStatus is 'unconfirmed' (Date/DateStart is nil) is NEVER projected into
+      series_break/event."* `events_read.go:47-49`: *"An unconfirmed (date_status='unconfirmed') entry never
+      reaches this table at all."* The parenthetical in the first is the tell — the guard was written for the
+      case where unconfirmed **implies** no date, and this entry is the case where it does not. An
+      unconfirmed date with a date is a state the guard's author did not model, which is the same shape as
+      the acknowledgement registry's original "no state for not-yet-true" defect, arriving from the opposite
+      direction: here the schema *does* have the state and the guard does not read it.
+
+      **Deliberately not adjudicated by this writer.** The relevant scenario, `indicator-page` / "Enabling a
+      group renders only confirmed events", is marked compliant by verify-report pass 7, and a record writer
+      does not overturn a compliance verdict in a document it may not edit. What is written above is only
+      what was measured. **Practically**: the entry has no end date so it draws no rail, but it IS
+      reader-visible as an annotation chip whenever the exogenous group is enabled, and the sibling
+      requirement "Pending editorial entries are operator-visible only" is about not disclosing
+      *pendingness*, which nothing here does. Whether that is compliance or a gap is the next verify pass's
+      call — this entry exists so it is made deliberately rather than rediscovered an eighth time.
+
+      Three candidate resolutions, none chosen here: read `DateStatus` in the reconcile guard alongside the
+      nil check (smallest, and it retires `ngeu-primer-desembolso` from the artifact until the date is
+      confirmed); carry `dateStatus` into the artifact and let the web layer filter (larger, and it puts an
+      editorial status on a machine surface for the first time); or confirm the date in `eventos.yaml`,
+      which is a four-eyes editorial act and not a code change. The third is the only one that loses no
+      information.
+
+- [ ] **New (slice 22, `52b7abe`) — `decimals` has drifted between the export artifact and the content
+      catalog in three of six slugs, and was flagged rather than corrected.** Artifact vs content: 1/0, 3/2,
+      3/2. The asymmetry with the unit guard is deliberate and argued in the commit: relabelling a unit
+      changes what a figure means, while rounding it for display does not, so the unit is guarded and
+      `decimals` is not. It stays open because **changing it moves published figures**, which is a decision
+      about what the site asserts and not a formatting cleanup. Whoever closes it should decide which side
+      is authoritative rather than aligning them ad hoc — the artifact is machine-generated and the catalog
+      is the editorial layer, and this change has already established (slice 22, the index-base case) that
+      the catalog legitimately carries editorial elaboration the artifact cannot.
+
+- [ ] **New (slice 29, `ff2ea4f`) — the government filter's "selects everything ⇒ absent" half is proven only
+      at unit level.** No government term covers any of the six real series entirely, so the rule that hides
+      a term equal to the full range has no integration or e2e exercise against real data. Disclosed at the
+      time and still true at `5af95c5`. Related and also disclosed: the control does not appear on the
+      currently deployed stack at all, correctly — its artifact carried three quarters per series, entirely
+      inside Sánchez's open term, so every government window would be the full range renamed. Both close on
+      their own when a full-history artifact is deployed; neither is a code gap. Also open, and narrower:
+      the derived-window inference absorbs a caretaker period into the preceding term silently, and a
+      government missing from the middle of the registry is absorbed by its predecessor invisibly. Both are
+      recorded in the module and neither is detectable from the data the registry holds.
+
+- [ ] **New (slice 33, `e1db0ea`) — the crisis rail cannot be labelled on a phone, and the fix is an
+      editorial file this change may not write.** The event name is 58 glyphs and 448 units against a
+      435-unit narrow plot, so the label is withheld rather than truncated — an ellipsis renames the event on
+      screen. A `short_name` field in `eventos.yaml` would solve it, and `config/**` is a documented
+      four-eyes path. Related and also disclosed: 14 units renders at **7.81 CSS px** at a 375px viewport,
+      the honest floor this design reaches, because larger loses "Felipe González" on `poblacion-residente`.
+      The withheld label is disclosed to every reader by the generated sentence, which is why this is a
+      quality ceiling rather than an information loss.
+
+- [ ] **New (verify-report pass-7 SUGGESTION-52, slice 34/36) — `event.source_url` is wired end to end and
+      populated by nothing.** The column, the reconcile write, `EventRef.SourceURL` and the Zod
+      `EventRefSchema` optional all exist and are unit-tested (`TestReconcileEvents_PersistsScopeAndSourceURL`),
+      but no entry in `config/eventos.yaml` or `config/gobiernos.yaml` sets it, so the key is
+      `omitempty`-absent from every shipped artifact and the JSON leg of the path has no production
+      exercise. It arrived with the measures registry (slice 34) and survived the revert (slice 36) for the
+      same reason migration 0007 did. Closes by populating one real entry, which is an editorial act; the
+      code needs nothing.
+
+- [ ] **New (verify-report pass-7 SUGGESTION-49) — one ghost loop without its own non-empty guard.**
+      `web/test/chart/svg.test.ts:431` asserts halo attributes inside
+      `for (const [, label] of svg.matchAll(/<text class="chart-annotation-label[^>]*>/g))` with no
+      assertion that the collection is non-empty. Pass 7 mutation-tested both directions and found it **safe
+      in practice**: changing `paint-order="stroke"` → `"normal"` turns the halo test red, so it is
+      non-vacuous for its own subject; and renaming the class so the collection empties fails **7 tests in
+      the same file**, so the vacuous state cannot pass unnoticed at suite level. One
+      `expect(labels.length).toBeGreaterThan(0)` would make it safe by construction rather than by
+      neighbourhood. Not a defect; a one-line hardening.
+
+- [ ] **New (verify-report pass-7 SUGGESTION-51) — a commit named `revert` adds a reader-facing feature.**
+      `5af95c5` removes the measures layer **and** introduces the `<details>` data-table disclosure,
+      `tableSummary.ts`, a parity test, a new e2e spec and the event-scope retention tests. The reason is
+      real and recorded in the commit — both changes edit `ChartIsland.svelte` and `es.ts`, and splitting
+      them would have meant staging hunks by hand — and so is the reviewer's surprise: a subject line reading
+      "revert" sets an expectation the diff does not meet. Everything it adds is tested and green. Open as a
+      process note rather than a defect: the generalisable rule is that when a mechanical constraint forces
+      two changes into one commit, the subject line should describe the larger surprise rather than the
+      larger diff.
+
+- [ ] **New (verify-report pass-7 SUGGESTION-53) — the accessibility gates still measure the fixture, not the
+      artifact.** `ci.yml`'s Playwright job builds with `BUILD_WITH_SYNTHETIC_FIXTURE=1`, so axe, keyboard
+      traversal, the 44px sweep and the no-JS context never run against the artifact the pipeline writes. CI
+      discloses this in its own comments and names `ingest-export-build.yml` as the workflow that verifies a
+      build against a real artifact — but that workflow asserts only route existence and one rendered value,
+      not accessibility. **The budget half of this gap was closed by pass 7 itself** (§A: the transferred-
+      bytes gate run against the real-artifact build, worst page 76.6 KB), and the accessibility half is
+      closable in the same workflow that already produces a real artifact. Directly related and also open:
+      that workflow's real-artifact assertion loop iterates the six indicator slugs only, so `/index.html`
+      is never checked to exist in a real-artifact build. Pass 7 verified that it does; nothing enforces it.
+      Both are workflow wiring, no production code.
+
+- [ ] **New (this record pass, 2026-08-04) — two spec requirements were added at the archive gate, and pass 8
+      has to verify them.** Resolving WARNING-47 produced `specs/indicator-page/spec.md`'s "The homepage
+      lists all six indicators or the build fails" (ADDED, 5 scenarios) and
+      `specs/source-attribution-licensing/spec.md` (a **thirteenth** capability delta, one MODIFIED
+      requirement restating the baseline text unchanged plus 2 new scenarios). Every scenario was written
+      against behaviour already shipped and already tested — `homeListing.test.ts`, `home.container.test.ts`,
+      `site-footer.test.ts` and `tests/e2e/footer/site-footer.spec.ts` each carry a named test matching each
+      scenario — so none of them should require code. **But this writer did not run the suites** (this pass
+      touched only `openspec/**`, which no suite reads), and **no structural validator for these files
+      exists**: `which openspec` returns nothing and no repository script parses `openspec/**/spec.md`. Both
+      files were checked by hand against the shape every sibling delta uses. The open item is the
+      verification, not the content.
+
+      **Why the requirements were written rather than the surfaces recorded as shipped-outside-scope**, kept
+      here because a later reader will reasonably ask. The project's operative rule is not "the spec phase is
+      closed": two requirements were added after it closed in this very change, both when a real gap was
+      found on the running product — `5310586` (slice 19, `publishing-export`) and `026c7fa` (slice 20,
+      `source-ingestion-ine`). And the footer's gap was narrower than pass 7 stated: the baseline requirement
+      "No blanket data-licence claim exists in the repository" already governs the footer **by its own
+      text**, and only its scenario stops short, reading `LICENSE` and `LICENSE-DATA` rather than a rendered
+      page — so a footer asserting CC BY over all data would have violated the requirement's sentence while
+      passing its only check. Adding a scenario to an existing requirement is the smallest act that closes
+      that, and it changes nothing about the repository's licensing position.

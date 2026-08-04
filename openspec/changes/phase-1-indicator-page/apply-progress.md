@@ -4049,3 +4049,859 @@ direct consequence of refusing to fake the signature a second time.
 That is the honest state and the pipeline says so, rather than fabricating the approval it is waiting for. A
 green build carrying a forged sign-off would have been a worse outcome in every respect that matters, and it
 would have been indistinguishable from a real one — which is the whole reason this section exists.
+
+---
+
+# Slices 20–36 — the seventeen unrecorded commits (2026-08-04, `026c7fa` … `5af95c5`)
+
+Written to close verify-report pass-7 **CRITICAL-46**, the only blocker on the change. Pass 5 raised this
+as WARNING-40 at 2 commits and 638 lines; pass 7 escalated it at **17 commits, 112 files, 14,631
+insertions, 425 deletions** — twenty times larger. `tasks.md` and `apply-progress.md` had last been written
+by `823311e`. Task rows for all seventeen are in `tasks.md` slices 20–36; this file carries the narrative,
+the TDD Cycle Evidence, and the three things pass 7 said had no durable home.
+
+Measured here before writing, not taken from the report:
+
+```
+git log --oneline 823311e..HEAD | wc -l   →  17
+git diff --shortstat 823311e..HEAD        →  112 files changed, 14631 insertions(+), 425 deletions(-)
+```
+
+Both match pass 7 exactly.
+
+## Read this before using the TDD Cycle Evidence tables below
+
+**Not one of these seventeen commits recorded literal failing-test output.** That is the honest state, it
+is stated once here rather than implied seventeen times, and no failure output has been invented to fill a
+column. What exists instead is three different kinds of evidence, and the tables label each row with which
+one it is:
+
+| Kind | What it is | Where it appears |
+|---|---|---|
+| **Measured defect** | The wrong behaviour was observed in the running product or a real browser and written down with numbers, and the test that shipped with the fix asserts a threshold the measured before-state provably violates. This is genuine red-state evidence; it is just not a test runner's transcript. | Slices 21, 22, 23, 24, 26, 27, 28, 33, 35, 36 |
+| **Mutation check** | The production code was broken deliberately and the suite's response recorded. A mutation check is evidence that a test *can* fail for its own subject — a different and in some ways stronger claim than a transcript, and recorded as what it is rather than upgraded to "RED". | Slices 21, 27 (by the writer); 28, 30, 36 (by verify-report pass 7) |
+| **Nothing** | No red state was recorded and none is reconstructible. The tests exist, they pass, and their existence is not evidence that they ever failed. | Slices 20, 25, 29, 31, 32, 34 |
+
+Six of seventeen have no red-state evidence at all. That is the finding, not a footnote: under Strict TDD
+the cycle evidence is the primary artifact, and for roughly a third of this window it does not exist and
+cannot be reconstructed. It is written down rather than papered over, exactly as slice 1's reconstructed
+table was.
+
+---
+
+## Slice 20 — `026c7fa`, a null `Valor` fails closed
+
+**What**: `envelope.go` passed INE's wire pointer straight through, so a row carrying `"Valor": null` with
+`"T3_TipoDato": "Definitivo"` produced a nil-valued *definitive* observation and hit
+`CHECK (value IS NOT NULL OR status = 'W')` — SQLSTATE 23514 raised from inside the publish gate, naming a
+Postgres constraint instead of the source behaviour that caused it.
+
+**Where**: `app/internal/adapters/ine/envelope.go` (+71), `client.go` (+9),
+`app/internal/adapters/ine/nullvalue_test.go` (new, 205), `specs/source-ingestion-ine/spec.md` (+54).
+
+**The decision, and why it is a refusal rather than a projection.** A `DATOS_SERIE` row carries exactly five
+fields and no annotation channel; the only field that could annotate is series-level `Notas`, which for two
+series is a bare link to the INEbase page. A null therefore arrives carrying no information about *why*, and
+statistical secrecy, a not-applicable period and a genuine gap are indistinguishable. `withdrawn` fabricates
+a retraction, `absent` discards a row INE deliberately emitted, anything numeric is unthinkable. The adapter
+refuses and the message demands the ruling it cannot make.
+
+**Learned**: the Eurostat fix (`befa81f`) genuinely does not transfer, and the reason is worth keeping — a
+sparse JSON-stat map has no entry at a position, which is the *absence* of a datum and is decidable; an INE
+row that exists and carries an explicit null is a positive act by the source.
+
+**This closes verify-report WARNING-30** (the crash class disclosed only in a commit message) by turning it
+into a requirement with four scenarios, and it is the **second** requirement added after the spec phase
+closed — slice 19's `5310586` was the first.
+
+### TDD Cycle Evidence — Slice 20
+
+| Task | RED | GREEN | REFACTOR |
+|---|---|---|---|
+| 20.1/20.7 | **No evidence, and none reconstructible.** The four tests exist and pass at `5af95c5` and pass 7 §G lists all four as newly compliant. Nothing recorded a failing run and no mutation check was made against this code. | `nullvalue_test.go`: `TestDecodeSeries_NullValorFailsClosedRatherThanEmittingANilValuedObservation`, `..._NullValorFailsClosedUnderEveryTipoDatoToken` (4 sub-cases), `..._ZeroIsAPublishedValueNotAMissingOne`, `..._EveryDecodedObservationCarriesANonNilValue` | The refusal lives in `DecodeSeries`, not one layer up in `classifyTipoDato`, deliberately: `DecodeSeries` and `FetchSeries` are exported and never run the classifier, so a higher check would leave two entry points able to return a nil-valued observation |
+| 20.2 | n/a — a live probe, not a test. Commit body records 1,032 rows across six series, zero nulls. Not re-run for this record. | — | — |
+
+---
+
+## Slices 21–27 — the site a reader actually meets
+
+Seven consecutive web commits, grouped because they share one method: **every one of them was found by
+looking at the rendered product rather than at the markup or the test suite**, and every one records the
+measurement that found it. That method is the reason this group has the strongest red-state evidence in the
+window and the reason it found defects that had been live for slices.
+
+### Slice 21 — `ac69a29`, a homepage, and a way back
+
+`/` was a 490-byte placeholder whose visible text ended "— deploy smoke target for milestone 0.1.", an
+English build note on the first page a Spanish reader sees. The six indicator pages were reachable only by
+typing their URLs, and an indicator page offered no way home.
+
+The interesting decision is not the page, it is `homeListing.ts`'s refusal to list what it finds. It
+delegates to `resolveIndicatorRouteSlugs` — the same all-or-nothing guard the routes use — because **a
+homepage listing five of six is strictly worse than a missing page**: a missing route 404s loudly for
+anyone holding the permalink, while a missing ROW is invisible, and the vanished indicator is precisely the
+one nothing else on the site mentions. The consequence was live and deliberate at the time: `ocupados-epa`
+was held by the publish gate, so a production build of the site FAILED, homepage included. It was meant to.
+
+Two defects fell out of building it, both found by reading the built page's **text** rather than its markup:
+the `22779personas` missing space, live on all six indicator pages with every existing assertion passing
+because each looked for the number and the unit separately; and the thousand-fold unit error slice 22 then
+fixed.
+
+### Slice 22 — `52b7abe`, a figure a thousand times too small
+
+`ocupados-epa` read "22779 personas". It means 22,779 **thousand** people. `config/series/ocupados-epa.yaml`
+said "miles de personas", the artifact said "miles de personas", INE's API returns `T3_Unidad` "Personas"
+with `T3_Escala` "Miles" — only `web/src/content/indicators/ocupados-epa.ts` said "personas". Live since
+slice 9a; the homepage had just put it on the front page.
+
+The guard that came with it is the part worth keeping. Reading the artifact instead of the catalog would
+have deleted the index base from two public pages, because the artifact says "índice" where the page says
+"índice (base 2021=100)" — its own `base` field is a disclosed permanent-null gap. So the rule is not
+equality but **elaboration**: editorial copy may append after a space or a parenthesis, never replace,
+shorten or rescale. And it lives inside `resolveIndicatorRouteSlugs`, the one function both surfaces
+already reach, because CRITICAL-27's lesson is that a second guard is a second thing to forget to call.
+
+The `es-ES` number layer went in with it. One `Intl.NumberFormat` helper across every reader-facing figure;
+CSV and JSON untouched structurally (Go-generated, digest-carrying, never written by the web tree); SVG
+path geometry keeps `toFixed`, because a grouping separator in a `d` attribute is a syntax error. The axis
+labels mattered more than they look: before this, one screen showed the same number two ways —
+"49.687.120" in the data table and "49687120" on the axis beside it.
+
+One real behaviour change, measured rather than assumed: `Intl` and `toFixed` disagree on exact decimal
+halves. `(70.865).toFixed(2)` is `"70.86"`; `Intl` gives `70,87`. Measured at each route's rendered
+precision: **zero** figures change in the real artifact, **37 of 1031** in the synthetic fixture, all in its
+formula-generated straight line.
+
+### Slice 23 — `6556f0e`, a favicon, readable dates, a real link, a phone-legible chart
+
+Four things a reader meets. `/favicon.ico` 404'd on every page load — the only console error on the site.
+Writing the replacement produced the one bug in this group whose symptom was indistinguishable from doing
+nothing: **XML forbids `--` inside a comment**, and the first version's rationale named `--color-accent`, so
+Chromium silently refused the file.
+
+`Última extracción: 2026-07-29T12:00:00Z` became "29 de julio de 2026 a las 14:00 (hora peninsular)", ISO
+preserved in `<time datetime>`. Every part argued: `extractedAt` is provenance and the question it answers
+on the one day it matters is "INE published this morning, is this before or after", which a date alone
+cannot answer; seconds would advertise precision the schedule lacks; printing `12:00` from `12:00:00Z`
+would be wrong by an hour or two invisibly, so the zone is converted and named in prose because CEST/GMT+2
+change wording twice a year.
+
+The chart was illegible on a phone and the browser said why. At 375px tick labels measured **3.25 CSS px**,
+because `font-size="10"` inside a 960-unit viewBox scales down with everything else — and a bigger font
+could not fix it, because `poblacion-residente`'s `49.477.903` measures **55.3 units** against the **48**
+the left margin leaves. Type and margins are one decision. Two geometries now, 560×420 with a 20-unit tick
+font toggled at the breakpoint `MethodologySheet` already uses. At 375px: labels 3.25 → 11.15 CSS px, chart
+312×117 → 312×234, clipped labels one → zero, for 3–4 KB gzip.
+
+**Disclosed and deliberately not fixed here**: the wide variant still clipped `poblacion-residente` at every
+viewport, because the wide geometry's margins were frozen by the golden fixture. Slice 26 closed it three
+commits later. Recorded so the sequence reads as a decision rather than an oversight.
+
+### Slice 24 — `f6949f9`, equal-height cards and a status pill that stopped looking like a button
+
+The only commit in this window with **no unit-test change at all**: six files, two components and four
+Playwright files. That is not an omission, it is the method — both defects are geometry, and the tests
+measure rendered `boundingBox()` rather than grep for a utility class, because a test that asserts `h-full`
+appears in the markup proves nothing about what a reader sees and passes forever once someone changes the
+mechanism.
+
+Cards: at 1280px row one rendered **156/156/188**, ragged because "índice (base 2021=100)" wraps and its
+neighbours do not. Now **188/188/188**. Equalising alone would have left badges at **319/319/351**, so the
+card pins the badge to its bottom edge — the badge is the one element a reader compares *across* cards, and
+six freshness stamps on a common baseline read as one horizontal scan.
+
+The semaphore rendered as a full-width bordered box that looked exactly like a button, everywhere it
+appeared. Non-interactive `<span>`, verified — no role, no tabindex, no handler, `cursor: auto` — but
+`inline-flex` in a flex column is still stretched by `align-items: stretch`. Measured **100.0%** of its
+container everywhere; the page-header badge was **848 px** wide. Now **31.1%** on a card, **8.7%** in the
+header. The badge gate is expressed as a *share* of its container (70%) so one threshold covers both
+viewports.
+
+**A mutation check with a negative result, recorded rather than buried**: removing `self-start` alone leaves
+the homepage badge-width tests green, because inside the new `mt-auto` wrapper `inline-flex` is already
+shrink-to-fit. Two independent mechanisms protect the card; `self-start` is load-bearing for the page header
+alone. A mutation that does not go red is evidence about the suite, and hiding it would have left the record
+claiming more coverage than exists.
+
+### Slice 25 — `9af3f86`, a footer that defers on licensing
+
+669 added, **0 removed** — the only purely additive commit in the window. The gap it closes was measured:
+`grep -rn transparencia web/src/` returned nothing, so the raw-file hash listing the container serves at
+`/transparencia/raw-files.sha256` was reachable by nobody. For a project whose premise is that every
+published figure traces back to the bytes it came from, an unreachable provenance artifact is a real gap.
+
+The obvious footer would have violated a **baseline** spec, not one of this change's twelve deltas:
+`openspec/specs/source-attribution-licensing/spec.md:26` forbids asserting a single licence over all derived
+data and makes `LICENSE-DATA` defer to `sources/{source}.yaml`. Eurostat's permission is
+acknowledgement-only, excludes third-party material and restricts some commercial redissemination; INE and
+Seguridad Social carry their own terms. There is no honest way to compress three sets of conditions into one
+line.
+
+So the sentence asserts an **absence**: "Los datos publicados aquí no están cubiertos por una licencia
+única: cada fuente fija sus propias condiciones de reutilización." The link goes to `config/sources/`, not to
+`LICENSE-DATA`, because the spec makes the per-source YAML authoritative and `LICENSE-DATA` the deferring
+document — routing a reader through a deferring summary reinstates the hop the footer exists to remove. MIT
+appears exactly once, beside "código", where a single claim is true. The guard is written against what must
+NOT appear: no `/cc\s*by/i`, no `/creative\s*commons/i`, no `/todos los datos/i`, no `/licencia de los
+datos/i`.
+
+The CC BY 4.0 offer for this project's own editorial text was deliberately left out: it is real but
+**conditional** on each source permitting redistribution, and printing a conditional claim in a footer
+beside the data is exactly how it gets read as covering the data. It stays in `LICENSE-DATA`, where its
+condition travels with it.
+
+Two disclosures held rather than hidden. The e2e suite asserts the footer *emits* the hash-listing href but
+cannot assert it resolves, because the Go binary writes that file into the container's volume at runtime and
+`web/dist` never contains it — compensated by regex-reading `publicHashPath` out of `ingest_cmd.go` with an
+explicit "this guard has gone blind" failure, and by a 200 against the running container. And the workbench
+gets the footer too, because the guard discovers route entry points by scanning for `<html>` exactly as
+slice 23's favicon test does, so exempting one page would mean maintaining a skip list — the WARNING-18
+failure mode.
+
+**This is the surface WARNING-47 is about. The spec decision is taken below and it is not "leave it".**
+
+### Slice 26 — `b5d7858`, deriving the wide chart's margins
+
+Slice 23's disclosure, closed. Measured on `/indicador/poblacion-residente` by reading `getBBox()` off the
+live DOM: **all four y-axis labels started left of the viewBox origin** (−5.5, −6.5, −4.6, −3.6) and were
+cut off; the last x tick ended at **965.5 against a viewBox 960 wide**; **five of six pages** overran the
+right edge. A portal whose premise is publishing figures accurately was rendering them sliced.
+
+The grouping separators only made it visible. The margins were constants and the labels are right-anchored
+at `marginLeft - 8`: a grouped eight-digit figure measures ~54 units and had 48. The right edge was worse by
+construction — the last tick is centred on `plotArea.x1`, so half its width always overran, on every series,
+whatever the label.
+
+The narrow variant had already solved this by deriving margins from the labels the series really prints, so
+that derivation became one function both variants use. The asymmetry between the gutters is argued rather
+than accidental: the left keeps 56 as a floor because at 960 units the ~18 units a short-label series would
+win back is 1.9% of the drawing and the y axis is where the eye enters; the narrow box at 560 units is the
+opposite trade, where a phone can see the loss, so it keeps no floor. No right-hand floor at all, because
+the derived value exceeds the old constant for any period label of four glyphs or more — a floor there could
+never bind and would be dead code.
+
+The estimator is calibrated conservative (0.64 advance ratio against a measured ~0.545 for grouped numerals)
+and is deliberately **not what the tests trust**: the new gate measures `getBBox()` in Chromium across all
+six slugs, because an estimate is precisely the thing that was wrong here. The golden fixture was
+regenerated, not hand-edited — identical labels, identical y coordinates, same file size, only x moved by
+the 11 units the plot narrowed.
+
+### Slice 27 — `0c40097`, periods the way Spanish statistics write them
+
+The site rendered `2026-Q2` to readers **twenty-two times on one indicator page** — the database's canonical
+storage format leaking to the screen, with `Q` an English abbreviation Spain does not use in official
+statistics. This project's own source proves the point: INE returns `T3_Periodo` with values `T1`–`T4` and
+writes "el segundo trimestre de 2020" in its press releases. Every figure comes from a source that says T.
+
+Checked against the requirement text rather than assumed: **not** covered by verbatim-identifiers, which
+enumerates indicator slugs, configuration filenames, source names and origin series identifiers. A period
+label is none of them — it is a date, the same category as the extraction instant slice 23 reformatted.
+
+Two registers, named in code rather than implied by call sites: compact where width is load-bearing
+(`T2 2026`, `jun 2026`, `2026`), prose where it sits in a sentence (`T2 2026`, `junio de 2026`, `2026`).
+Quarters and years have one form because inventing "el segundo trimestre de 2026" would leave the site
+saying two things about one period; months have two because `septiembre de 2026` is 18 glyphs against 7 and
+wraps the Periodo column at 375px. **One authored Spanish string** — the quarter form — everything else is
+CLDR `es-ES` grammar, which is also the whole English-version seam.
+
+The substance is the machine boundaries, each **found and verified rather than assumed**: published CSV and
+JSON still carry canonical periods with every recomputed sha256 matching the manifest, over HTTP from the
+running stack as well as in the fixture; permalink `from`/`to` byte-identical with a display-format bound
+rejected; `<time datetime>` still ISO; and every sort, comparison and join still on the canonical form.
+Pass 7 §A independently re-measured: the CSV ends `2026-Q2,22779,D,Definitivo,1` while the reader surface
+says `T2 2026`.
+
+### TDD Cycle Evidence — Slices 21–27
+
+| Slice / task | RED — what kind, and what it actually was | GREEN | REFACTOR |
+|---|---|---|---|
+| 21.2/21.3 | **Mutation check (writer).** Replacing `resolveIndicatorRouteSlugs` with the exact `.filter()` shape CRITICAL-27 removed kills one test and leaves thirteen green. Counted here at `ac69a29`: `homeListing.test.ts` 6 `it(` + `home.container.test.ts` 8 `it(` = **14**, so "one dies, thirteen green" is exact. No failing-run transcript. | `lib/indicator/homeListing.ts` (111), `templates/HomePage.astro` (89), `homeListing.test.ts` (6 tests incl. "refuses to list anything when a frozen slug is absent from the artifact, naming the slug") | The listing reuses `IndicatorCard`'s exact prop shape so no second card model exists to drift; `decimals` is **required** here though optional on the component, because falling through to the default of 1 would silently misreport PIB (configured to four) |
+| 21.5/21.6 | **Measured defect.** `22779personas` rendered on all six indicator pages and every existing assertion passed, because each looked for the number and the unit separately. Found by reading the built page's TEXT. No transcript. | The space, plus assertions that read rendered text | `headingLevel` added as an optional prop defaulting to the previous `<span>`, so the related-cards strip stays byte-identical; the level comes from the caller because only the page knows what heading precedes the cards — which is how the h1→h4 skip happened |
+| 22.1/22.3 | **Measured defect.** The card and page header read "22779 personas" for a series whose every other source of truth says "miles de personas". Live since slice 9a. No transcript, no mutation check. | `web/test/indicator/unit-agreement.test.ts` (148) — the elaboration rule, not equality | Guard placed inside `resolveIndicatorRouteSlugs` rather than as a second guard, deliberately (CRITICAL-27's lesson) |
+| 22.6/22.8 | **Measured, in the strongest sense available here**: the `Intl`-vs-`toFixed` half-rounding divergence was measured across every observation at each route's rendered precision — 0 of the real artifact, 37 of 1031 in the synthetic fixture — before the change was accepted. That is a measurement of the change's blast radius, not a red state. | `lib/format/number.ts` (115), `web/test/format/number.test.ts` (118), `tabular-figures.test.ts` (46) | One helper applied at every reader-facing call site; machine projections and SVG path geometry explicitly excluded, each for a stated reason |
+| 23.1/23.2 | **Measured defect, observed in a browser.** `/favicon.ico` 404'd on every page load — the only console error on the site. Then a second, sharper one during the fix: Chromium **silently refused** the SVG because XML forbids `--` inside a comment and the rationale named `--color-accent`; the symptom was identical to having no favicon. | `web/public/favicon.svg` (77), `web/test/pages/favicon.test.ts` (134) | Route entry points discovered by scanning for `<html>` rather than a hand-maintained list — the WARNING-18 failure mode, avoided prospectively and reused by slice 25 |
+| 23.4/23.6 | **Measured defect.** The methodology sheet printed a machine instant (`2026-07-29T12:00:00Z`) on a Spanish page, and "Próxima publicación" pasted its URL into the visible copy in parentheses. Both observed on the rendered page. No transcript. | `lib/format/date.ts` (137), `web/test/format/date.test.ts` (131) | ISO retained in `<time datetime>` so machines and the pre-existing assertion both still see it — the display change adds a surface rather than replacing one |
+| 23.7/23.8 | **Measured defect, with the numbers that decided the design.** Tick labels **3.25 CSS px** at 375px; `49.477.903` measures **55.3 units** against **48** available, so a larger font could not fix it. After: 3.25 → 11.15 CSS px, 312×117 → 312×234, clipped labels one → zero. | Second geometry in `lib/chart/geometry.ts` (+159/−4), `svg.ts` (+58/−10), `geometry.test.ts` (+130), `svg.test.ts` (+117/−2), `indicator-chart.container.test.ts` (+62) | Every new `renderChartSVG` input defaults to the prior value and the narrow variant suffixes its own test ids, so the golden fixture did not move — the anti-divergence device stayed valid across a geometry addition |
+| 24.1–24.6 | **Measured defect, both halves, with before and after.** Cards 156/156/188 → 188/188/188; badges 319/319/351 → aligned; semaphore **100.0%** of container width everywhere (848 px in the page header) → **31.1%** / **8.7%**. The shipped gate's threshold is 70% of container, which the measured before-state exceeds outright. | `FreshnessSemaphore.astro` (+26/−1), `IndicatorCard.astro` (+30/−2), and four Playwright files (+345) | `self-start` placed in the component (it declares its own shape; `align-self` is inert outside flex/grid) and `mt-auto` in the card (only the card is entitled to decide "the badge sits at my bottom edge") — the split is the refactor |
+| 24.7 | **Mutation check with a NEGATIVE result, recorded rather than dropped.** Removing `self-start` alone leaves the homepage badge-width tests green; `inline-flex` inside the new `mt-auto` wrapper is already shrink-to-fit. Load-bearing for the page header alone. | — | — |
+| 25.1–25.9 | **No red-state evidence.** The gap was found by a grep returning nothing (`grep -rn transparencia web/src/`), which establishes an absence rather than a failing assertion. 669 added / 0 removed: nothing existed to fail. No mutation check was made against the footer. | `templates/SiteFooter.astro` (136), `test/pages/site-footer.test.ts` (304), `tests/e2e/footer/site-footer.spec.ts` (153), `es.footer` (+51) | The href pinned against the **writer's Go source** — `site-footer.test.ts:196` regex-reads `publicHashPath` from `ingest_cmd.go` and fails loudly if the regex stops matching. Pass 7 §B.4 calls this "the CRITICAL-1 pattern applied prospectively" |
+| 26.1/26.2 | **Measured defect, read off the live DOM.** All four y-labels started left of the viewBox origin (−5.5, −6.5, −4.6, −3.6); last x tick at 965.5 against a 960 viewBox; five of six pages overrunning. The gate that shipped measures `getBBox()` across all six slugs, so the before-state fails it by construction. | One shared derivation in `geometry.ts` (+135/−26), `geometry.test.ts` (+113/−11), `svg.test.ts` (+110/−29), `indicator-pages.spec.ts` (+47/−2) | The narrow variant's existing derivation was **promoted** to serve both rather than copied — two copies of this rule would drift and the narrow one was already correct. `DEFAULT_DIMENSIONS` kept but demoted, with a test pinning that production's default is the derived box |
+| 27.1/27.6 | **Measured defect** (`2026-Q2` rendered 22 times on one page) **plus a mutation check (writer)**: three mutations confirm each machine boundary catches a formatter applied where it does not belong. The mutation half is the citable evidence; no transcript for either. | `lib/format/period.ts` (191), `period.test.ts` (139), `machine-surfaces.test.ts` (206), `indicator-page.container.test.ts` (+107/−1) | The two registers are **named in code** (compact / prose) rather than implied by call sites, so a future English module changes one string and one `LOCALE` constant |
+| 27.8 | Golden fixture: quarterly geometry byte-identical (`T2 2026` is the same seven glyphs as `2026-Q2`), so it moved in four x-tick text nodes and **no coordinate, viewBox or margin**. Verified by the diff, +1/−1 on the fixture. | — | — |
+
+---
+
+## Slices 28–30 — the pipeline, and the signature
+
+### Slice 28 — `a7c3739`, reconciling the editorial registries where nothing ever did
+
+**The seventh instance in this change of something built, tested, and never connected to the pipeline that
+would make it do anything**, and the most consequential of them. Measured on the running stack:
+`event = 0`, `series_break = 0`. The only production call site of `ReconcileEditorialConfig` was the manual
+`ingest --reconcile` flag; the scheduler's cycle never touched it. Every deployed stack runs `serve`, so
+`rupturas.yaml`, `eventos.yaml` and `gobiernos.yaml` had never reached a deployed database at all.
+
+What that cost, invisibly, since slice 7 — and none of it presented as a failure:
+
+- **No break band ever rendered.** The component, its non-dismissibility guarantee (PRD principle P4) and
+  the chart's shaded band all drew nothing, because `ResolveActiveBreaksForSeries` had nothing to resolve.
+- **No annotation ever rendered**, for the same reason.
+- **Rule 3's break exemption could never fire.** `breakAt` always saw an empty slice, so a jump at a
+  genuinely recorded methodological break blocked exactly as if no break existed.
+
+The fix is a one-shot compose service gated on `migrate` and gating `app`, argued from ADR-1: config is
+embedded in the binary, so it cannot change without a new image and a new image cannot arrive without a
+container recreation — "reconcile when the config changes" and "run once on `up`" are the same instant. Two
+alternatives were rejected with reasons: the scheduler's cycle redoes byte-identical work every fifteen
+minutes forever and couples editorial reconciliation to per-source scheduling; `serve` at boot would have to
+swallow a failed reconcile to preserve `runServe`'s deliberate resilience, and a silently swallowed
+reconcile is this defect again.
+
+**The guard is not a grep**, which is the part worth keeping. It parses the committed compose file for the
+service and its gates, takes that file's own `command:` array — never a literal — and runs it through the
+same dispatch table `main()` uses, against a real migrated Postgres, asserting the rows land and that the
+output names the pending entries.
+
+Proven on a clean slate (isolated project, `docker compose up -d` and nothing else): breaks inserted=5,
+events inserted=10, and the break `epa-metodologia-2021` reaching the exported document and rendering as
+"Rupturas de la serie — T1 2021", a string the page had contained **zero** times before.
+
+### Slice 29 — `ff2ea4f`, filtering by the government in office
+
+Of the two filters requested, one was built and the other refused with its reason: a year IS a `[from, to]`
+pair the custom picker already expresses, and one year of a quarterly macro series is four points — a chart
+saying less than the table beside it. The government filter is different in kind because **its bounds are
+not on the page**: a reader cannot type "Rajoy's term" into a date picker without already knowing the dates.
+
+The registry records a start for each government and an end for none, so the window is **derived** — term N
+runs until term N+1 takes office, half-open, last one open-ended. Correct for Spanish prime-ministerial
+succession, which is continuous, but an inference, and this project does not let inferences pass unmarked.
+So `endKind` distinguishes configured / succession / open **in the type itself**, a configured end always
+wins, `succeededById` names the entry each boundary was read off, and the reader is told in Spanish that the
+registry does not record an end date and the interval's close is deduced from the next investiture.
+
+What would break it was recorded rather than discovered later: a caretaker period absorbed into the
+preceding term silently; a government missing from the middle absorbed by its predecessor invisibly; two
+governments inside one period on a coarse axis collapsing the earlier window. The handover goes to the
+incoming government — a choice, not a fact.
+
+Suárez is unconfirmed and never projected, so the earliest selectable term starts in 1981 and the earliest
+term is deliberately **not** stretched back to the series start, which would assert Calvo-Sotelo governed in
+1971. The permalink encodes the editorial **id**, never the derived window: freezing the window would freeze
+today's inference, so an old link would stop agreeing with the registry the day a real end date lands.
+
+A term that selects everything is absent, and this **extends the spec's "absent, not disabled" rule by
+analogy rather than applying it literally** — the clause names the five fixed presets, so what carries
+across is its reason and not its wording. Both halves stated in the module and tested. Disclosed and still
+true: that half is proven **only at unit level**, because no government term covers any of the six real
+series entirely.
+
+### Slice 30 — `4e11378`, the signature, and closing the hole the fabrication went through
+
+**This is the fix for pass 6's blocker, and the direct counterpart of this file's "an agent signed a human's
+name to a review that never happened" process finding.** The owner reviewed the record and instructed that
+it be signed in his name: `acknowledged_by: "jorgealonsodev"`, `acknowledged_on: 2026-08-04`. The research
+survives verbatim — the measured distribution over 97 real deltas, the pinned `18607.2`, the INE press
+release citation.
+
+`jorgealonsodev` rather than `concontexto`, which was the alternative offered, and the reason is the field's
+whole purpose: a project name signs an attestation as an organisation, and the value of this field is that
+**someone can be asked about it in two years**. A handle resolves to a person; a project name resolves to
+itself.
+
+The guard **inverts rather than being deleted**, and that is the design decision.
+`TestRealAcknowledgementRegistry_ShipsExactlyOneUNSIGNEDDraft` had asserted the shipped record must be
+unsigned; its purpose was intact and only which state is correct had changed, so it became
+`..._ShipsExactlyOneRecordSignedByARealHuman` and now fails on an empty signer, on thirteen agent tokens, on
+twelve placeholder tokens, on a leftover draft field, on the note still declaring itself pending, and on the
+research drifting. Its comment records what it used to assert and the incident that produced it.
+
+**And the hole is closed.** The validator's nineteen placeholder tokens contained not one agent-shaped name,
+so the exact string the fabricated draft carried — "Claude (agente), bajo autoridad delegada — no es una
+firma" — would have passed every one of them. Whole-string tokens were not enough either: an agent that
+decided to sign would write a sentence, not a token. Agent words are now matched **at word boundaries
+anywhere in the string**; `ai` and `ia` stay whole-string-only so "Ai Weiwei" still validates, and
+word-boundary rather than substring matching keeps "Alberto Botella" valid. The principle, in the commit's
+own words: *a mechanism whose only defence against an agent signing is an agent choosing not to is not a
+defence.*
+
+Proven end to end on a **disposable database rather than the running stack**: `validate-config` accepts;
+reconcile projects 0 → 1 rows with the pending line gone; a real ingest against live INE publishes 98
+observations as `publish-overridden` at WARN with `ingestion_run.outcome = succeeded-with-acknowledgement`;
+the artifact carries `series/ocupados-epa.json`. Live INE corroborates the pinned figures exactly —
+2020-Q1 = 19681.3, 2020-Q2 = 18607.2 — and had they drifted the run would have raised
+`acknowledgement-stale` rather than inheriting an approval given for a different number.
+
+**WARNING-39 does not close with it, and that matters more now than it did.** `.github/CODEOWNERS:17` still
+reads `/config/** @jorgealonsodev @TODO-second-config-reviewer`, a placeholder GitHub cannot resolve, and
+the repository has exactly one collaborator. The mechanism exists; the second pair of eyes does not, and
+cannot until a second person does — while a human signature is now the thing being protected.
+
+### TDD Cycle Evidence — Slices 28–30
+
+| Slice / task | RED — what kind, and what it actually was | GREEN | REFACTOR |
+|---|---|---|---|
+| 28.1/28.2 | **Measured defect, in production.** `event = 0` and `series_break = 0` on the running stack, with three named consequences that had been live since slice 7 and none of which surfaced as a failure. No test transcript exists for the before-state, because the before-state passed every test — that is precisely the defect. | `docker-compose.yml` (+80), `ingest_cmd.go` (+43/−12), `deploy_reconcile_composition_test.go` (new, 255), `e2e_export_test.go` (+69) | Ordering **declared** in compose rather than timed, because rule 3 reads `series_break` during ingestion and `Export` reads it back into the artifact — a reconcile landing after the first cycle would publish empty arrays for a day |
+| 28.6/28.7 | **Mutation check ×2 — run by verify-report pass 7 §B.4, not by the writer, and cited as the auditor's measurement.** Deleting `reconcile: condition: service_completed_successfully` from `app.depends_on` → `TestDockerComposeReconcile_RunsAfterMigrationsAndGatesTheApp` **RED**, naming the exact condition and why it matters. Changing `command: ["ingest","--reconcile"]` to `command: ["ingest"]` → `TestDockerComposeReconcile_TheCommittedCommandProjectsEditorialRows` **RED** with the binary's own usage on stderr. | — | The second mutation is the strong one: that test **executes the committed command against a real database**, so it cannot pass by reading YAML that happens to look right |
+| 28.9 | Clean-slate proof: breaks inserted=5, events inserted=10; `epa-metodologia-2021` reaching the page as "Rupturas de la serie — T1 2021", **zero** occurrences before. Independently re-measured by pass 7 §A: every series document carries `events: 10`, four carry `breaks: 1`. | — | — |
+| 29.1–29.9 | **No red-state evidence.** A new capability with no prior behaviour to fail; nothing recorded a failing run and no mutation check was made. Disclosed limitation at the time and still true at `5af95c5`: the "selects everything ⇒ absent" half is **proven only at unit level**, because no government term covers any of the six real series entirely. | `lib/transform/governmentTerms.ts` (224), `governmentTerms.test.ts` (254), `permalink.test.ts` (+99), `island-ssr.test.ts` (+47), `indicator-pages.spec.ts` (+141/−6), `indicator-pages-no-js.spec.ts` (+35) | The inference is encoded in the **type** (`endKind`: configured / succession / open) rather than in a comment, so a configured end can win over the derivation without a second code path |
+| 30.3/30.4 | **No writer-side red-state evidence for the inversion itself** — the guard was rewritten in the same commit that changed the fact it guards. The evidence that matters arrived from the auditor (row below). | `acknowledgement.go` (+58/−2), `acknowledgement_validate_test.go` (+116/−31), `config/reconocimientos.yaml` (+10/−34) | The guard **inverts** rather than being deleted: same test, same purpose, opposite correct state, with its own comment recording what it used to assert and why |
+| 30.8 | **Mutation check ×4 — verify-report pass 7 §D, and the whole pass-6 blocker turned on it.** The exact original fabrication string → `validate-config` **exit 1**; `"TODO"` → **exit 1**; `"Jorge Alonso"`, an ordinary human name → **exit 0**, so the guard is not simply rejecting everything. And replacing the signature with a properly-declared `signature_status: "unsigned"` leaves `validate-config: ok` while the inverted test fails with **five distinct assertions**, including *"acknowledged_by is empty: a record with no signer carries no authority and must never ship signed"*. | — | CI goes red on the un-signing — precisely the guard that was missing when the fabrication happened |
+
+---
+
+## Slices 31–36 — four annotation layers, one registry added and removed
+
+### Slice 31 — `154824f`, a mark at each change of government
+
+The requested treatment was refused for a stated reason: the owner asked for a **dashed** vertical line, and
+a dotted stroke is a reserved semantic here — `theme.css`'s own header says dotted grey always means
+provisional data, `svg.ts` draws provisional observations that way, and `reserved-semantics.test.ts`
+enforces it. A dashed government line would have taught a reader two contradictory meanings for one visual
+code. `--color-ink-muted` was rejected for the same family of reason: read side by side against the reserved
+provisional grey it is the same grey to the eye.
+
+What shipped is a thin solid rule in `--color-ink` capped by a downward triangle, and every separation from
+the two existing marks is carried by **shape rather than palette** — orientation (across the plot versus
+along the data path), width (none versus one period step), fill (solid ink versus a 0.35-opacity wash), and
+a third glyph beside the definitive circle and the provisional diamond. Discard colour entirely and the
+chart still reads. No party reading is possible, and the data could not support one anyway: `gobiernos.yaml`
+and `EventConfig` carry no party field at all, by PRD §12.1's design.
+
+The guard worth naming: a marker is drawn only when the investiture's snapped period falls inside the
+periods handed in. Without it `nearestPeriodIndex` snaps Aznar's 1996 investiture onto 2002-Q1 and **draws a
+change of government that did not happen there**. The rule lives inside the one function both renderers
+call, so neither call site can forget it. Range interaction then falls out by construction rather than
+needing more logic.
+
+Nothing is drawn before 1981 and nothing is invented — Suárez is unconfirmed and never projected — and the
+sentence says the changes *registered* in the period shown, never that these were the only ones, which
+would turn honest silence into a false claim. The golden fixture **moved on purpose**, so that a change of
+government falls inside the golden span: a feature absent from the golden is a feature the two renderers can
+silently disagree about.
+
+### Slice 32 — `d5cfbed`, an event's period projected onto the plot
+
+The chart already carried three visual languages and a fourth risked making it a hieroglyph, so the
+treatment had to earn a channel none of the others use. An event has **duration**, which no other mark does:
+a solid horizontal rail near the top of the plot, first to last covered period, serif-capped.
+
+Four marks, four channels, **not one of them colour**. Rail against band is stroke versus fill; rail against
+the government rule is orientation — measured in the browser, the rule spans over 80% of plot height and the
+rail under 15%; rail against the provisional dash is solid-versus-dashed and across-versus-along. A
+translucent fill was rejected because it would have left hue as the only separator from the break band and
+would wash out about a quarter of the plot on the real 2008–2013 case.
+
+Per group rather than per entry, and measured: the exogenous group on `tasa-de-paro-epa` is four chips and
+two rails, non-overlapping, one lane. Per-entry selection would need a 44px target per chip — pushing the
+chart off a 375px screen — and could only work with JavaScript, leaving a no-JS reader chips that look
+selectable and are not.
+
+An event with no end date is not drawn, and each alternative is refused by name: running it to the last
+observation invents an end, capping it at the start asserts one quarter, a vertical rule steals the
+government code. The outside-the-window test is deliberately **weaker** than the government marker's —
+intersects, not contained — because a 2008–2013 crisis really does cover 2010–2013 of a series starting in
+2010; a clamped end is drawn uncapped so the plot's edge never reads as a boundary.
+
+**Two findings this commit reported rather than fixed.** The first — the island server-rendering annotation
+toggles as buttons with zero chips, present and dead without JavaScript — was closed by slice 33. The second
+is still open and is re-verified below.
+
+### Slice 33 — `e1db0ea`, naming every mark, and drawing nothing until asked
+
+The owner rejected the previous version on two counts and both are fixed: a mark that only identifies itself
+on hover or in a paragraph below is not readable, and government markers were drawn unconditionally whether
+or not anyone had asked for them.
+
+Labels had been left off in slice 31 for a **measured** reason — six four-digit years need ~26 user units
+each and Calvo-Sotelo and González sit **21 units apart**. Vertical text dissolves that: a sideways label
+needs one line height of horizontal room instead of one string length, **11.91 units against 108 and 75**,
+so the 21-unit pair clears by 9.34. Narrow is where it stays hard at **9.20 units**, and two things were
+both necessary: the label font as its own constant (wide 10, narrow 14 — at the narrow tick's 20 the stacked
+pair overruns the plot and the second name is refused), and a **pairwise downward settle** dropping only
+labels whose bands actually overlap, so a long name elsewhere on the axis does not eat its neighbour's room.
+A naive lane-row scheme fails at 16.
+
+The label carries the registry's name **verbatim and nothing else**, and both omissions are argued. Not the
+year, because the axis is a calendar and the chip below already reads "1981: Leopoldo Calvo-Sotelo". Not a
+surname, tempting as "Zapatero" is at 8 glyphs against 28 — there is no surname field, so it could only be
+derived, and a last-token rule that handles "José Luis Rodríguez Zapatero" turns a "Fernández de la Vega"
+into "Vega". **That is a rendering layer inventing an editorial fact.** The upshot is zero new Spanish
+strings: every label is data already in `config/`.
+
+Event rails take a horizontal label drawn only when it fits whole: the crisis name is 58 glyphs and 448
+units against a 435-unit narrow plot, so there it is **withheld rather than truncated** — an ellipsis
+renames the event on screen, and shrinking type below what the rest of the drawing sets trades an unreadable
+label for an illegible one.
+
+The description sentences stayed, and the reason is not politeness: the labels live inside a single
+`role="img"` that prunes its descendants, so a screen-reader user reaches not one glyph of them. Deleting
+the sentence would hand sighted readers a feature and take it from everyone else — and the drawing does not
+promise to label everything, so the sentence is what keeps a withheld name **disclosed rather than silent**.
+
+Labels are painted over the data with a background-coloured halo, the one place the marks break their own
+under-the-data rule, because a 2-unit accent stroke through a 10-unit glyph erases the letter rather than
+dimming it. Four new pairings are declared at the **4.5:1 body-text** threshold rather than the 3:1 the
+existing mark pairings use, because this is text a reader must actually read.
+
+Disclosed: 14 units renders at **7.81 CSS px** at 375px, the honest floor this design reaches — larger loses
+"Felipe González" on `poblacion-residente`. A shorter editorial `short_name` in `eventos.yaml` would let the
+crisis rail be labelled on phones, and that is a four-eyes editorial file, not this change's to write.
+
+### Slice 34 — `610290a`, the policy-measures registry (reverted in slice 36)
+
+Recorded in full despite being reverted, because migration 0007 survived it and because the prohibition
+that shaped it is a reusable design result.
+
+The owner asked to see which measures were taken and when, and agreed the site must not say whether they
+worked. **That prohibition is enforced structurally, not by discipline.** `EventConfig` had no field for an
+effect, an outcome, a direction, a magnitude or an evaluation, so no layer downstream could project one and
+none had to be trusted not to — the same structural refusal `gobiernos.yaml` already applies to party
+colour. The geometry enforced it too: a measure mark sat in the bottom margin, **below the x-axis tick
+labels, outside the plot area entirely**, so it could never assert an effect by adjacency — the failure mode
+that needs no words, where a mark at a point the curve then falls says "it worked" with no author and no
+citable source. Asserted three times: a unit test, a renderer test, and a real-browser bounding-box
+measurement.
+
+The copy stated instrument and date and stopped, and its test asserted the **absence** of `efecto`,
+`impacto`, `consecuencia`, `resultado`, `gracias`, `debido`, `logr`, `consigui`, `mejor`, `empeor`, `redu`,
+`aument`, "desde entonces" and "tras la medida" — then closed by refusing explicitly, because silence is not
+neutrality when the layout poses the question.
+
+Five measures seeded, **none from memory**: each date is entry into force, read off the BOE consolidated
+text at the URL in the entry. RDL 32/2021's entry into force is staggered by its disposición final octava,
+so the recorded date is the norm's general one and the note said so.
+
+And it closed a gap the code had already admitted: `events_read.go` carried a TODO saying `seriesID` "is
+accepted … to leave room for a real per-series scope in a future slice" while the function ignored it. A
+second registry would have routed around that acknowledged gap while duplicating eight working layers, so
+`event` gained scope instead — which is why migration 0007 exists, and why it outlived the feature.
+
+### Slice 35 — `578bb86`, listing only the annotations in the visible window
+
+**Measured in a browser**: narrowing `tasa-de-paro-epa` to "Desde 2018" took the series from **98 points to
+34** and the measure marks from **12 to 8**, while the chip list beside it still named a 2012 reform. The
+drawing respected the window; the list did not. All three groups were affected — and `governments` was the
+worst, because **it lied at the DEFAULT view**, listing Calvo-Sotelo (1981), González (1982) and Aznar
+(1996) on a series that begins in 2002. No reader had to touch a control to see it.
+
+The cause was the shape of the code: the in-range rule existed **three times**, once inside each selector,
+and the chips had none. It now exists once, in its own module, and the three selectors read it instead of
+restating it — divergence stops being possible rather than stopping by discipline. The per-kind rules were
+reused rather than re-decided: instants by date containment, intervals by **intersection** (a 2008–2013
+crisis legitimately covers a 2011–2018 window), and an event with no end tested by the instant rule on the
+one date it has.
+
+A group with nothing in the window is removed, control included, **and the cost is stated because it is
+real**: a reader who narrows far enough watches the group vanish under their own hand and nothing says "none
+in this period". What decided it is that the toggle gates the DRAWING, so an empty group is a 44px focus
+stop that cannot change one pixel — exactly the dead control `availablePresets` and the government filter
+already refuse, and `visibleBreaks` already behaves this way for the more load-bearing layer.
+
+What a reader loses was **checked rather than assumed**: the 2012 reform survives in "Todo el periodo",
+offered unconditionally on every series, and in the per-series JSON the action bar links, which carries all
+thirteen events regardless of window. Not in the methodology sheet — that field is the indicator's
+definition, not policy — and not in the CSV. Two routes, not the one most people would guess.
+
+**Closes verify-report pass-6 SUGGESTION-21**: `indicator-annotation-range.spec.ts` exercises range
+selection on real indicator routes rather than only in the workbench.
+
+### Slice 36 — `5af95c5`, the revert, migration 0007, and the collapsed table
+
+The only commit in the window with more removals than additions (1,450 / 2,151 across 45 files). The owner
+decided against the measures layer and it went — config, group, validation rules, gutter marks, legend
+entry, generated sentence, every string under `chart.measure`.
+
+**What did not go with it** is stated explicitly, because a revert is where a good fix gets thrown out by
+accident: slice 35's in-range fix stays whole — the shared predicate, the two remaining selectors reading it
+instead of restating it, and the empty-group-is-absent behaviour — proved intact on the live stack at both
+ranges. Three tests were kept and **rewritten rather than deleted**, because each still guards something
+true, and one was **added**: a group emptying removes only itself and leaves the section standing, which is
+exactly the default-view `governments` case and had previously been only implicit.
+
+The five rows already reconciled into the live database were removed by the existing soft-retire path with
+no operator step — `events inserted=0 updated=0 retired=5` — and `ListActiveEvents` filters on
+`retired_at IS NULL`, so nothing reached the artifact or the page. Nothing needed reverting in `openspec/`:
+`git log -- openspec/` over both commits is empty, and the requirement still enumerates exactly `gobiernos`,
+`shocks exógenos` and `hitos`, so removing measures **restores the code to what the spec already said**.
+
+One observed failure, and it was a contract working: the first rebuild after the removal **failed,
+correctly**, because the locally generated artifact still carried `group: "measures"` and the tightened Zod
+enum refused it. The loader declined to build a site from data that no longer matches the code.
+
+The data-table collapse rides in the same commit because both changes edit `ChartIsland.svelte` and `es.ts`
+and splitting them would mean staging hunks by hand — **which pass 7 raises as SUGGESTION-51**, a commit
+named "revert" adding a reader-facing feature. Recorded here rather than defended: the reason is real and so
+is the reviewer's surprise. Ninety-eight rows on `tasa-de-paro-epa` and 294 on `ipc-general` arrived open,
+pushing everything below fifteen screens down; the document goes from **12,226px to 2,467px** on the monthly
+series. A native `<details>`/`<summary>`, no JavaScript, copied from the closed-by-default disclosure
+`MethodologySheet` already uses, and **verified against the scenario text rather than assumed**: the spec's
+own scenario asserts presence, not paint. Both renderers were unguarded hand-duplicated markup, so the label
+became one pure function both print with a parity test rendering both and comparing them — this project has
+already had one defect from two renderers of the same table drifting.
+
+The summary reads "Tabla de datos (98 periodos, de T1 2002 a T2 2026)" rather than "Ver la tabla de datos",
+following the rule `es.ts` already states for the annotation toggles: no script updates this text, so "Ver"
+becomes a lie the moment it is open. A noun phrase is true in both states and the browser's triangle carries
+the state. **Two no-JS assertions changed meaning and it is recorded as a change rather than a fix** — they
+asserted the table was visible, which is now false by design, so they became presence plus a non-zero row
+count plus a visible summary plus proof it opens. Strictly stronger; still changed.
+
+### Migration 0007 — the retention decision, moved out of a commit body and a SQL comment
+
+Verify-report pass 7 named this "exactly the class of decision that decays when it is not in the record". It
+is the record now.
+
+**The decision**: `0007_event_scope` was added by slice 34 for the measures layer and **kept** when slice 36
+removed that layer.
+
+**Why the columns are not dead schema.** `scope_kind` is `NOT NULL`, all fifteen rows carry a real
+`'global'`, and `ListActiveEvents` reads it on **every export of every series** — the `WHERE` clause at
+`events_read.go:62-70` is `retired_at IS NULL AND (scope_kind='global' OR (scope_kind='series' AND
+scope_ref=$1) OR …)`. It resolves to one branch today because one value is the truth today. The `seriesID`
+parameter that function used to accept and ignore is now load-bearing.
+
+**Why reverting would have restored a defect the code had already documented.** `events_read.go` carried a
+TODO saying `seriesID` "is accepted … to leave room for a real per-series scope in a future slice" while the
+function ignored it. Dropping the columns means going back to a filter that lies about filtering — removing
+the fix and keeping the acknowledgement of the gap.
+
+**Why configuration CAN populate them, which the revert commit left ambiguous and pass 7 §B.3 settled by
+mutation.** `EventConfig.Scope` (`types.go:129`) is a real YAML field, the loader normalises an omitted
+scope to `global`, and `Validate` calls `validateEventScope` for every event (`validate.go:54`). Four
+mutations of `config/eventos.yaml`, each run through `validate-config`:
+
+| Mutation | Result |
+|---|---|
+| `scope: { kind: series, ref: no-such-series }` | **exit 1** — `scope.ref "no-such-series" does not resolve to any configured series` |
+| `scope: { kind: galaxia, ref: x }` | **exit 1** — `scope.kind "galaxia" is not one of global, series, dataset, source` |
+| `scope: { kind: series }` (no ref) | **exit 1** — `scope.kind "series" requires a scope.ref naming what it applies to` |
+| `scope: { kind: series, ref: ocupados-epa }` | **exit 0** — accepted |
+
+Persistence and read-back are covered by `TestReconcileEvents_PersistsScopeAndSourceURL`,
+`TestListActiveEvents_ResolvesScopeForTheSeriesAsked` and
+`TestListActiveEvents_UnknownSeriesStillResolvesGlobalEntries`. **These are the auditor's measurements, run
+at a clean `5af95c5`, cited here rather than re-run.**
+
+**Two operational reasons on top of the correctness one.** A `DROP COLUMN` on a live database is the
+strictly riskier of the two operations, for no functional gain. And keeping 0007 as the newest migration
+leaves the hand-counted `Down()` step assertions untouched rather than adjusting the same fragile counts
+twice.
+
+**One residual, recorded rather than closed** (pass-7 SUGGESTION-52): `event.source_url` is wired end to end
+— YAML → reconcile → column → `EventRef.SourceURL` → Zod `EventRefSchema` — and unit-tested, but no shipped
+config entry populates it, so the key is `omitempty`-absent from every production artifact and the JSON leg
+of that path has no production exercise.
+
+### An unconfirmed editorial date reaches the artifact — verified here, and it contradicts two doc comments
+
+Slice 32's commit body disclosed this and nothing in the record carried it forward. **Re-verified at
+`5af95c5` for this record rather than accepted second-hand:**
+
+- `config/eventos.yaml:52-56` — `ngeu-primer-desembolso` carries `date_start: 2021-08-01` **and**
+  `date_status: unconfirmed`.
+- `web/data-derived/series/tasa-de-paro-epa.json` — its `events` array **contains that entry**, read here
+  directly out of the published artifact.
+- `app/internal/ingestion/reconcile.go:86` — the projection guard is `if e.DateStart == nil`. It never reads
+  `e.DateStatus`. An entry with a date and an unconfirmed status is therefore projected.
+
+Two doc comments in shipped source state the opposite. `reconcile.go:10-12`: *"A break or event whose
+DateStatus is 'unconfirmed' (Date/DateStart is nil) is NEVER projected into series_break/event."*
+`events_read.go:47-49`: *"An unconfirmed (date_status='unconfirmed') entry never reaches this table at
+all."* The parenthetical in the first is the tell — the guard was written for the case where unconfirmed
+implies no date, and `ngeu-primer-desembolso` is the case where it does not.
+
+**Recorded as a disagreement, not adjudicated here.** Verify-report pass 7 marks `indicator-page` /
+"Enabling a group renders only confirmed events" compliant and `pipeline-operations`-adjacent scenarios
+untouched; this record's writer is not the verifier and does not overturn a compliance verdict from a
+document it may not edit. What is stated here is only what was measured. It is also opened as a design.md
+Open Question so the next pass adjudicates it deliberately rather than rediscovering it. Practically the
+entry has no end date so it draws no rail, but it **is** reader-visible as an annotation chip when the
+exogenous group is enabled.
+
+### TDD Cycle Evidence — Slices 31–36
+
+| Slice / task | RED — what kind, and what it actually was | GREEN | REFACTOR |
+|---|---|---|---|
+| 31.1–31.11 | **No red-state evidence.** A new layer with no prior behaviour to fail. The reserved-semantics collision was avoided by reading `theme.css` and the existing enforcement test, not by observing a failure. Task 31.8's `nearestPeriodIndex` snapping described a real failure mode, but as reasoning about the algorithm rather than as an observed run. | `lib/chart/governmentMarkers.ts` (163), `governmentMarkers.test.ts` (159), `svg.test.ts` (+96), `island-ssr.test.ts` (+97), `reserved-semantics.test.ts` (+71), `description.test.ts` (+62/−1), `indicator-pages.spec.ts` (+106) | The in-range rule placed **inside the one function both renderers call**, so neither call site can forget it; range interaction then falls out by construction rather than needing a second mechanism. Golden fixture moved deliberately so the new mark sits inside the anti-divergence device |
+| 32.1–32.10 | **No red-state evidence for the feature.** Measurements exist and are real — plot-height share 80% vs 15%, four chips over two rails in one lane — but they are *design* measurements taken to choose a channel, not observations of a wrong output. No mutation check. | `lib/chart/eventSpans.ts` (264), `eventSpans.test.ts` (246), `indicator-event-spans.spec.ts` (249), `svg.test.ts` (+142), `island-ssr.test.ts` (+106) | The live region is **always present rather than created on first change**, matching the government-range and custom-range precedent — transient selection is announced by a live region and never by `aria-describedby` |
+| 32.11 | Disclosure, closed by slice 33: the island server-rendered annotation toggles as dead buttons without JavaScript. | — | — |
+| 32.12 | **Disclosure, still open, re-verified here** — see the section above. `reconcile.go:86` tests `DateStart == nil`, not `DateStatus`, so `ngeu-primer-desembolso` reaches the artifact against two doc comments' explicit claims. | — | — |
+| 33.2/33.3 | **Measured, and the measurement is the design.** 21 units between Calvo-Sotelo and González against ~26 needed per horizontal year label; vertical text needs 11.91 against 108 and 75; narrow drops to 9.20 units and the naive lane-row scheme fails at 16. These are pre-implementation measurements, not a failing test. | `lib/chart/annotationLabels.ts` (309), `annotationLabels.test.ts` (337), `indicator-annotation-labels.spec.ts` (328), `svg.ts` (+130/−22) | The label font became **its own constant** rather than deriving from the tick size, because at the narrow tick's 20 the stacked pair overruns the plot — coupling the two would have made one legibility decision hostage to the other |
+| 33.7 | **The one genuine observed failure in this window with a test named after it.** The first rule anchored a rail label on the rail's start with a fallback to its end, which on the narrow chart put "Pandemia de COVID-19" entirely left of its own rail and partly under the crisis rail above — **a name attached to the wrong mark**. The browser forced the correction; the estimator had not caught it. | `annotationLabels.test.ts:224` "centres a rail label on the rail it names, so it can never be read as belonging to the next one" and `:247` "never lets a clamped rail label lose contact with the span it names" — both verified present at `5af95c5` | Centring + clamp + an explicit "must still overlap its own rail" invariant, so the fix is a stated property rather than a tuned constant |
+| 33.10 | Twelve combinations swept in a real browser — six pages × two variants × every group open: no label overlaps another, none escapes the viewBox, none measures zero. A post-implementation sweep, recorded as such. | `indicator-pages-no-js.spec.ts` (+24/−12) asserts a no-JS reader sees no government marks at all | — |
+| 34.1–34.10 | **No red-state evidence.** A new feature, later reverted. Its three geometry assertions (unit test, renderer test, real-browser bounding box) are the strongest thing here and they are **confirmations of the intended property**, not observations of a failure. | `measureMarks.ts` (253), `measures_test.go` (265), `events_scope_test.go` (178), `chart-policy-measures.spec.ts` (164), migration `0007` (57/21) — all but the migration and the scope test removed by slice 36 | The registry **reused `EventConfig` with a new group** rather than getting its own table, which is what closed `events_read.go`'s own documented TODO and is the reason 0007 outlived the feature |
+| 35.1/35.2 | **Measured defect, and the sharpest in the window.** 98 → 34 points and 12 → 8 marks under "Desde 2018" while the chip list still named a 2012 reform; and `governments` **wrong at the DEFAULT view**, naming three pre-2002 governments on a series beginning in 2002 — visible with no reader interaction at all. | `lib/chart/annotationWindow.ts` (180), `annotationWindow.test.ts` (140), `island-annotation-chips.test.ts` (163), `indicator-annotation-range.spec.ts` (248), `indicator-chart.container.test.ts` (+72) | Three copies of the in-range rule collapsed to **one module the three selectors read**. Divergence stops being possible rather than stopping by discipline — the same move slice 26 made for chart margins and slice 36 made for the table summary |
+| 36.1/36.2 | **No red state; a revert.** The thing that could have gone wrong — losing slice 35's fix — was checked on the live stack at both ranges rather than left to the diff. | `event_scope_test.go` (new, 241), three tests kept and rewritten, one added (a group emptying removes only itself) | Three tests **rewritten rather than deleted**, each because it still guards something true: the scope predicate, the digest anti-drift, and the optional-never-nullable `source_url` contract |
+| 36.3–36.7 | **Mutation check ×4 — verify-report pass 7 §B.3**, four `config/eventos.yaml` scope mutations through `validate-config`, three exit 1 with distinct messages and one exit 0. This is what establishes that the retained columns are *populatable*, not merely present. Table reproduced above. | `0007_event_scope.up.sql:52`, `events_read.go:62-70`, `TestReconcileEvents_PersistsScopeAndSourceURL`, `TestListActiveEvents_ResolvesScopeForTheSeriesAsked`, `TestListActiveEvents_UnknownSeriesStillResolvesGlobalEntries` | — |
+| 36.11 | **Observed failure, and the right one.** The first rebuild after the removal failed because the local artifact still carried `group: "measures"` and the tightened Zod enum refused it. Not a test transcript — a build refusing data that no longer matches the code. | — | — |
+| 36.13–36.20 | **Measured defect.** Document height 12,226px → 2,467px on the monthly series; 98 and 294 rows arriving open. The `aria-describedby` question was **verified against the scenario text and in a real browser, closed and open, on both slugs** rather than assumed from the accname carve-out. | `lib/chart/tableSummary.ts` (61), `tableSummary.test.ts` (82), `data-table-disclosure-parity.test.ts` (180), `indicator-data-table.spec.ts` (318), plus an axe audit with the disclosure OPEN | Two hand-duplicated renderers collapsed to **one pure label function both print**, with a parity test rendering both and comparing — this project has already had one defect from two renderers of the same table drifting |
+
+---
+
+## The WARNING-47 spec decision, and what it rests on
+
+Pass 7 found that the homepage and the site footer ship implemented, tested and reader-facing with **no
+requirement anywhere** — not in the twelve delta specs, not in the ten baseline capabilities. The decision
+was left to this pass. **Both get requirements.** The reasoning, and the one thing that is not true in the
+finding as stated:
+
+**The footer's licence sentence is not unpinned today — but the pin does not reach the page.** Measured
+here: `openspec/specs/source-attribution-licensing/spec.md:26` already carries "No blanket data-licence
+claim exists in the repository", whose prose reads *"The repository MUST NOT assert a single licence over
+all derived data."* The footer is part of the repository, so the requirement's **text** governs it. Its only
+scenario does not — *"GIVEN `LICENSE` and `LICENSE-DATA` / WHEN they are read"* names two files, neither of
+them a rendered page. **A footer that asserted CC BY over all data would violate the requirement's sentence
+while passing its only scenario.** That is the precise gap, and it is narrower and more fixable than "no
+requirement governs it".
+
+**What protects it in the meantime, verified rather than assumed**: `web/test/pages/site-footer.test.ts`
+(304 lines) asserts the rendered text and markup match none of `/cc\s*by/i`, `/creative\s*commons/i`,
+`/todos los datos/i`, `/licencia de los datos/i`. Green, real, and adjudicated against nothing — which is
+the state this file's own process findings call the class of decision that decays.
+
+So the fix is the smallest one that closes it: a **MODIFIED** requirement in
+`specs/source-attribution-licensing/`, restating the existing requirement unchanged and adding one scenario
+that reaches the surface where the claim is now made on every page. No new claim, no new capability
+semantics, landing in the capability that already owns the subject.
+
+The homepage gets an **ADDED** requirement in `specs/indicator-page/`, bounded by construction: it names the
+six frozen slugs and asserts an all-or-nothing derivation from the same guard the routes use, so it cannot
+grow into the ~26-indicator catalogue, search or category navigation that `proposal.md:70-72` places in
+milestones 1.3–1.7.
+
+**Why write them rather than record them as shipped-outside-scope.** The project's actual rule is not "the
+spec phase is closed" — two requirements were added after it closed in this very change, both when a real
+gap was found on the running product: `5310586` (slice 19) and `026c7fa` (slice 20). A third, for a claim
+with legal weight printed on every page and for the only surface on which a reader learns an indicator
+exists, is the same move for the same reason.
+
+**The cost, stated.** A thirteenth capability delta, two requirements and their scenarios for pass 8 to
+verify. Accepted, because pass 8 is required for the record update regardless, and the alternative leaves a
+legal-weight claim asserted by a test alone.
+
+**What was deliberately not written**: no requirement for the content of the four footer links, the tagline,
+the card layout or the badge geometry — design decisions with tests, not contract. And no requirement
+obliging `/transparencia/raw-files.sha256` or `/data-derived/**` to resolve from a static build; slice 25
+records why that is untestable in `dist/`, and `publishing-export/spec.md:146-155` already records the
+accepted consequence for the `/data-derived` half.
+
+---
+
+## Findings status after this record pass
+
+Stated because pass 7 named each of them and each is true; nothing here re-adjudicates a verdict this
+writer does not own.
+
+**Closed this pass (by code, in the seventeen commits — pass 7's verdicts):**
+
+| Finding | Closed by | Evidence pass 7 cites |
+|---|---|---|
+| **CRITICAL-37** — the change cannot produce a deployable site | Slice 30 (`4e11378`) | §D and §A: signed record, `ocupados-epa` in the artifact, production build exit 0 with 7 pages. **Both halves.** |
+| **WARNING-30** — INE nil-value crash class disclosed only in a commit message | Slice 20 (`026c7fa`) | Turned into a requirement with 4 scenarios and 4 named passing tests |
+| **WARNING-44** — a frozen permalink's two download links 404 on the running stack | The series republishing, plus slice 19's spec text | Both paths return 200; the accepted consequence now lives in `publishing-export/spec.md:146-155` rather than a code comment |
+| **SUGGESTION-21** — no custom-range e2e on a real route | Slice 35 (`578bb86`) | `indicator-annotation-range.spec.ts` exercises range selection on real indicator routes |
+
+**The one non-compliant requirement, unchanged: WARNING-41.** `pipeline-operations` / "An ingestion not
+followed by a rebuild alerts operators" — 3 of 4 scenarios pass. "A failed rebuild raises an alert
+**immediately**" is substituted by budget-delayed detection: `alerting.go:231` alerts on a failed
+*dispatch*, and **nothing anywhere observes the rebuild's outcome** — no `workflow_run` receiver, no
+conclusion poll. Carried unchanged since pass 4. This is the change's single non-compliant scenario
+(167/168) and it is a real gap, not a bookkeeping one: the alert fires when the *request* fails, never when
+the request succeeds and the build then fails.
+
+**Still open, carried into design.md by this pass**: WARNING-38 (one acknowledgement resolves more than one
+finding — not reachable in the shipped config), WARNING-39 (the registry's only anti-forgery control is a
+review gate with no second reviewer — now materially more relevant, see slice 30), WARNING-45 (the prune's
+ordering has no test), SUGGESTION-49 (one ghost loop without its own non-empty guard, safe by mutation but
+not by construction), SUGGESTION-51 (a commit named "revert" adds a feature), SUGGESTION-52
+(`event.source_url` populated by nothing), SUGGESTION-53 (the accessibility gates still measure the fixture,
+not the artifact).
+
+**One fact about the change's maturity, recorded as a fact and not as a boast.** Pass 7 was the **first of
+seven** in which the pipeline/publish seam produced no finding. Six passes found a defect there every time —
+CRITICAL-1, CRITICAL-15, CRITICAL-16, CRITICAL-27, CRITICAL-28, CRITICAL-37 all sat on or beside that seam,
+and slice 28 above is the seventh instance of the same shape (something built, tested, and never wired to
+the thing that would run it). Pass 7 looked at it three ways — the reconcile wiring under two mutations, the
+footer's two runtime links, and the two derivations of the route list collapsed to one — and found nothing.
+That is one data point, not a trend, and the seam's history is the reason it is worth writing down at all.
+
+---
+
+## Verification for this record (2026-08-04, at `5af95c5`)
+
+Every figure below was produced here. The pass touched `openspec/changes/phase-1-indicator-page/**` and
+nothing else.
+
+- `git log --oneline -1` → `5af95c5`. `git log --oneline 823311e..HEAD | wc -l` → **17**.
+  `git diff --shortstat 823311e..HEAD` → **112 files changed, 14,631 insertions(+), 425 deletions(−)**.
+  Identical to pass 7's figures.
+- **Task counts, counted rather than asserted.** `grep -c "^- \[x\]" tasks.md` → **419**;
+  `grep -c "^- \[ \]" tasks.md` → **0**. Was 235/0 before this pass, so slices 20–36 plus the WARNING-47
+  and record-verification sections add **184** task rows. All checked, because all seventeen commits are
+  landed work being recorded after the fact, not work being planned.
+- **Per-commit figures** in `tasks.md` slices 20–36 were read from `git show --numstat <sha>` for each
+  commit individually, never from a commit body. Where a body and the repository disagreed the repository
+  won; one such case is recorded (slice 32's task 32.12).
+- `go run ./app/cmd/concontexto validate-config` → **`validate-config: ok`**. Run to prove this pass touched
+  nothing a Go test or the config loader reads.
+- **Deliberately NOT run, and the reason is the point**: the Go suite, the web suite, Playwright, and any
+  build. This pass changed only `openspec/changes/phase-1-indicator-page/**`, which no suite reads, so a
+  suite result would describe nothing this pass did — and reporting one as evidence for this pass would be
+  the class of claim this record exists to prevent. Where suite numbers appear above they are **pass 7's
+  measurements at a clean `5af95c5`**, labelled as such: `go test -race -count=1 ./...` exit 0 over 22
+  packages with zero race reports, Vitest **799/799** across 52 files, Playwright **191/191** across 11
+  files, `astro check` 0 errors over 131 files, `EXPORT_DIR=data-derived npm run build` exit 0 emitting 7
+  pages, and the transferred-bytes gate against the **real artifact** with a worst page of 76.6 KB against
+  300 KB.
+- **The two spec files this pass writes are not machine-checked, and that is stated rather than implied.**
+  `which openspec` returns nothing; no script in this repository parses `openspec/**/spec.md`. Both files
+  were checked by hand against the shape every sibling delta uses — `## ADDED Requirements` /
+  `## MODIFIED Requirements`, `### Requirement:`, `#### Scenario:`, GIVEN/WHEN/THEN/AND bullets — and
+  against `source-ingestion-ine/spec.md` and `platform-runtime/spec.md` for the MODIFIED convention
+  (full restatement plus a `(Previously: …)` line). Nothing validates them mechanically.
+- **One figure corrected in the existing record while verifying it.** design.md's SUGGESTION-50 Open
+  Question recorded `web/src/pages/index.astro` as 1,002 bytes carrying a false "replaced starting slice 9"
+  comment and linking none of the six permalinks. Re-measured here: **2,713 bytes** (`wc -c`), the false
+  comment gone, rewritten by slice 21. Corrected in place with the original observation left visible, per
+  this file's own superseding discipline.
+
+---
+
+## A third process finding — a record that fell 14,631 lines behind, and why the mechanism failed
+
+Recorded as its own section beside the staleness finding and the fabricated-signature finding, because it is
+the third distinct failure mode this change has produced in how it writes itself down, and unlike the other
+two it is a failure of **cadence** rather than of accuracy.
+
+**What happened.** `tasks.md` and `apply-progress.md` were last written by `823311e`, recording slices 18–19.
+Seventeen commits followed. Pass 5 raised the gap as WARNING-40 at 2 commits and 638 lines — a size at which
+the correct response is a ten-minute append. It was not appended. Pass 6 did not re-raise it. By pass 7 it
+was 17 commits, 112 files and 14,631 added lines, and had escalated to the change's only blocker.
+
+**Why the earlier warning did not work.** WARNING-40 was true, small, and had no owner. Every one of the
+seventeen commits carries an unusually complete rationale **in its commit body** — several of them run to
+sixty lines and argue their alternatives — so at each individual commit the reasoning felt recorded. It was
+recorded; it was recorded in the one place archiving does not freeze and searching does not reach. The
+record did not fall behind because nobody was writing; it fell behind because the writing was going
+somewhere else.
+
+**Why the size is not linear in the cost.** Reconstructing seventeen commits after the fact costs more than
+seventeen appends would have, and it costs something that cannot be bought back: **six of the seventeen have
+no reconstructible red state**, and that is now permanent. A TDD Cycle Evidence row written the day the
+test was written would have cost one line. Written three weeks later it cannot be written at all, only
+declared missing — which is what the tables above do six times.
+
+**The rule this yields.** A commit body is a good place to argue a decision and a bad place to store one.
+The distinction that matters is not quality — these bodies are better than most records — but reach: the
+change record is what `sdd-archive` freezes, what a later reader greps, and what the verifier reads. Anything
+load-bearing that exists only in a commit body is one `git log` away from being unfindable, and the
+migration-0007 retention argument is the concrete proof: pass 7 could see it only because it read the commit
+that made it.
+
+**What to do differently, concretely.** Append the task rows and the TDD row **in the same commit as the
+code**, not in a later documentation pass. When that is genuinely impossible, treat a record-drift warning
+as blocking at **one** commit rather than at seventeen — the cost of closing it grows superlinearly and the
+evidence it needs decays. And when a verify pass raises the same finding twice, its second appearance is
+information about the process, not about the finding.

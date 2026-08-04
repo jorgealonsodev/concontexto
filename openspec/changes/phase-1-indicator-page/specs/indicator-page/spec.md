@@ -29,6 +29,63 @@ change** because permalinks are a permanent commitment (Anexo E.1): `tasa-de-par
 - THEN a permanent redirect from the previous path is published alongside the new one
 - AND no published permalink returns a not-found response
 
+### Requirement: The homepage lists all six indicators or the build fails
+
+Added in the record pass that closed verify-report pass-7 CRITICAL-46, resolving pass-7 **WARNING-47**'s
+homepage half. Slice 21 (`ac69a29`) shipped `/` as the site's front door and nothing pinned it.
+
+The build MUST produce a homepage at `/` that lists **exactly** the six frozen slugs above, each linking to
+its own `/indicador/{slug}` route, and every indicator page MUST offer a link back to it. The listing MUST
+be derived from the same all-or-nothing route resolution the six routes are built from, so a slug the
+export artifact does not carry fails the build rather than being omitted from the list.
+
+An indicator missing from `/` is a strictly worse failure than a missing route and that asymmetry is the
+reason for the all-or-nothing rule: a missing route returns a not-found response to anyone holding its
+permalink, while a missing **row** is invisible — the site reads as complete, and the absent indicator is
+precisely the one no other surface mentions, because `/` is the only place a reader learns it exists. A
+homepage deriving its own list would also be a second derivation of the route set, which is the defect
+shape this change has already been bitten by once.
+
+Each listed indicator MUST carry only measured, published facts — its editorial name and unit, its latest
+published value and period, and its freshness state — resolved from the same export artifact the routes are
+built from. The homepage MUST NOT carry search, filtering, category navigation or any indicator beyond the
+six; those belong to later milestones and are out of scope for this change (`proposal.md`, "Out of scope").
+
+#### Scenario: The homepage lists exactly the six frozen slugs
+
+- GIVEN a completed site build from a valid export artifact
+- WHEN `/` is inspected
+- THEN it lists exactly the six frozen slugs, and no others
+- AND each entry links to that slug's own `/indicador/{slug}` route
+
+#### Scenario: A slug the artifact does not carry fails the build
+
+- GIVEN an export artifact missing a document for one of the six frozen slugs
+- WHEN the site is built
+- THEN the build fails naming the absent slug
+- AND no homepage is emitted listing the remaining five
+
+#### Scenario: The homepage and the routes resolve the same list
+
+- GIVEN the homepage and the indicator route sources
+- WHEN their route resolution is traced
+- THEN both reach the same resolution function
+- AND no second derivation of the indicator list exists
+
+#### Scenario: Each listed indicator carries its published figures
+
+- GIVEN a homepage built from a valid export artifact
+- WHEN one indicator's entry is read
+- THEN it carries that indicator's editorial name and unit, its latest published value, that value's period
+  and its freshness state
+- AND a series the artifact carries with no observations fails the build rather than rendering a placeholder
+
+#### Scenario: Every indicator page offers a way back
+
+- GIVEN any of the six indicator pages
+- WHEN it is rendered
+- THEN it offers a link to `/` in Spanish, "Volver al inicio"
+
 ### Requirement: Page anatomy per PRD §6.1.1
 
 Each page MUST render, in this order: header (indicator name, latest value with its date, year-on-year

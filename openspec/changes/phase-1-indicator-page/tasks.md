@@ -1101,3 +1101,1045 @@ spec phase closed**, which is why it carries its own task rows rather than a not
   snapshot is taken *after* the prune (`trigger.go:128-135`), so the first bad export's own snapshot already
   lacks the removed files. Neither observation changes the decision; both change what the record claims
   about why it is safe.
+
+---
+
+## Slices 20–36 — the seventeen commits verify-report pass 7 found unrecorded (CRITICAL-46)
+
+Written 2026-08-04 at `5af95c5`, after pass 7 escalated pass 5's WARNING-40 to a blocker. Every figure in
+these sections was measured here with `git show --numstat` per commit and `git diff --shortstat
+823311e..HEAD` for the window: **17 commits, 112 files, 14,631 insertions, 425 deletions**. Nothing is
+taken from a commit body without saying so, and where a commit body and the repository disagree the
+repository wins and the disagreement is recorded rather than reconciled away.
+
+**Read the honesty note before using the TDD Cycle Evidence tables in `apply-progress.md` for these
+slices.** Not one of these seventeen commits recorded literal failing-test output. What exists instead is
+three different kinds of evidence, and they are labelled as what they are: a measured defect in the running
+product against which the new test's own threshold provably fails; a mutation check; and, for six of them,
+nothing at all.
+
+---
+
+## Slice 20 — a null `Valor` fails closed instead of violating a database constraint
+
+Commit `026c7fa`. Files: `app/internal/adapters/ine/envelope.go` (+71), `app/internal/adapters/ine/client.go`
+(+9), `app/internal/adapters/ine/nullvalue_test.go` (new, 205), and the `source-ingestion-ine` delta spec
+(+54). 339 added, 0 removed across 4 files. **The second commit in this change to add a delta-spec
+requirement after the spec phase closed** (slice 19's `5310586` was the first), which is why it carries
+task rows rather than a note.
+
+- [x] 20.1 The defect. `envelope.go` passed the wire pointer straight through, so a `DATOS_SERIE` row
+  carrying `"Valor": null` with `"T3_TipoDato": "Definitivo"` produced a nil-valued *definitive*
+  observation and hit `CHECK (value IS NOT NULL OR status = 'W')` — surfacing as SQLSTATE 23514 from inside
+  the publish gate, naming a Postgres constraint rather than the source behaviour that caused it.
+- [x] 20.2 Latent, not live, and measured rather than assumed: the commit body records a live full-history
+  probe of all six configured series — 1,032 rows, zero nulls. Recorded here as the commit's own
+  measurement, not re-run for this record.
+- [x] 20.3 Why the Eurostat fix (`befa81f`) does not transfer, argued rather than copied. A sparse
+  JSON-stat map has no entry at a position: that is the *absence* of a datum, it is decidable, and no
+  observation is emitted. An INE row exists and carries an explicit null: that is a positive act by the
+  source, and discarding it would throw away something INE chose to publish.
+- [x] 20.4 Why every available projection would be an invention. A `DATOS_SERIE` row carries exactly five
+  fields — `Anyo`, `Fecha`, `T3_Periodo`, `T3_TipoDato`, `Valor` — with no secrecy marker, no
+  not-applicable flag and no annotation; the only field that could annotate is series-level `Notas`, which
+  for two series is a bare link to the INEbase page and can never explain one period. Statistical secrecy,
+  a not-applicable period and a genuine gap are therefore indistinguishable, so `withdrawn` fabricates a
+  retraction, `absent` discards a deliberately emitted row, and anything numeric is unthinkable. The
+  adapter refuses.
+- [x] 20.5 Classified `schema-drift` after argument, not by default: this adapter already classifies a
+  periodicity mismatch and an unrecognised `T3_TipoDato` that way, so the established meaning is "the
+  payload's CONTRACT is not what the adapter assumes". A republished null is still null on retry, so it
+  belongs with the non-retryable classes. A sixth class was rejected structurally — `sourceerr`'s taxonomy
+  mirrors `postgres.DownloadOutcome` 1:1 by documented design, so adding one needs a migration and
+  fractures an invariant two packages document.
+- [x] 20.6 One deliberate asymmetry with `befa81f`, flagged in both the code and the test: that commit
+  judges flag vocabulary before value presence so an undocumented flag keeps its own diagnostic; this one
+  does the opposite, because `DecodeSeries` and `FetchSeries` are exported and never run
+  `classifyTipoDato`, so a check one layer up would leave two entry points able to hand back a nil-valued
+  observation. Containment of the invariant beats symmetry of the diagnostic.
+- [x] 20.7 GREEN — four scenarios, four named tests, all listed as newly compliant by verify-report pass 7
+  §G: `TestDecodeSeries_NullValorFailsClosedRatherThanEmittingANilValuedObservation`,
+  `TestDecodeSeries_NullValorFailsClosedUnderEveryTipoDatoToken` (4 sub-cases),
+  `TestDecodeSeries_ZeroIsAPublishedValueNotAMissingOne`,
+  `TestDecodeSeries_EveryDecodedObservationCarriesANonNilValue`.
+- [x] 20.8 What this does NOT decide, written into the refusal message itself: what a null `Valor` means.
+  That needs INE documentation or a human ruling, and the message names which projection has to be decided,
+  where to record it, and that the archived raw file holds the verbatim payload to decide against —
+  mirroring the acknowledgement registry's `todo`. **This closes verify-report WARNING-30**, which had the
+  crash class disclosed only in a commit message.
+
+---
+
+## Slice 21 — a homepage that lists the six indicators, and a way back from them
+
+Commit `ac69a29`. 779 added, 30 removed across 13 files. New: `web/src/lib/indicator/homeListing.ts` (111),
+`web/src/templates/HomePage.astro` (89), `web/test/indicator/homeListing.test.ts` (101),
+`web/test/pages/home.container.test.ts` (144), `web/tests/e2e/home/home-page.ts` (22). Modified:
+`IndicatorCard.astro` (+35/−4), `es.ts` (+28/−1), `pages/index.astro` (+26/−12), `IndicatorPage.astro`
+(+24), `home.spec.ts` (+145/−11), and three others.
+
+- [x] 21.1 The gap, in the state the site was actually in: `/` was a placeholder whose visible text ended
+  "— deploy smoke target for milestone 0.1.", an English build note on the first page a Spanish reader
+  sees, and the six indicator pages were reachable only by typing their URLs. An indicator page offered no
+  way home.
+- [x] 21.2 GREEN — the listing derives from `resolveIndicatorRouteSlugs`, the same all-or-nothing guard
+  `/indicador/{slug}` uses, reached through `lib/indicator/homeListing.ts`. Six tests in
+  `homeListing.test.ts`, counted here with `grep -c "  it("` → **6**, including "refuses to list anything
+  when a frozen slug is absent from the artifact, naming the slug" and "refuses to list a series the
+  artifact carries with no observations, rather than showing an empty card".
+- [x] 21.3 The reasoning for all-or-nothing, which is the substance of this slice and lives in
+  `homeListing.ts`'s own header: a homepage listing five of six is strictly worse than a missing page. A
+  missing route 404s loudly for anyone holding the permalink; a missing ROW is invisible — the site looks
+  complete, and the vanished indicator is precisely the one nothing else on the site mentions, because `/`
+  is the only place a reader learns it exists.
+- [x] 21.4 **Mutation-verified, and this is the strongest evidence in this slice.** The commit body records
+  that replacing the guard with the exact `.filter()` shape verify-report CRITICAL-27 removed "kills one
+  test and leaves thirteen green". Counted here at `ac69a29`: `homeListing.test.ts` has 6 `it(` and
+  `home.container.test.ts` has 8 — **14 tests in the mutated scope**, so "one dies, thirteen stay green"
+  is arithmetically exact. Recorded as a mutation check, not as observed RED output.
+- [x] 21.5 GREEN — two minimal changes to `IndicatorCard.astro`, both argued. An optional `headingLevel`
+  defaulting to the previous `<span>`, so the related-cards strip stays byte-identical and the level comes
+  from the caller, because only the page knows what heading precedes the cards — which is exactly how the
+  h1→h4 skip happened. And a missing space between value and unit: Astro strips whitespace around a lone
+  expression, so every card rendered `22779personas`.
+- [x] 21.6 A defect the existing assertions could not see, recorded because the lesson generalises. The
+  `22779personas` fault was **live on all six indicator pages** and every existing assertion passed,
+  because each looked for the number and the unit separately. It was found by reading the built page's
+  TEXT rather than its markup.
+- [x] 21.7 Scope held: no search, no filtering, no catalogue beyond the six, no category navigation — those
+  are milestones 1.3–1.7 and stay there (`proposal.md:70-72`). Produces three new reader-facing Spanish
+  strings in `es.ts`: a rewritten tagline claiming only what the product keeps, an "Indicadores" heading
+  and `backToHomeLabel: "Volver al inicio"` (`es.ts:389`).
+- [x] 21.8 **This slice makes verify-report pass-6 SUGGESTION-50 obsolete**, and the design.md Open Question
+  written against it is corrected in this pass rather than left standing. That entry recorded, correctly at
+  the time, that `index.astro` carried a false "replaced starting slice 9" comment, was 1,002 bytes, and
+  linked none of the six permalinks. Re-measured here at `5af95c5`: the file is **2,713 bytes** (`wc -c`),
+  the false comment is gone, and verify-report pass 7 §B.4 measured the built `dist/index.html` as linking
+  exactly the six frozen slugs. See slice 21's spec decision below (WARNING-47).
+
+---
+
+## Slice 22 — a figure a thousand times too small, and numbers a Spanish reader can read
+
+Commit `52b7abe`. 676 added, 39 removed across 20 files. New: `web/src/lib/format/number.ts` (115),
+`web/test/format/number.test.ts` (118), `web/test/indicator/unit-agreement.test.ts` (148),
+`web/test/design-system/tabular-figures.test.ts` (46). Modified: `lib/indicator/routes.ts` (+100/−5) and
+fifteen others including the golden chart fixture.
+
+- [x] 22.1 The defect, and how it surfaced. The `ocupados-epa` card and page header read "22779 personas".
+  The figure means 22,779 THOUSAND people — roughly 22.8 million. Every source of truth agreed except the
+  one the page used: `config/series/ocupados-epa.yaml` says "miles de personas", the export artifact says
+  "miles de personas", and INE's own API returns `T3_Unidad` "Personas" with `T3_Escala` "Miles". Only
+  `web/src/content/indicators/ocupados-epa.ts` said "personas". **Live since slice 9a on the indicator
+  page**, and slice 21 had just put it on the front page.
+- [x] 22.2 The value is NOT rescaled — the pipeline is right and INE's scale is real. What changed is the
+  label, plus a guard so the two cannot contradict each other again.
+- [x] 22.3 GREEN — the duplicated unit is KEPT rather than deleted, and the reason is the substance.
+  Reading the artifact instead would have deleted the index base from two public pages: the artifact says
+  "índice" for both IPC series while the page says "índice (base 2021=100)", because the artifact's own
+  `base` field is a disclosed permanent-null gap. So the rule is not equality but **elaboration**:
+  editorial copy may append after a space or a parenthesis, never replace, shorten or rescale.
+  `unit-agreement.test.ts` (148 lines) is that guard.
+- [x] 22.4 The guard lives inside `resolveIndicatorRouteSlugs` — the one function both `/` and
+  `/indicador/{slug}` already reach — rather than in a second guard. CRITICAL-27's lesson, applied
+  deliberately: a second guard is a second thing to forget to call.
+- [x] 22.5 `decimals` is deliberately NOT guarded, and the asymmetry is argued: rounding a value for
+  display never changes what it means, relabelling its unit does. It has drifted in three of six slugs
+  (artifact vs content: 1/0, 3/2, 3/2) and is **flagged rather than changed**, since moving it moves
+  published figures. Carried into design.md Open Questions by this pass.
+- [x] 22.6 GREEN — one `Intl.NumberFormat` `es-ES` helper (`lib/format/number.ts`) applied to every
+  reader-facing figure: the cards, the page header, both variation figures, both accessible data tables,
+  the chart's point announcements, its textual description, and the y-axis tick labels. The CSV and JSON
+  are untouched structurally — they are Go-generated machine projections carrying digests, and the web
+  tree never writes them. SVG geometry keeps `toFixed`, because a grouping separator in a path `d`
+  attribute is a syntax error.
+- [x] 22.7 Why the axis labels mattered more than they look: before this, one screen showed the same number
+  two ways — the accessible data table read "49.687.120" while the axis beside it read "49687120".
+- [x] 22.8 One real behaviour change, found rather than assumed and measured rather than estimated. `Intl`
+  and `toFixed` disagree on exact decimal halves because `toFixed` rounds the underlying binary double:
+  `(70.865).toFixed(2)` is `"70.86"`, `Intl` gives `70,87`, which is what a person rounding the printed
+  number gets. Measured across every observation at each route's rendered precision: **zero** figures
+  change in the real artifact and **37 of 1031** in the synthetic fixture — all in its formula-generated
+  straight line, which is why they sit on exact halves and real INE readings do not. The golden chart
+  fixture moves four tick labels for this reason and the island/build-time parity device agrees again
+  afterwards.
+
+---
+
+## Slice 23 — a favicon, readable dates, a real link, and a chart legible on a phone
+
+Commit `6556f0e`. 1,556 added, 62 removed across 25 files. New: `web/public/favicon.svg` (77),
+`web/src/lib/format/date.ts` (137), `web/test/format/date.test.ts` (131), `web/test/pages/favicon.test.ts`
+(134). Modified: `lib/chart/geometry.ts` (+159/−4), `ChartIsland.svelte` (+98/−22), `lib/chart/svg.ts`
+(+58/−10), and eighteen others.
+
+- [x] 23.1 Every page load 404'd on `/favicon.ico` — the only console error on the site. There is now an SVG
+  icon with a dark-scheme variant, wired into all three route entry points that own an `<html>`.
+- [x] 23.2 A real bug found while writing it, recorded because the symptom was indistinguishable from
+  having no favicon at all: **XML forbids `--` inside a comment**, and the first version's rationale named
+  `--color-accent`, so Chromium silently refused the file. The rationale moved into a CSS comment and a
+  test pins it. This is genuine observed-failure evidence, in a browser, before the fix.
+- [x] 23.3 GREEN — `favicon.test.ts` finds route entry points by **scanning for `<html>`** rather than
+  reading a hand-maintained list. That is the WARNING-18 failure mode applied prospectively, and slice 25's
+  footer guard reuses the same discovery for the same reason.
+- [x] 23.4 GREEN — the methodology sheet showed `Última extracción: 2026-07-29T12:00:00Z`, a machine
+  instant on a Spanish page. It now reads "29 de julio de 2026 a las 14:00 (hora peninsular)", with the ISO
+  value preserved in `<time datetime>` so machines and the existing assertion both still see it.
+- [x] 23.5 Each part of that format argued rather than defaulted. `extractedAt` is provenance, not a
+  freshness badge: the question it answers on the one day it matters is "INE published this morning, is
+  this figure from before or after", which a date alone cannot answer. Seconds would advertise precision
+  the schedule does not have. Printing `12:00` from `12:00:00Z` would be wrong by one or two hours
+  invisibly, so the zone is converted to Europe/Madrid and named in prose, because CEST/GMT+2 change
+  wording twice a year.
+- [x] 23.6 GREEN — "Próxima publicación" pasted its URL into the visible copy, in parentheses. It is now a
+  link with the same text, matching the pattern the neighbouring fields already use. The disclosure is
+  unchanged: no per-series next-publication date exists anywhere in this project, and the copy still says
+  to consult the source's calendar rather than inventing one.
+- [x] 23.7 The chart was illegible on a phone, and the measurement is what decided the fix. At 375px its
+  tick labels measured **3.25 CSS px**, because `font-size="10"` inside a 960-unit viewBox scales down with
+  everything else. A bigger font could not fix it and the browser said why: `poblacion-residente`'s
+  `49.477.903` measures **55.3 units** against the **48** the left margin leaves, so it was clipped at
+  every viewport. Type and margins are one decision, and 2.7× separates a 312px phone column from an 848px
+  desktop one, so no single viewBox serves both.
+- [x] 23.8 GREEN — two geometries: 560×420 with a 20-unit tick font, three x-ticks and margins derived per
+  series from the real label widths, toggled at the same breakpoint `MethodologySheet` already uses.
+  Measured in a real browser at 375px: tick labels 3.25 → 11.15 CSS px, chart 312×117 → 312×234, clipped
+  labels one → zero. Costs 3–4 KB gzip per page against a 300 KB budget the heaviest page uses 19% of.
+  Verify-report pass 7 §A re-measured the budget against the **real artifact** with both geometries
+  server-rendered: worst page 76.6 KB, a 3.9× margin.
+- [x] 23.9 The golden chart fixture did not move: every new `renderChartSVG` input defaults to the prior
+  value and the narrow variant suffixes its own test ids.
+- [x] 23.10 Recorded and deliberately NOT fixed here, because this was a design pass and not bug-hunting:
+  the WIDE variant clips `poblacion-residente`'s y-labels at every viewport and its last x-tick overruns by
+  about 5.5 units. Only the narrow variant's derived margins solved it; the wide geometry's margins were
+  frozen by the golden fixture. **Closed three commits later by slice 26 (`b5d7858`)** — carried here so
+  the sequence is visible rather than looking like it was never noticed.
+
+---
+
+## Slice 24 — equal-height cards and a status pill that stopped looking like a button
+
+Commit `f6949f9`. 401 added, 5 removed across 6 files, **all six of them either component or e2e** —
+`FreshnessSemaphore.astro` (+26/−1), `IndicatorCard.astro` (+30/−2), and four Playwright files
+(`home-page.ts` +76, `home.spec.ts` +137, `indicator-page.ts` +17, `indicator-pages.spec.ts` +115). No unit
+test file changed, and the reason is task 24.6.
+
+- [x] 24.1 Defect one, measured. The homepage grid stretches each `<li>` to its row height but the card
+  inside carried no `h-full`, so it did not fill its cell. At 1280px row one rendered **156/156/188** —
+  ragged, because "índice (base 2021=100)" wraps to two lines and its neighbours do not. Now **188/188/188**.
+- [x] 24.2 Equalising heights alone would have left the badges at **319/319/351**, so the card also pins the
+  badge to its bottom edge. The badge is the one element a reader compares ACROSS cards rather than within
+  one: six freshness stamps on a common baseline read as a single horizontal scan, while a zigzag has to be
+  read card by card. It also moves the slack whitespace above the badge rather than below it, where it made
+  a taller card look like it had ended early.
+- [x] 24.3 Defect two, measured. The freshness semaphore rendered as a full-width bordered box that looked
+  exactly like a button — on the homepage cards, the related-indicators strip and every indicator page
+  header. It is a non-interactive `<span>` (verified: no role, no tabindex, no handler, `cursor: auto`) but
+  `inline-flex` inside a flex column is still stretched by the parent's default `align-items: stretch`.
+  Measured **100.0%** of its container's width everywhere; the indicator page header badge was **848 px**
+  wide. Now **31.1%** on a card and **8.7%** in the header.
+- [x] 24.4 GREEN — the fix is `self-start` in the COMPONENT, not at the call sites, and the placement is
+  argued. `inline-flex` already declares "sized to my own text", and cross-axis sizing is the one property
+  a parent decides for its child, so the component asserting its own declared shape is the honest place for
+  it; `align-self` is inert outside a flex/grid context, so it costs nothing in normal flow. Not `w-fit`,
+  which would fix the width and leave the same defect on the height axis in a flex row.
+- [x] 24.5 The `mt-auto` went the other way — into the card — because "the badge sits at my bottom edge" is
+  a decision only the card is entitled to make: the page header renders the same component right after the
+  variation figures and must not be pushed.
+- [x] 24.6 GREEN — tested by measuring rendered `boundingBox()` geometry, never by grepping for a utility
+  class. A test asserting `h-full` appears in the markup proves nothing about what a reader sees and passes
+  forever once someone changes the mechanism. The badge-width gate is expressed as a **share of its
+  container** — 70%, against a worst case of 31.1% after and exactly 100.0% before — so one threshold covers
+  both viewports. A new test also asserts the badge does not match the 44px sweep's own selector, applied
+  to the badge itself rather than as a descendant query, because the card is an `<a>` and a descendant
+  query would match all six and prove nothing.
+- [x] 24.7 **A mutation check with a NEGATIVE result, recorded rather than overclaimed.** Removing
+  `self-start` alone leaves the homepage badge-width tests green, because inside the new `mt-auto` wrapper
+  `inline-flex` is already shrink-to-fit. The card is protected by two independent mechanisms and
+  `self-start` is proven load-bearing by the page header alone. Recorded because a mutation check that does
+  not go red is evidence about the test suite, not an embarrassment to hide.
+
+---
+
+## Slice 25 — a site footer that defers on licensing instead of asserting one
+
+Commit `9af3f86`. **669 added, 0 removed across 7 files** — purely additive. New:
+`web/src/templates/SiteFooter.astro` (136), `web/test/pages/site-footer.test.ts` (304),
+`web/tests/e2e/footer/site-footer.spec.ts` (153). Modified: `es.ts` (+51), `pages/index.astro` (+5),
+`pages/indicador/[slug].astro` (+5), `workbench/pages/index.astro` (+15).
+
+- [x] 25.1 The gap, stated as the measurement that found it. Per-series provenance lived in each methodology
+  sheet, but a reader arriving at `/` had no route to the repository, to the code licence, or to the source
+  terms — and the raw-file hash listing the container serves at `/transparencia/raw-files.sha256` was
+  reachable by nobody: `grep -rn transparencia web/src/` returned nothing. For a project whose whole premise
+  is that every published figure traces back to the bytes it came from, an unreachable provenance artifact
+  is a real gap.
+- [x] 25.2 The obvious footer would have violated a spec, and the spec is a BASELINE capability rather than
+  one of this change's twelve deltas. `openspec/specs/source-attribution-licensing/spec.md:26` — "The
+  repository MUST NOT assert a single licence over all derived data … `LICENSE-DATA` MUST defer to
+  `sources/{source}.yaml` rather than override it." Eurostat's permission is acknowledgement-only, excludes
+  third-party material and restricts some commercial redissemination; INE and Seguridad Social carry their
+  own terms. There is no honest way to compress three sets of conditions into one line.
+- [x] 25.3 GREEN — the sentence asserts an **absence** rather than a licence. `es.footer.dataTermsNote`:
+  "Los datos publicados aquí no están cubiertos por una licencia única: cada fuente fija sus propias
+  condiciones de reutilización." It summarises none of them.
+- [x] 25.4 The link goes to `config/sources/`, not to `LICENSE-DATA`, and the reason is the spec's own
+  ordering: the spec makes the per-source YAML authoritative and `LICENSE-DATA` the deferring document, so
+  routing a reader through a deferring summary reinstates the hop the footer exists to remove. MIT appears
+  exactly once, beside "código", where a single claim is true (`es.footer.codeLicenceLabel`).
+- [x] 25.5 GREEN — the guard is written against what must NOT appear. `site-footer.test.ts` (304 lines)
+  asserts the rendered text and the markup match none of `/cc\s*by/i`, `/creative\s*commons/i`,
+  `/todos los datos/i` or `/licencia de los datos/i`.
+- [x] 25.6 Deliberately left out, each with its reason. The CC BY 4.0 offer for this project's own editorial
+  text — real, but CONDITIONAL on each source permitting redistribution, and printing a conditional claim
+  in a footer beside the data is exactly how it gets read as covering the data; it stays in `LICENSE-DATA`
+  where its condition travels with it. The manifest, because the action bar already offers each series' CSV
+  and JSON one level down and a footer is not a download hub. Every per-series fact the methodology sheet
+  owns — a test asserts the footer contains none of its source, origin or extraction labels.
+- [x] 25.7 The hash listing's label says what a reader will actually find — "Hashes SHA-256 de los ficheros
+  originales (texto plano)" — rather than "transparencia", which would promise a page this project does not
+  have.
+- [x] 25.8 The workbench gets the footer too, and that is a decision rather than a copy-paste: the guard
+  finds route entry points by scanning for `<html>`, exactly as slice 23's favicon test does, so exempting
+  one page would mean maintaining a skip list — the WARNING-18 failure mode. And it is the one page a
+  reviewer opens with both themes side by side, so it is where the footer's contrast and 44px targets get
+  looked at rather than only measured.
+- [x] 25.9 Disclosed and compensated rather than hidden: the e2e suite asserts the footer EMITS the
+  hash-listing href but cannot assert it resolves, because that file is written at runtime by the Go binary
+  into the container's volume and never exists in `web/dist`. Compensated by pinning the href against the
+  writer's own source — `test/pages/site-footer.test.ts:196` regex-reads `publicHashPath` out of
+  `app/cmd/concontexto/ingest_cmd.go` and fails loudly if the regex stops matching ("this guard has gone
+  blind") — and by verifying 200 against the running container. Verify-report pass 7 §B.4 independently
+  re-read that guard and confirmed it. The same limitation already applied to the action bar's
+  `/data-derived/**` links, which no e2e test has ever asserted resolve either.
+- [x] 25.10 Placement argued in the component's own header: rendered as a sibling of `<main>`, never inside
+  it, because a `<footer>` nested in `<main>` has NO landmark role. Carries no heading at all — it follows
+  an `h3` on `/`, an `h2` on an indicator page and an `h2` on the workbench, so any fixed level would skip
+  on at least one. Lives under `src/templates/`, not `src/components/`, because several slice 5/6 guards
+  scan `src/components/` wholesale on the assumption that every `.astro` file there is one of the design
+  system's eight catalog components. Ships zero runtime JavaScript.
+- [x] 25.11 Produces five new reader-facing Spanish strings in a new `es.footer` block.
+- [x] 25.12 **The spec decision this slice forces — verify-report pass-7 WARNING-47 — is taken in this
+  pass**, and it is not "leave it". See the section "The WARNING-47 spec decision" at the end of these
+  slices, and the delta spec it produced.
+
+---
+
+## Slice 26 — deriving the wide chart's margins so it stops clipping published figures
+
+Commit `b5d7858`. 427 added, 74 removed across 7 files: `lib/chart/geometry.ts` (+135/−26),
+`web/test/chart/geometry.test.ts` (+113/−11), `web/test/chart/svg.test.ts` (+110/−29),
+`ChartIsland.svelte` (+12/−2), `lib/chart/svg.ts` (+9/−3), the golden fixture, and
+`indicator-pages.spec.ts` (+47/−2).
+
+- [x] 26.1 The defect, measured in a real browser on `/indicador/poblacion-residente` by reading `getBBox()`
+  off the live DOM: **all four y-axis labels started LEFT of the viewBox origin** (−5.5, −6.5, −4.6, −3.6)
+  and were therefore cut off, and the last x tick ended at **965.5 against a viewBox 960 wide**. **Five of
+  the six pages** overran the right edge. A portal whose premise is publishing figures accurately was
+  rendering them sliced. This is slice 23's task 23.10 being closed.
+- [x] 26.2 The cause was never the grouping separators, which only made it visible. The margins were
+  constants — `marginLeft` 56, `marginRight` 16 — and the labels are right-anchored at `marginLeft - 8`. A
+  grouped eight-digit figure measures ~54 units and had 48 to live in. The right edge was worse by
+  construction: the last tick is centred on `plotArea.x1`, so half its width ALWAYS overran, on every
+  series, whatever the label.
+- [x] 26.3 GREEN — the narrow variant had already solved exactly this by deriving its margins from the
+  labels the series really prints. That derivation is now **one function both variants use**. Two copies of
+  this rule would drift, and the narrow one was already correct.
+- [x] 26.4 The asymmetry between the two gutters is argued, not accidental. The left gutter keeps 56 as a
+  FLOOR; the right one has none. At 960 units the ~18 units a short-label series would win back is 1.9% of
+  the drawing, invisible, and the y axis is where the eye enters the chart — nothing is bought by shrinking
+  it, and five of six pages keep their coordinates. The narrow box is the opposite trade at 560 units,
+  where a phone can see the loss, so it keeps no floor. No right-hand floor either: the derived value
+  exceeds the old constant for any period label of four glyphs or more, so a floor there could never bind
+  and would be dead code.
+- [x] 26.5 GREEN — the mirror rule went in with it: the FIRST tick is centred on `x0`, so `marginLeft` is
+  never allowed below `marginRight`. It never binds in practice; it is there so the contract is complete
+  rather than lucky.
+- [x] 26.6 The estimator is calibrated conservative and says so: 0.64 advance ratio against a measured
+  ~0.545 for grouped numerals, so it errs towards a gutter a few units too wide, never a clipped label. And
+  it is deliberately **not what the tests trust** — the new gate measures `getBBox()` in Chromium across all
+  six slugs, because an estimate is precisely the thing that was wrong here.
+- [x] 26.7 The golden fixture was **regenerated, not hand-edited**. Its tick labels are identical, every y
+  coordinate is identical, and the file is the same size — only x moved, by the 11 units the plot area
+  narrowed when the right margin went 16 → 27. The island/build-time parity test passes against it, which
+  is the whole point of that device.
+- [x] 26.8 Left in place deliberately: `DEFAULT_DIMENSIONS` still exists and still carries the old
+  horizontal margins. It is now only "a box" for pure-scale and hit-test tests that do not care about
+  labels, and **a test pins that production's default is the DERIVED box, not this constant**. The doc
+  comment is what stops someone reaching for it in new drawing code.
+
+---
+
+## Slice 27 — showing periods the way Spanish statistics write them
+
+Commit `0c40097`. 970 added, 46 removed across 21 files. New: `web/src/lib/format/period.ts` (191),
+`web/test/format/period.test.ts` (139), `web/test/format/machine-surfaces.test.ts` (206). Modified:
+`ChartIsland.svelte` (+43/−6), `IndicatorPage.astro` (+11/−2), `indicator-page.container.test.ts`
+(+107/−1), `indicator-pages.spec.ts` (+79/−2), the golden fixture, and twelve others.
+
+- [x] 27.1 The defect: the site rendered `2026-Q2` to readers, **twenty-two times on one indicator page**.
+  That is the database's canonical storage format leaking to the screen, and `Q` is an English abbreviation
+  for quarter. Spain does not use it in official statistics, and this project's own source proves it —
+  INE's API returns `T3_Periodo` with values `T1`–`T4`, and its press releases write "el segundo trimestre
+  de 2020". Every figure comes from a source that says T and the reader was shown Q.
+- [x] 27.2 Confirmed against the requirement text rather than assumed: **not** covered by the
+  verbatim-identifiers requirement, which enumerates four things — indicator slugs, configuration
+  filenames, source names and origin series identifiers. A period label is none of them. It is a date, the
+  same category as the extraction instant slice 23 reformatted for the same reason.
+- [x] 27.3 GREEN — two registers, differing in exactly one place, **named in code rather than implied by
+  call sites**. Compact where the label sits in a column or on an axis and its width is load-bearing:
+  `T2 2026`, `jun 2026`, `2026`. Prose where it sits in a sentence: `T2 2026`, `junio de 2026`, `2026`.
+- [x] 27.4 Why quarters and years have one form and months two, argued rather than defaulted. `T2 2026` is
+  already the decision and inventing "el segundo trimestre de 2026" for prose would leave the site saying
+  two things about one period. Months differ because `septiembre de 2026` is 18 glyphs against `2026-09`'s
+  7 — it wraps the Periodo column at 375px and widens every monthly chart's gutter — while running prose
+  has no column to save. The screen-reader announcement takes prose deliberately: speech has no column
+  either.
+- [x] 27.5 Only ONE authored Spanish string, in `es.ts`: the quarter form. Every other Spanish word here is
+  CLDR's `es-ES` grammar. That is also the whole English-version seam — `es.periods.quarter` and the single
+  `LOCALE` constant `format/number.ts` already exported. The letter T appears nowhere else in the code.
+- [x] 27.6 GREEN — **the machine boundaries were found and each verified rather than assumed**, which is
+  the substance of this slice. The published CSV and JSON still carry canonical periods and every
+  recomputed sha256 still matches the manifest, over HTTP from the running stack as well as in the fixture;
+  permalink `from`/`to` are byte-identical and a display-format bound is rejected; `<time datetime>` still
+  carries ISO; and every sort, comparison and join — `periodOrdinalIndex`, `previousPeriod`, `sliceRange`,
+  the YoY join, the `{#each}` keys — still runs on the canonical form. `machine-surfaces.test.ts` (206
+  lines) is that guard.
+- [x] 27.7 **Mutation-verified.** The commit body records three mutations confirming each boundary catches a
+  formatter applied where it does not belong. Recorded as a mutation check by the writer, not as observed
+  RED output. Verify-report pass 7 §A independently re-measured the machine surfaces at `5af95c5`:
+  `data-derived/csv/ocupados-epa.csv` ends `2026-Q2,22779,D,Definitivo,1` and the JSON carries
+  `['2025-Q4','2026-Q1','2026-Q2']`, while the reader surface says `T2 2026`.
+- [x] 27.8 GREEN — the chart's derived margins now measure the DRAWN label rather than the stored one,
+  which matters because monthly labels grew from 7 glyphs to 9. Quarterly geometry is byte-identical —
+  `T2 2026` is the same seven glyphs as `2026-Q2` — so the golden fixture moved in four x-tick text nodes
+  and **nothing else: no coordinate, no viewBox, no margin**.
+
+---
+
+## Slice 28 — reconciling the editorial registries in the deployed stack, where nothing ever did
+
+Commit `a7c3739`. 546 added, 13 removed across 5 files: `app/cmd/concontexto/deploy_reconcile_composition_test.go`
+(new, 255), `docker-compose.yml` (+80), `docs/deploy.md` (+99/−1), `app/cmd/concontexto/ingest_cmd.go`
+(+43/−12), `app/internal/ingestion/e2e_export_test.go` (+69). **A production defect fix, and the seventh
+instance in this change of something built, tested, and never connected to the pipeline that would make it
+do anything.**
+
+- [x] 28.1 The defect, measured on the running stack: `event = 0`, `series_break = 0`. The only production
+  call site of `ReconcileEditorialConfig` was the manual `ingest --reconcile` flag; the scheduler's cycle
+  never touched it. So in **any** deployed stack — which is every deployed stack, since they all run
+  `serve` — `rupturas.yaml`, `eventos.yaml` and `gobiernos.yaml` never reached the database at all.
+- [x] 28.2 What that cost, invisibly, since slice 7, recorded because none of it was visible as a failure:
+  **no break band ever rendered** (the component, its non-dismissibility guarantee under PRD principle P4,
+  and the chart's shaded band all drew nothing, because `ResolveActiveBreaksForSeries` had nothing to
+  resolve); **no annotation ever rendered**, for the same reason; and **rule 3's break exemption could
+  never fire** — `breakAt` always saw an empty slice, so a jump at a genuinely recorded methodological
+  break blocked exactly as if no break existed.
+- [x] 28.3 GREEN — a one-shot compose service, gated on `migrate` and gating `app`. Argued from ADR-1:
+  config is embedded in the binary, so it cannot change without a new image and a new image cannot arrive
+  without a container recreation — "reconcile when the config changes" and "run once on `up`" are therefore
+  the same instant. It mirrors the `migrate` service the stack already has for exactly this shape of work,
+  and a failed reconcile becomes a non-zero exit that gates the app rather than a line in a log nobody
+  reads.
+- [x] 28.4 Two alternatives rejected with their reasons. The scheduler's cycle: idempotent, but it redoes
+  byte-identical work every fifteen minutes forever and couples editorial reconciliation to per-source
+  scheduling, so a source in backoff would delay the registries for reasons unrelated to them. `serve` at
+  boot: the spec argument does NOT transfer — a reconcile is not a schema migration — but the operational
+  one does, because `runServe` is deliberately resilient to every missing prerequisite, so a failed
+  reconcile there would have to be swallowed to preserve that resilience, and a silently swallowed
+  reconcile is this defect again.
+- [x] 28.5 Ordering is **declared rather than timed**, and it matters twice: rule 3 reads `series_break`
+  DURING ingestion, and `Export` reads it back INTO the artifact. A reconcile landing after the app's first
+  cycle would publish empty arrays for a day.
+- [x] 28.6 GREEN — **the guard is not a grep**, which is the substance of this slice's test.
+  `deploy_reconcile_composition_test.go` (255 lines) parses the committed compose file for the service and
+  its gates, then takes that file's own `command:` array — never a literal — and runs it through the same
+  dispatch table `main()` uses, against a real migrated Postgres, asserting the rows land and that the
+  output names the pending entries.
+- [x] 28.7 **Mutation-verified by the verifier, not by the writer.** Verify-report pass 7 §B.4 broke it two
+  ways: deleting `reconcile: condition: service_completed_successfully` from `app.depends_on` turned
+  `TestDockerComposeReconcile_RunsAfterMigrationsAndGatesTheApp` RED naming the exact condition and why it
+  matters; changing `command: ["ingest","--reconcile"]` to `command: ["ingest"]` turned
+  `TestDockerComposeReconcile_TheCommittedCommandProjectsEditorialRows` RED with the binary's own usage on
+  stderr. Recorded as the auditor's measurement, cited not claimed.
+- [x] 28.8 Reporting closed while here: the reconcile line now prints acknowledgement counts, and every
+  pending list as a count AND its identifiers. An operator sees `acknowledgements pending=1 (no human
+  signature), not projected: ocupados-epa-2020-q2-covid` rather than nothing.
+- [x] 28.9 Proven on a clean slate — isolated project, `docker compose up -d` and nothing else: breaks
+  inserted=5, events inserted=10, and the break `epa-metodologia-2021` now reaches the exported document
+  and renders on the page as "Rupturas de la serie — T1 2021", which the page contained **zero** times
+  before. Verify-report pass 7 §A re-measured the artifact independently: every series document carries
+  `events: 10`, and `tasa-de-paro-epa`, `ocupados-epa`, `ipc-general` and `ipc-subyacente` each carry
+  `breaks: 1`.
+- [x] 28.10 Disclosed at the time and now closed by later events: the drawn SVG band was unproven end to
+  end, because a full build from live full-history data failed while `ocupados-epa` was held by the publish
+  gate awaiting a human signature. That signature landed two commits later (slice 30, `4e11378`) and pass 7
+  §A measured a production build at exit 0 with all seven pages.
+
+---
+
+## Slice 29 — filtering a series by the government in office
+
+Commit `ff2ea4f`. 1,122 added, 21 removed across 12 files. New: `web/src/lib/transform/governmentTerms.ts`
+(224), `web/test/transform/governmentTerms.test.ts` (254). Modified: `ChartIsland.svelte` (+206/−6),
+`indicator-pages.spec.ts` (+141/−6), `permalink.test.ts` (+99), `es.ts` (+43),
+`indicator-pages-no-js.spec.ts` (+35), `permalink.ts` (+33/−3), and four others.
+
+- [x] 29.1 One of the two requested filters was built and the other refused, with the reason recorded. A
+  year IS a `[from, to]` pair, which the custom picker already expresses, so a year control would buy two
+  field fills at the cost of a third encoding of the same concept in the permalink — and one year of a
+  quarterly macro series is four points, a chart saying less than the table beside it. The government
+  filter is different in kind: **its bounds are not on the page**. A reader cannot type "Rajoy's term" into
+  a date picker without already knowing the dates.
+- [x] 29.2 GREEN — the registry records a start for each government and an end for none, so the window has
+  to be derived: term N runs until term N+1 takes office, half-open, with the last one open-ended. Correct
+  for Spanish prime-ministerial succession, which is continuous — **but it is an inference, and this
+  project does not let inferences pass unmarked**.
+- [x] 29.3 GREEN — the inference is marked in the type itself. `endKind` distinguishes "configured" from
+  "succession" from "open"; a configured end always wins over the derivation; `succeededById` names the
+  entry each boundary was read off; and the reader is told: "El registro editorial no recoge la fecha de
+  fin de este gobierno: el final del intervalo se deduce de la toma de posesión del gobierno siguiente."
+- [x] 29.4 What would break it, **recorded rather than discovered later**: a real gap or caretaker period is
+  absorbed into the preceding term silently; a government missing from the middle of the registry is
+  absorbed by its predecessor invisibly; two governments inside one period on a coarse axis collapse the
+  earlier one's window. The handover period goes to the incoming government, so no observation sits in two
+  terms — a choice, not a fact.
+- [x] 29.5 Adolfo Suárez is configured with an unconfirmed date and is never projected, so the earliest
+  selectable term starts in 1981 and observations before it belong to no government. The earliest term is
+  deliberately NOT stretched back to the series start: that would assert Calvo-Sotelo governed in 1971. The
+  data stays fully reachable through the full range and the custom picker; it is simply not selectable by
+  government.
+- [x] 29.6 GREEN — a term that selects nothing is absent; so is a term that selects everything, which is
+  the full range under a president's name. **This extends the spec's "absent, not disabled" rule by ANALOGY
+  rather than applying it literally**, and the extension is stated in the module and tested: the clause
+  names the five fixed presets, and a condition that is neither of those carries across by its reason, not
+  its wording.
+- [x] 29.7 GREEN — the permalink encodes the **editorial id, never the derived window**. Freezing the
+  window into a link would freeze today's inference, so an old link would stop agreeing with the registry
+  the day a real end date lands. An unknown or non-overlapping id degrades silently to the full range.
+  `permalink.test.ts` +99.
+- [x] 29.8 GREEN — absent without JavaScript rather than present and dead, gated at SSR and proven in a real
+  `javaScriptEnabled: false` context (`indicator-pages-no-js.spec.ts` +35). The government annotation chips
+  stay server-rendered; only the interactive filter is withheld.
+- [x] 29.9 Two disclosures, both about what is NOT proven, and both still true at `5af95c5`. The control
+  does not appear on the currently deployed stack, correctly: its artifact carried three quarters per
+  series, entirely inside Sánchez's open term, so every government filter would be the full range renamed.
+  And the "selects everything ⇒ absent" half is **proven only at unit level**, because no government term
+  covers any of the six real series entirely. Carried into design.md Open Questions by this pass.
+
+---
+
+## Slice 30 — signing the COVID acknowledgement, and making an agent unable to sign the next one
+
+Commit `4e11378`. 225 added, 89 removed across 5 files: `app/internal/adapters/config/acknowledgement.go`
+(+58/−2), `acknowledgement_validate_test.go` (+116/−31), `config/reconocimientos.yaml` (+10/−34),
+`app/internal/ingestion/acknowledgement_e2e_test.go` (+20/−18),
+`deploy_reconcile_composition_test.go` (+21/−4). **This is the fix for pass 6's own blocker, and it is the
+direct counterpart of this file's "an agent signed a human's name" process finding.**
+
+- [x] 30.1 The repository owner reviewed the record and instructed that it be signed in his name.
+  `acknowledged_by: "jorgealonsodev"`, `acknowledged_on: 2026-08-04`; `signature_status`, `drafted_by` and
+  the `todo` are gone, and `note_md` states a reviewed conclusion instead of a reading. **The research it
+  rests on survives verbatim**: the measured distribution, the pinned `18607.2`, and the INE press-release
+  citation.
+- [x] 30.2 `jorgealonsodev` rather than `concontexto`, which was the alternative offered, and the reason is
+  the field's whole purpose: a project name would sign an attestation as an organisation, and the value of
+  this field is that **someone can be asked about it in two years**. A handle resolves to a person; a
+  project name resolves to itself.
+- [x] 30.3 GREEN — **the guard INVERTS rather than being deleted**, and that is the decision worth
+  recording. `TestRealAcknowledgementRegistry_ShipsExactlyOneUNSIGNEDDraft` had asserted that the shipped
+  record MUST be unsigned. Its purpose is intact — what changed is which state is correct — so it now
+  asserts the record is signed BY A REAL HUMAN, failing on an empty signer, on thirteen agent tokens, on
+  twelve placeholder tokens, on a leftover draft field, on the note still declaring itself pending, and on
+  the research drifting. Its comment records what it used to assert and the incident that produced it.
+- [x] 30.4 GREEN — **and the hole the original incident went through is closed.** The validator's nineteen
+  placeholder tokens contained not one agent-shaped name, so the exact string the fabricated draft carried
+  — "Claude (agente), bajo autoridad delegada — no es una firma" — would have passed every one of them.
+  Whole-string tokens were not enough either: an agent that decided to sign would write a sentence, not a
+  token. So agent words are now matched **at word boundaries anywhere in the string**. `ai` and `ia` stay
+  whole-string-only so "Ai Weiwei" still validates, and word-boundary rather than substring matching keeps
+  "Alberto Botella" valid.
+- [x] 30.5 The principle, stated in the commit and worth keeping in the record: **a mechanism whose only
+  defence against an agent signing is an agent choosing not to is not a defence.**
+- [x] 30.6 GREEN — the whole path proven end to end on a **disposable database rather than the running
+  stack**: `validate-config` accepts it; the reconcile projects it, 0 rows → 1 with `acknowledgements
+  inserted=1` and the pending line gone; a real ingest against live INE publishes 98 observations as
+  `publish-overridden` at WARN, with the log naming the record and the signer and `ingestion_run.outcome =
+  succeeded-with-acknowledgement`; and the artifact now carries `series/ocupados-epa.json`.
+- [x] 30.7 Live INE corroborates the record's own figures: 2020-Q1 = 19681.3, 2020-Q2 = 18607.2 — exactly
+  the two the note cites and exactly the pinned value. Had it drifted, the run would have raised
+  `acknowledgement-stale` and blocked rather than inheriting an approval given for a different number.
+- [x] 30.8 **Attacked by the verifier rather than read, and the attack is the citable evidence.**
+  Verify-report pass 7 §D mutated the record three ways: the exact original fabrication string → exit 1;
+  `"TODO"` → exit 1; `"Jorge Alonso"`, an ordinary human name → exit 0, so the guard is not simply
+  rejecting everything. And replacing the signature with a properly-declared `signature_status: "unsigned"`
+  leaves `validate-config: ok` while the inverted test fails with **five distinct assertions**. **Pass 7
+  records CRITICAL-37 CLOSED, both halves.**
+- [x] 30.9 What did NOT change, and should not: WARNING-39 stays open. `.github/CODEOWNERS:17` still reads
+  `/config/** @jorgealonsodev @TODO-second-config-reviewer`, a placeholder GitHub cannot resolve, and
+  `gh api .../collaborators` returns exactly one login. The mechanism now exists; the second pair of eyes
+  does not, and cannot until a second person does. **Materially more relevant now that a human signature is
+  the thing being protected.**
+
+---
+
+## Slice 31 — marking each change of government on the timeline
+
+Commit `154824f`. 1,136 added, 6 removed across 18 files. New: `web/src/lib/chart/governmentMarkers.ts`
+(163), `web/test/chart/governmentMarkers.test.ts` (159). Modified: `indicator-pages.spec.ts` (+106),
+`island-ssr.test.ts` (+97), `lib/chart/svg.ts` (+93), `reserved-semantics.test.ts` (+71),
+`description.test.ts` (+62/−1), `indicator-chart.container.test.ts` (+55), `es.ts` (+38), the golden
+fixture, and eight others.
+
+- [x] 31.1 The requested treatment was refused for a stated reason. The owner asked for a **dashed** vertical
+  line; it could not be dashed, because a dotted stroke is a RESERVED semantic here — `theme.css`'s own
+  header says dotted grey always means provisional data, `svg.ts` draws provisional observations that way,
+  and `reserved-semantics.test.ts` enforces it. A dashed government line would have taught a reader two
+  contradictory meanings for one visual code.
+- [x] 31.2 GREEN — a thin solid rule across the full plot height in `--color-ink`, capped by a small
+  downward triangle. A flag planted at the investiture.
+- [x] 31.3 The separation from both existing marks is carried by **shape, not palette**. Against the
+  provisional dash: solid, and running ACROSS the plot instead of ALONG the data path — one is a statement
+  about an observation's status, the other about the calendar. Against the break band: a line has no width
+  at all against a band one full period step wide; solid ink against a 0.35-opacity wash; an instant
+  against an interval. The flag is a triangle, a third glyph beside the definitive circle and the
+  provisional diamond, so the chart stays readable with colour discarded entirely.
+- [x] 31.4 `--color-ink-muted` was rejected deliberately: read side by side against the reserved provisional
+  grey they are the same grey to the eye, so a rule in the axis colour would have collided with the
+  reserved semantic in everything but name.
+- [x] 31.5 Colour carries no information in this mark — every marker on every chart is the same ink. That is
+  also why no party reading is possible, which matters because the data could not support one anyway:
+  `gobiernos.yaml` and `EventConfig` carry no party field at all, by PRD §12.1's design.
+- [x] 31.6 GREEN — three parts do the labelling because no one of them is enough: a third legend entry with
+  the glyph in miniature; a `<title>` per marker naming the government and its year; and a sentence
+  appended to the generated description, which is what a screen reader gets, because the drawing is a
+  single `role="img"` that prunes its own descendants so a marker title reaches a pointer and nobody else.
+  **One sentence serves both readers** rather than a visible list plus a hidden duplicate that could drift.
+- [x] 31.7 No text on the drawing itself, and that is measured rather than aesthetic: six four-digit years
+  need about 26 units each at wide tick size while Calvo-Sotelo and González sit **21 units apart**.
+  (Slice 33 revisits exactly this and solves it with vertical text.)
+- [x] 31.8 GREEN — a marker is drawn only when the investiture's snapped period falls inside the periods
+  handed in. Without that rule `nearestPeriodIndex` snaps Aznar's 1996 investiture onto 2002-Q1 and draws
+  a change of government **that did not happen there**. The rule lives inside the one function both
+  renderers call, so neither call site can forget it.
+- [x] 31.9 Range interaction falls out by construction rather than needing more logic: the island passes the
+  currently visible periods, so narrowing re-selects the markers. Under the government filter at most one
+  survives — the term's own opening boundary — and that edge marker is the point, since it shows where the
+  chosen window came from. "At most" and not "exactly": on `poblacion-residente`, semiannual before 2021,
+  Rajoy's 2011-Q4 investiture falls in a gap in the cadence and no marker is drawn, which is correct
+  because the change did not happen inside the span on screen.
+- [x] 31.10 Nothing is drawn before 1981 and nothing is invented. Suárez is unconfirmed and never projected,
+  so that decade is honestly unmarked — and the sentence says the changes REGISTERED in the period shown,
+  never that these were the only ones, which would turn honest silence into a false claim.
+- [x] 31.11 The golden fixture **moved on purpose**: a change of government now falls inside the golden
+  span, because a feature absent from the golden is a feature the two renderers can silently disagree
+  about.
+
+---
+
+## Slice 32 — projecting a selected event's period onto the plot
+
+Commit `d5cfbed`. 1,610 added, 16 removed across 18 files. New: `web/src/lib/chart/eventSpans.ts` (264),
+`web/tests/e2e/indicator/indicator-event-spans.spec.ts` (249), `web/test/chart/eventSpans.test.ts` (246).
+Modified: `svg.test.ts` (+142), `island-ssr.test.ts` (+106), `lib/chart/svg.ts` (+100),
+`indicator-chart.container.test.ts` (+79), `description.test.ts` (+78/−1), `es.ts` (+51), and eight others.
+
+- [x] 32.1 The treatment had to earn its place on a channel none of the other three uses, because the chart
+  already carried three visual languages and a fourth risked making it a hieroglyph. An event has
+  **duration**, which none of the other marks do — so: a solid horizontal rail near the top of the plot,
+  spanning first to last covered period, capped at each end by a short serif turning down into the plot.
+- [x] 32.2 Four marks, four channels, **and not one of them is colour**: dotted grey ALONG the data path
+  with diamonds (provisional observation); translucent FILLED column one period wide (methodology break);
+  thin solid VERTICAL rule + triangle flag (a government took office); solid HORIZONTAL rail + serifs (the
+  registry dates this event here to here).
+- [x] 32.3 Each separation measured, not asserted. Rail against band is stroke versus fill. Rail against the
+  government rule is **orientation**, the property read before any other — measured in the browser, the rule
+  spans over **80%** of plot height and the rail under **15%**. Rail against the provisional dash is
+  solid-versus-dashed and across-versus-along. No new glyph shape, so circle, diamond and triangle keep
+  their meanings.
+- [x] 32.4 A translucent fill was rejected: it would have left hue as the only channel separating it from
+  the break band, and would wash out about a quarter of the plot on the real 2008–2013 case.
+- [x] 32.5 GREEN — per group rather than per entry, and measured rather than assumed: the exogenous group on
+  `tasa-de-paro-epa` is four chips and two rails, non-overlapping, one lane. Per-entry selection would need
+  a 44px target per chip — pushing the chart off a 375px screen — and could only work with JavaScript,
+  leaving a no-JS reader chips that look selectable and are not.
+- [x] 32.6 GREEN — an event with no end date is **not drawn**, and each alternative is refused by name:
+  running it to the last observation invents an end, capping it at the start asserts one quarter, and a
+  vertical rule would steal the government code. The chip stays and the sentence discloses the rule in the
+  same breath — the periods shown are those the registry bounds with a start AND an end date.
+- [x] 32.7 The outside-the-window test is deliberately **weaker** than the government marker's: INTERSECTS,
+  not contained, because a 2008–2013 crisis really does cover 2010–2013 of a series starting in 2010. A
+  clamped end is drawn UNCAPPED so the plot's edge never reads as a boundary, and the sentence says it
+  extends beyond the period shown.
+- [x] 32.8 GREEN — the rail's `title` is pointer-only (the drawing is one `role="img"` and prunes its
+  descendants), so the real route for a screen reader is a polite live region that re-narrates on every
+  toggle, **always present rather than created on first change**. It states transient selection, which is
+  why it is a live region and not part of `aria-describedby`, matching the government-range and custom-range
+  precedent.
+- [x] 32.9 Two real cross-layer overlaps exist in the data and both were checked to stay legible: the
+  pandemic rail crosses the 2021 EPA break band, and the financial-crisis rail contains Rajoy's 2011
+  government rule. Spans that overlap each other lane-pack; none do today.
+- [x] 32.10 The golden fixture gained one event span, so the fourth layer sits **inside** the
+  anti-divergence device rather than outside it.
+- [x] 32.11 Two findings this commit reported rather than fixed. First: the island server-rendered its
+  annotation group toggles as buttons with zero chips for closed groups, so without JavaScript that control
+  was present and dead — the same defect the custom-range picker and the government select were fixed for
+  by being absent. **Closed by slice 33 (`e1db0ea`), whose subject line is "draw nothing until it is asked
+  for".**
+- [x] 32.12 Second, and **still open at `5af95c5` — re-verified for this record rather than accepted from
+  the commit body**: `ngeu-primer-desembolso` carries `date_status: unconfirmed` in `config/eventos.yaml`
+  (line 56) and nevertheless reaches the published artifact. Verified here by reading
+  `web/data-derived/series/tasa-de-paro-epa.json`, whose `events` array contains it. The mechanism is
+  exact: `app/internal/ingestion/reconcile.go:86` reads `if e.DateStart == nil`, **never `e.DateStatus`**,
+  and this entry has both a `date_start` and an `unconfirmed` status. Two doc comments in shipped source
+  state the opposite — `reconcile.go:10-12` ("A break or event whose DateStatus is 'unconfirmed'
+  (Date/DateStart is nil) is NEVER projected") and `events_read.go:47-49` ("An unconfirmed
+  (date_status='unconfirmed') entry never reaches this table at all"). Recorded as a disagreement, not
+  adjudicated here: see the design.md Open Question this pass opens for it.
+
+---
+
+## Slice 33 — naming every mark on the drawing, and drawing nothing until it is asked for
+
+Commit `e1db0ea`. 1,573 added, 177 removed across 17 files. New: `web/src/lib/chart/annotationLabels.ts`
+(309), `web/test/chart/annotationLabels.test.ts` (337),
+`web/tests/e2e/indicator/indicator-annotation-labels.spec.ts` (328). Modified: `lib/chart/svg.ts`
+(+130/−22), `svg.test.ts` (+114/−13), `ChartIsland.svelte` (+67/−14), `IndicatorChart.astro` (+44/−25),
+`island-ssr.test.ts` (+48/−19), and eight others.
+
+- [x] 33.1 The previous version was rejected by the owner on two counts, both fixed here: a mark that only
+  identifies itself on hover or in a paragraph below is not readable, and government markers were drawn
+  unconditionally on every chart whether or not anyone had asked for them. The second half **closes slice
+  32's task 32.11 disclosure**.
+- [x] 33.2 Labels had been left off before for a **measured** reason, not an aesthetic one (slice 31, task
+  31.7): six four-digit years need about 26 user units each and Calvo-Sotelo and González sit 21 units
+  apart. Vertical text dissolves that — a sideways label needs one LINE HEIGHT of horizontal room instead
+  of one string length: **11.91 units against the 108 and 75** the horizontal names would have needed, so
+  the 21-unit pair now clears by **9.34**.
+- [x] 33.3 GREEN — narrow is where it stays hard, at **9.20 units apart**, and two things were both
+  necessary. The label font is its own constant rather than the tick size (wide 10, narrow 14 — at the
+  narrow tick's 20 the stacked pair overruns the plot and the second name is refused), and a **pairwise
+  downward settle** drops only labels whose bands actually overlap, so a long name elsewhere on the axis
+  does not eat its neighbour's room. A naive lane-row scheme fails at 16.
+- [x] 33.4 Twelve combinations swept in a real browser — six pages, both variants, every group open: no label
+  overlaps another, none escapes the viewBox, none measures zero.
+- [x] 33.5 The label carries the registry's name **verbatim and nothing else**, and each omission is argued.
+  Not the year: the axis under the mark is a calendar and the chip below already reads "1981: Leopoldo
+  Calvo-Sotelo", so repeating it would spend the drawing's scarcest resource on the one fact already
+  available twice. Not a surname either, tempting as "Zapatero" is at 8 glyphs against 28 — there is no
+  surname field, so it could only be derived, and a last-token rule that handles "José Luis Rodríguez
+  Zapatero" would turn a "Fernández de la Vega" into "Vega". **That is a rendering layer inventing an
+  editorial fact.** The upshot is **zero new Spanish strings**: every label is data already in `config/`.
+- [x] 33.6 GREEN — event rails take a horizontal label, centred, drawn only when it fits whole. The crisis
+  name is 58 glyphs and 448 units against a 435-unit narrow plot, so there it is **WITHHELD rather than
+  truncated** — an ellipsis renames the event on screen, and shrinking type below what the rest of the
+  drawing sets trades an unreadable label for an illegible one. The sentence below still carries it in full.
+- [x] 33.7 **The one recorded observed failure in this window, and it belongs in the record because the
+  estimator did not catch it.** The first rule anchored a rail label on the rail's start with a fallback to
+  its end, which on the narrow chart put "Pandemia de COVID-19" entirely left of its own rail and partly
+  under the crisis rail above — **a name attached to the wrong mark**. Centring, a clamp, and an explicit
+  "must still overlap its own rail" now hold it, and two unit tests name that failure:
+  `annotationLabels.test.ts:224` ("centres a rail label on the rail it names, so it can never be read as
+  belonging to the next one") and `:247` ("never lets a clamped rail label lose contact with the span it
+  names"). Both verified present at `5af95c5`.
+- [x] 33.8 The description sentences stayed and moved into their own polite live regions, for two reasons.
+  The labels live inside a single `role="img"` that prunes its descendants, so a screen-reader user reaches
+  not one glyph of them — deleting the sentence would hand sighted readers a feature and take it from
+  everyone else. And the drawing does not promise to label everything: a name that cannot be drawn whole is
+  refused, and the sentence is what keeps that omission **disclosed rather than silent**.
+- [x] 33.9 Labels are painted OVER the data with a background-coloured halo — the one place the marks break
+  their own under-the-data rule — because a 2-unit accent stroke through a 10-unit glyph erases the letter
+  rather than dimming it. Four new pairings are declared at the **4.5:1 BODY-TEXT** threshold rather than
+  the 3:1 the existing mark pairings use: this is text a reader must actually read.
+- [x] 33.10 GREEN — without JavaScript a reader now sees **no government marks at all**, asserted rather than
+  left to be discovered (`indicator-pages-no-js.spec.ts` +24/−12). That is the inconsistency being removed:
+  exogenous has behaved this way since it shipped and the government select is absent on the same "absent,
+  not disabled" principle. Nothing is hidden — the chips are server-rendered in a CSS-only disclosure and
+  the data table is complete.
+- [x] 33.11 Disclosed: 14 units renders at **7.81 CSS px** on a 375px viewport, the honest floor this design
+  reaches — larger loses "Felipe González" on `poblacion-residente`. A shorter editorial `short_name` in
+  `eventos.yaml` would let the crisis rail be labelled on phones; that is a four-eyes editorial file and
+  not this change's to write. Carried into design.md Open Questions by this pass.
+
+---
+
+## Slice 34 — a policy-measures registry, scoped per series and citable (later reverted)
+
+Commit `610290a`. 2,559 added, 95 removed across 35 files, including migration `0007_event_scope.{up,down}.sql`
+(57/21), `config/medidas.yaml` (123), `web/src/lib/chart/measureMarks.ts` (253),
+`app/internal/adapters/config/measures_test.go` (265), `app/internal/adapters/postgres/events_scope_test.go`
+(178), and `web/tests/e2e/workbench/chart-policy-measures.spec.ts` (164). **Reverted two commits later by
+slice 36 (`5af95c5`). Recorded in full anyway, because migration 0007 survived it and its retention is the
+one decision pass 7 said had no durable home.**
+
+- [x] 34.1 The prohibition drove the design more than the feature did: the owner asked to see which measures
+  were taken and when, and agreed the site must not say whether they worked.
+- [x] 34.2 **Enforced structurally, not by discipline.** `EventConfig` had no field for an effect, an
+  outcome, a direction, a magnitude or an evaluation, so no layer downstream — digest, artifact, chart,
+  generated sentence — could project one, and none of them had to be trusted not to. The same structural
+  refusal `gobiernos.yaml` already applies to party colour.
+- [x] 34.3 The geometry enforced it too, and this is the part that needs no words: a measure mark sat in the
+  bottom margin, BELOW the x-axis tick labels, **outside the plot area entirely**, so it could never sit
+  adjacent to the curve and could not assert an effect by adjacency — the failure mode where a mark at a
+  point the curve then falls says "it worked" with no author and no citable source. Asserted three times: a
+  unit test, a renderer test, and a real-browser bounding-box measurement.
+- [x] 34.4 The copy stated instrument and date and stopped, and its test asserted the **ABSENCE** of
+  `efecto`, `impacto`, `consecuencia`, `resultado`, `gracias`, `debido`, `logr`, `consigui`, `mejor`,
+  `empeor`, `redu`, `aument`, "desde entonces" and "tras la medida". The sentence closed by refusing
+  explicitly — "El gráfico no representa ninguna relación entre esas medidas y la evolución de la serie" —
+  because silence is not neutrality when the layout poses the question. No derived figure was computed
+  anywhere: no periods-after delta, no cross-government comparison, in any layer.
+- [x] 34.5 GREEN — the registry reused `EventConfig` with a new `measures` group rather than getting its own
+  table, and in doing so **closed a gap the code already admitted**: `events_read.go` carried a TODO saying
+  `seriesID` "is accepted … to leave room for a real per-series scope in a future slice" while the function
+  ignored it, and every event was global by schema. A second registry would have routed around that
+  acknowledged gap while duplicating eight working layers. So `event` gained scope, widening
+  series-in-dataset-in-source with the break registry's rule verbatim.
+- [x] 34.6 GREEN — migration `0007_event_scope` defaults every pre-existing row to `global`, which is
+  exactly what each already meant.
+- [x] 34.7 Five measures seeded, **none written from memory**: each date is entry into force — not approval,
+  not publication — read off the BOE consolidated text at the URL recorded in the entry. RDL 3/2012, RDL
+  8/2020, RDL 12/2021, RDL 32/2021 and RDL 6/2022. RDL 32/2021's entry into force is staggered by its
+  disposición final octava, so the recorded date is the norm's general one and the note said so. Every
+  entry flagged for editorial review: `config/**` is a documented four-eyes path and this was a single
+  reviewer.
+- [x] 34.8 The mark reused the event rail's colour **on purpose**: a fifth vertical rule in a sixth hue
+  would have left colour as the only channel separating it from the government marker, which PRD §12.5
+  forbids. What separated it was REGION — the only annotation living outside the plot — plus
+  stub-versus-full-height and a whole row of tick labels between it and the axis. Discard colour entirely
+  and the five marks were still five.
+- [x] 34.9 Disclosed and not fixed at the time: `measures` opened by default, unlike the other groups,
+  widening the spec requirement titled "Three separately toggleable annotation groups, two off by default"
+  to four groups, two off. Every scenario under it still passed; the title was under-descriptive. Flagged
+  as the owner's delta to accept rather than silently amended. **Moot after slice 36** — the revert restores
+  the code to what the spec already said, and pass 7 confirmed `git log -- openspec/` over both commits is
+  empty.
+- [x] 34.10 One structural limit recorded at the time and still true: one measure carries one scope. A
+  measure touching both EPA and Social Security would need an `event_scope` child table.
+
+---
+
+## Slice 35 — listing only the annotations that are actually in the visible window
+
+Commit `578bb86`. 1,028 added, 36 removed across 13 files. New: `web/src/lib/chart/annotationWindow.ts`
+(180), `web/tests/e2e/indicator/indicator-annotation-range.spec.ts` (248),
+`web/test/chart/island-annotation-chips.test.ts` (163), `web/test/chart/annotationWindow.test.ts` (140).
+Modified: `indicator-chart.container.test.ts` (+72), `ChartIsland.svelte` (+51/−1), and six others.
+
+- [x] 35.1 **The defect, measured in a browser, and this is the RED-equivalent evidence for this slice.**
+  Narrowing `tasa-de-paro-epa` to "Desde 2018" took the series from **98 points to 34** and the measure
+  marks from **12 to 8**, while the chip list beside it still named a 2012 reform. The drawing respected
+  the window; the list did not.
+- [x] 35.2 All three groups were affected, not the one that happened to be measured, and **`governments` was
+  the worst: it lied at the DEFAULT view**, listing Calvo-Sotelo (1981), González (1982) and Aznar (1996)
+  on a series that begins in 2002. No reader had to touch a control to see it.
+- [x] 35.3 The cause was the shape of the code, not an oversight in one place: the in-range rule existed
+  **three times** — once inside each selector — and the chips had none. GREEN — it now exists once, in its
+  own module (`annotationWindow.ts`), and the three selectors read it instead of restating it. Divergence
+  stops being possible rather than stopping by discipline.
+- [x] 35.4 The rules per entry kind are the ones the marks already used, **reused rather than re-decided**.
+  An instant is in range when its date falls inside the window. An interval **intersects** rather than
+  being contained, because a 2008–2013 crisis legitimately covers a 2011–2018 window. An event with no end
+  draws no rail at all, so the only honest test is the instant rule on the one date it has — which is why
+  exogenous shows four chips over two rails at full range, and the sentence already accounted for it by
+  naming only what the registry bounds with a start AND an end.
+- [x] 35.5 GREEN — a group with nothing in the window is removed, control included, **and the cost is stated
+  because it is real**: a reader who narrows far enough watches the group vanish under their own hand and
+  nothing says "none in this period". What decided it is that the toggle gates the DRAWING, not just the
+  list, so an empty group is a 44px focus stop that cannot change one pixel — exactly the dead control
+  `availablePresets` and the government filter already refuse. A third precedent was already inside the
+  same component: `visibleBreaks` vanishes when the window carries no rupture, and breaks are the more
+  load-bearing layer.
+- [x] 35.6 What a reader loses was **checked rather than assumed**. The 2012 reform survives in "Todo el
+  periodo", which `isPresetAvailable` offers unconditionally on every series, and in the per-series JSON
+  the action bar links, which carries all thirteen events regardless of window. It is NOT in the
+  methodology sheet — that field is the indicator's definition, not policy — and not in the CSV. Two routes,
+  not the one most people would guess.
+- [x] 35.7 The three generated sentences were never part of the bug: they already derived from the same
+  selectors. They now agree with the chips and the marks, verified layer by layer on the rebuilt stack at
+  both ranges.
+- [x] 35.8 Zero new Spanish strings. The empty-group decision is what avoided needing a "ninguna en este
+  periodo" one.
+- [x] 35.9 **This slice closes verify-report pass-6 SUGGESTION-21** — `indicator-annotation-range.spec.ts`
+  now exercises range selection on real indicator routes rather than only in the workbench. Recorded as
+  CLOSED by pass 7 §E.
+
+---
+
+## Slice 36 — removing the policy-measures layer, keeping migration 0007, and collapsing the data table
+
+Commit `5af95c5`. 1,450 added, 2,151 removed across 45 files — **the only commit in this window with more
+removals than additions**. New: `web/tests/e2e/indicator/indicator-data-table.spec.ts` (318),
+`app/internal/adapters/config/event_scope_test.go` (241),
+`web/test/design-system/data-table-disclosure-parity.test.ts` (180),
+`web/test/chart/tableSummary.test.ts` (82), `web/src/lib/chart/tableSummary.ts` (61). Removed:
+`config/medidas.yaml` (−123), `lib/chart/measureMarks.ts` (−256), `measures_test.go` (−265),
+`chart-policy-measures.spec.ts` (−212), `measureMarks.test.ts` (−154), and the measures branches of
+`svg.ts` (−123), `description.ts` (−49) and `es.ts` (−72).
+
+- [x] 36.1 The owner decided against the measures layer. Gone: `config/medidas.yaml` and its five seeded
+  entries, the `measures` group and its validation rules, the chart's gutter marks, its legend entry, its
+  generated sentence and every Spanish string under `chart.measure`.
+- [x] 36.2 What did NOT go with it, stated explicitly because a revert is where a good fix gets thrown out
+  by accident: slice 35's fix. `governments` was wrong at the DEFAULT view, and the shared in-range
+  predicate, the two remaining selectors reading it instead of restating it, and the empty-group-is-absent
+  behaviour all stay — proved intact on the live stack at both ranges.
+- [x] 36.3 **Migration 0007 stays, and that is a decision rather than an omission.** Verify-report pass 7
+  named this the one decision with no durable home; it is recorded here in full. The scope columns are not
+  dead schema: `scope_kind` is `NOT NULL`, all fifteen rows carry a real `'global'`, and `ListActiveEvents`
+  reads it on **every export of every series** — it simply resolves to one branch today.
+- [x] 36.4 Reverting would have **restored a defect the code had already documented**: `events_read.go`
+  carried a TODO saying `seriesID` "is accepted … to leave room for a real per-series scope in a future
+  slice" while the function ignored it, so dropping the columns means going back to a filter that lies
+  about filtering.
+- [x] 36.5 A `DROP COLUMN` on a live database is the strictly riskier of the two operations, for no
+  functional gain. Keeping 0007 as the newest migration also leaves the hand-counted `Down()` step
+  assertions untouched rather than adjusting the same fragile counts twice.
+- [x] 36.6 **Verified by the auditor rather than asserted by the writer, and one clause of the writer's own
+  claim turned out to be wrong in the PESSIMISTIC direction.** Verify-report pass 7 §B.3 confirmed
+  `0007_event_scope.up.sql:52` (`scope_kind text NOT NULL DEFAULT 'global'`, `scope_ref text NOT NULL
+  DEFAULT ''`, `source_url text`, plus a partial index) and `events_read.go:62-70`'s `WHERE` clause — and
+  then established that **configuration CAN populate these columns**, which the revert commit had left
+  ambiguous. Four `config/eventos.yaml` mutations run through `validate-config`: an unresolvable
+  `scope.ref` → exit 1; an invalid `scope.kind` → exit 1; `kind: series` with no `ref` → exit 1; a valid
+  `{ kind: series, ref: ocupados-epa }` → exit 0, accepted. Persistence and read-back are covered by
+  `TestReconcileEvents_PersistsScopeAndSourceURL`, `TestListActiveEvents_ResolvesScopeForTheSeriesAsked` and
+  `TestListActiveEvents_UnknownSeriesStillResolvesGlobalEntries`. Pass 7's verdict: keeping 0007 was
+  correct — "not dead columns … a live, validated, exercised read path that today carries one value because
+  one value is the truth."
+- [x] 36.7 One residual on that path, recorded rather than closed (pass-7 SUGGESTION-52): `event.source_url`
+  is wired end to end — YAML → reconcile → column → `EventRef.SourceURL` → Zod `EventRefSchema` — and
+  unit-tested, but **no shipped config entry populates it**, so the key is `omitempty`-absent from every
+  production artifact and the JSON leg has no production exercise. Carried into design.md Open Questions.
+- [x] 36.8 The five rows already reconciled into the live database were removed by the existing soft-retire
+  path with **no operator step**: `events inserted=0 updated=0 retired=5`. `ListActiveEvents` filters on
+  `retired_at IS NULL`, so nothing reaches the artifact or the page.
+- [x] 36.9 Three tests were **kept and rewritten rather than deleted**, because they guard something still
+  true: the scope predicate is now the only thing holding series-in-dataset-in-source correct while no
+  config populates it; the digest test stops scope or citation drifting silently between YAML and row; and
+  the artifact tests pin the optional-never-nullable contract on `source_url`. One test was **added** — a
+  group emptying removes only itself and leaves the section standing, which is exactly the default-view
+  `governments` case and was previously only implicit.
+- [x] 36.10 Nothing needed reverting in `openspec/`: `git log -- openspec/` over both commits is empty. The
+  requirement still reads "Three separately toggleable annotation groups, two off by default" and
+  enumerates exactly `gobiernos`, `shocks exógenos` and `hitos`, so removing measures restores the code to
+  what the spec already said. Independently re-confirmed by pass 7 §B.1.
+- [x] 36.11 **One observed failure, and it was the loader contract working.** The first rebuild after the
+  removal FAILED, correctly: the locally generated artifact still carried `group: "measures"` and the
+  tightened Zod enum refused it. It declined to build a site from data that no longer matches the code.
+- [x] 36.12 The data-table collapse rides in this commit, and the reason is stated rather than left to be
+  noticed: both changes edit `ChartIsland.svelte` and `es.ts`, and splitting them would mean staging hunks
+  by hand. **Verify-report pass 7 raises exactly this as SUGGESTION-51** — a commit named "revert" adds a
+  feature — and records that everything it adds is tested and green.
+- [x] 36.13 The defect it fixes, measured: ninety-eight rows on `tasa-de-paro-epa` and two hundred and
+  ninety-four on `ipc-general` arrived open, pushing everything below fifteen screens down. The document
+  goes from **12,226px to 2,467px** on the monthly series.
+- [x] 36.14 GREEN — a native `<details>`/`<summary>`, no JavaScript, copied from the closed-by-default
+  disclosure `MethodologySheet` already uses and which already satisfies the same requirement. **Verified
+  against the scenario text rather than assumed**: the spec's own scenario says the table must be PRESENT
+  with JavaScript disabled and its single assertion is presence, not paint — checked along with the two
+  `web-accessibility-gates` scenarios, which are about the DOM and the accessibility tree. Pass 7 §B.2
+  independently re-adjudicated this as COMPLIANT and recorded that the test checks the
+  `aria-describedby` reference is not dangling **while the disclosure is closed**, which is the failure
+  mode a disclosure implemented by *removing* the table would have introduced.
+- [x] 36.15 GREEN — both renderers were unguarded hand-duplicated markup, so the label is now one pure
+  function (`tableSummary.ts`) both print, and a new parity test renders both and compares them
+  (`data-table-disclosure-parity.test.ts`, 180 lines). **This project has already had one defect from two
+  renderers of the same table drifting**, which is why the guard is a rendered comparison and not a
+  code-shape assertion.
+- [x] 36.16 The summary reads "Tabla de datos (98 periodos, de T1 2002 a T2 2026)" rather than "Ver la tabla
+  de datos", following the rule `es.ts` already states for the annotation toggles: no script updates this
+  text, so "Ver" becomes a lie the moment it is open. A noun phrase is true in both states and the
+  browser's triangle carries the state.
+- [x] 36.17 The caption stays, and a test asserts the two are not equal: the summary labels the disclosure
+  widget; the caption is the table's accessible NAME, which is what a screen reader announces on landing
+  and what the chart is described by. They say different things.
+- [x] 36.18 Open state is deliberately **not** bound to component state: the `details` sits outside every
+  `each` and `if` block, so narrowing the range updates the rows and the label while leaving open or closed
+  as the reader set it.
+- [x] 36.19 **Two no-JS assertions changed meaning, recorded as a change rather than as a fix.** They
+  asserted the table was visible, which is now false by design, so they became presence plus a non-zero row
+  count plus a visible summary plus proof it opens. Strictly stronger — the old assertion could not tell a
+  rendered table from a rendered empty one — but changed, and a strengthened assertion that silently
+  replaces a weaker one is exactly the kind of edit that needs saying out loud.
+- [x] 36.20 Also added: an axe audit with the disclosure OPEN, because the existing sweep audits the page as
+  it arrives, which since this change no longer includes the table's contents.
+
+---
+
+## The WARNING-47 spec decision — taken, argued, and written
+
+Verify-report pass 7 raised **WARNING-47**: the homepage (slice 21) and the site footer (slice 25) ship
+implemented, tested and reader-facing with no requirement in any of the twelve delta specs and none in the
+ten baseline capabilities governing either. The decision was left to this record pass. **It is taken here:
+both get requirements**, and the reasoning is below rather than in a commit body.
+
+- [x] W47.1 **The footer's licence sentence is NOT unpinned today — but the pin does not reach the page, and
+  that distinction is the finding.** Measured here: `openspec/specs/source-attribution-licensing/spec.md:26`
+  already carries the requirement "No blanket data-licence claim exists in the repository", whose prose
+  reads "The repository MUST NOT assert a single licence over all derived data". The footer is part of the
+  repository, so the requirement's **text** governs it. Its only scenario does not:
+  "GIVEN `LICENSE` and `LICENSE-DATA` / WHEN they are read" — two files, neither of them a rendered page.
+  So a footer that asserted CC BY over all data would violate the requirement's sentence while passing its
+  only scenario.
+- [x] W47.2 What protects it in the meantime, verified rather than assumed: `web/test/pages/site-footer.test.ts`
+  (304 lines) asserts the rendered text and markup match none of `/cc\s*by/i`, `/creative\s*commons/i`,
+  `/todos los datos/i`, `/licencia de los datos/i`. That is a real guard and it is green — but it is a test
+  with no requirement to adjudicate against, which is precisely the state this project's own record calls
+  the class of decision that decays.
+- [x] W47.3 GREEN — `specs/source-attribution-licensing/spec.md` is added to this change as a **MODIFIED**
+  requirement, not a new one. It restates the existing requirement unchanged and adds one scenario reaching
+  the surface where the claim is now made on every page. This is the smallest possible pin: no new claim,
+  no new capability semantics, and it lands in the capability that already owns the subject.
+- [x] W47.4 GREEN — `specs/indicator-page/spec.md` gains one ADDED requirement for the homepage: it lists
+  exactly the six frozen slugs or the build fails, each row links its route, every indicator page links
+  back, and the listing derives from the same guard the routes use. Bounded to milestone 1.2's own frozen
+  set by construction — it names the six and asserts an all-or-nothing derivation, so it **cannot grow into
+  the ~26-indicator catalogue, search or category navigation** that `proposal.md:70-72` puts out of scope in
+  milestones 1.3–1.7.
+- [x] W47.5 Why writing them rather than recording them as shipped-outside-scope, argued against the
+  alternative. **The project's actual rule is not "the spec phase is closed".** Two requirements were added
+  after it closed in this very change, both when a real gap was found on the running product: `5310586`
+  (slice 19, `publishing-export`) and `026c7fa` (slice 20, `source-ingestion-ine`). A third, for a claim
+  with legal weight printed on every page and for the only surface on which a reader learns an indicator
+  exists, is the same move for the same reason.
+- [x] W47.6 The cost, stated rather than glossed: this adds a **thirteenth** capability delta to the change
+  and two requirements plus their scenarios to re-verify, so pass 8 has more to check than the record
+  alone. Accepted, because pass 8 is required for the record update regardless and because the alternative
+  leaves a legal-weight claim asserted by a test alone.
+- [x] W47.7 What was deliberately NOT written. No requirement for the *content* of the four footer links,
+  the tagline, the card layout, or the freshness badge geometry — those are design decisions with tests,
+  not contract. No requirement obliging `/transparencia/raw-files.sha256` or `/data-derived/**` to resolve
+  from a static build: slice 25 task 25.9 records why that is untestable in `dist/`, and
+  `publishing-export/spec.md:146-155` already records the accepted consequence for the `/data-derived` half.
+- [x] W47.8 One consequence pass 7 named and this pass does not close:
+  `.github/workflows/ingest-export-build.yml`'s real-artifact assertion loop iterates the six indicator
+  slugs only, so `/index.html` is never checked to exist in a real-artifact build. Pass 7 verified that it
+  does exist; nothing enforces it. Recorded as an open item in design.md rather than fixed here, because
+  this pass changes no workflow file.
+
+---
+
+## Record-pass verification (2026-08-04, at `5af95c5`)
+
+- [x] V.1 Task count, **counted rather than asserted**: `grep -c "^- \[x\]" tasks.md` and
+  `grep -c "^- \[ \]" tasks.md`, run after this section landed. Figures reported in `apply-progress.md`'s
+  "Verification for this record" section, which also names what was deliberately not re-run.
+- [x] V.2 `git log --oneline 823311e..HEAD | wc -l` → 17; `git diff --shortstat 823311e..HEAD` → 112 files
+  changed, 14,631 insertions(+), 425 deletions(−). Both match verify-report pass 7's figures exactly.
+- [x] V.3 Every per-commit file list and line count in slices 20–36 was read from `git show --numstat` for
+  that commit, not from its body.
+- [x] V.4 `go run ./app/cmd/concontexto validate-config` → `validate-config: ok`. Run because this pass
+  touches `openspec/` only, to prove it touched nothing a Go test reads.
+- [x] V.5 **No Go, Vitest or Playwright suite was re-run for this record.** This pass changed only
+  `openspec/changes/phase-1-indicator-page/**`, which no suite reads, so a suite result would describe
+  nothing this pass did. Where suite numbers appear above they are **verify-report pass 7's measurements at
+  a clean `5af95c5`**, labelled as such: `go test -race -count=1 ./...` exit 0 over 22 packages, Vitest
+  799/799, Playwright 191/191, `astro check` 0 errors over 131 files, `EXPORT_DIR=data-derived npm run
+  build` exit 0 emitting 7 pages, and the transferred-bytes gate against the real artifact with a worst
+  page of 76.6 KB.
+- [x] V.6 **There is no structural validator for these spec files, and saying so is part of the record.**
+  `which openspec` returns nothing and no repository script parses `openspec/**/spec.md`. The two spec
+  files this pass writes were checked by hand against the established shape — `## ADDED Requirements` /
+  `## MODIFIED Requirements`, `### Requirement:`, `#### Scenario:`, GIVEN/WHEN/THEN/AND bullets — and
+  against the sibling deltas in this change. Nothing machine-checks them.

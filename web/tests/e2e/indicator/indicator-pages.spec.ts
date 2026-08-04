@@ -280,5 +280,120 @@ for (const slug of SLUGS) {
         expect(measured.clipped, `axis labels clipped by the viewBox: ${measured.clipped.join(", ")}`).toEqual([]);
       },
     );
+
+    // `FreshnessSemaphore` is a non-interactive `<span>` styled as a pill
+    // (`inline-flex … rounded-pill border px-2.5 py-1`). Every container it
+    // is dropped into here is a flex COLUMN — the page header
+    // (`flex flex-col`) and `IndicatorCard`'s root — where the default
+    // `align-items: stretch` widened it to the container's full width.
+    // Measured on the built page at 1280 px before this change: the header
+    // badge rendered 848.0 x 26.0 CSS px inside an 848.0 px header, i.e.
+    // 100% of it, and every related card's badge rendered 238.0 px inside a
+    // 238.0 px content box. A status pill drawn as a full-width bordered
+    // box reads as a button and invites a click that does nothing.
+    //
+    // The same 70% share the homepage gate uses, for the same reason
+    // (`tests/e2e/home/home.spec.ts`): 100% fails it by a mile, and a pill
+    // sized to its own text has far more headroom than 30%.
+    const MAX_BADGE_SHARE = 0.7;
+
+    test(
+      "the freshness badge is sized to its own text in the header and in every related card",
+      { tag: ["@indicator-page", "@layout"] },
+      async ({ page }) => {
+        await page.setViewportSize({ width: 1280, height: 1000 });
+        const indicator = new IndicatorPage(page, slug);
+        await indicator.goto();
+
+        const headerBox = await indicator.header.boundingBox();
+        const headerBadgeBox = await indicator.headerFreshness.boundingBox();
+        if (!headerBox || !headerBadgeBox) throw new Error("the page header or its freshness badge has no rendered box");
+        const headerShare = headerBadgeBox.width / headerBox.width;
+        expect(
+          headerShare,
+          `header badge is ${headerBadgeBox.width.toFixed(1)} px of an ${headerBox.width.toFixed(1)} px header (${(headerShare * 100).toFixed(1)}%)`,
+        ).toBeLessThanOrEqual(MAX_BADGE_SHARE);
+
+        const cards = indicator.relatedCards;
+        const count = await cards.count();
+        expect(count, "the related-indicators strip must render cards to measure").toBeGreaterThan(0);
+
+        const overwide: string[] = [];
+        for (let i = 0; i < count; i++) {
+          const card = cards.nth(i);
+          const badgeBox = await indicator.badgeIn(card).boundingBox();
+          if (!badgeBox) throw new Error(`related card ${i}'s freshness badge has no rendered box`);
+          const contentWidth = await card.evaluate((el) => {
+            const style = getComputedStyle(el);
+            return el.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+          });
+          const share = badgeBox.width / contentWidth;
+          if (share > MAX_BADGE_SHARE) {
+            overwide.push(
+              `${await card.getAttribute("href")} (badge ${badgeBox.width.toFixed(1)} px of ${contentWidth.toFixed(1)} px content = ${(share * 100).toFixed(1)}%)`,
+            );
+          }
+        }
+        expect(
+          overwide,
+          `related-card badges wider than ${MAX_BADGE_SHARE * 100}% of their card's content width: ${overwide.join(", ")}`,
+        ).toEqual([]);
+      },
+    );
+
+    // The related strip is `grid … lg:grid-cols-3` of cards that are
+    // themselves the grid items, so they were already stretched to their
+    // row's height — but their badges were not pushed to the bottom, so
+    // they zigzagged. Measured at 1280 px before this change, the three
+    // cards of the first row on `/indicador/ipc-general` carried badge
+    // bottoms 88 px apart inside rows of identical height.
+    test(
+      "related cards in one row render at one height, and their freshness badges share one bottom edge",
+      { tag: ["@indicator-page", "@layout"] },
+      async ({ page }) => {
+        await page.setViewportSize({ width: 1280, height: 1000 });
+        const indicator = new IndicatorPage(page, slug);
+        await indicator.goto();
+        // The chart island reflows the page as it hydrates, and every box
+        // below is read from the live layout — measuring before it settles
+        // reads coordinates that no longer exist a frame later.
+        await indicator.waitForChartHydrated();
+
+        const cards = indicator.relatedCards;
+        const count = await cards.count();
+        const measured: { href: string; top: number; height: number; badgeBottom: number }[] = [];
+        for (let i = 0; i < count; i++) {
+          const card = cards.nth(i);
+          const box = await card.boundingBox();
+          const badgeBox = await indicator.badgeIn(card).boundingBox();
+          if (!box || !badgeBox) throw new Error(`related card ${i} or its badge has no rendered box`);
+          measured.push({
+            href: (await card.getAttribute("href")) ?? `card ${i}`,
+            top: box.y,
+            height: box.height,
+            badgeBottom: badgeBox.y + badgeBox.height,
+          });
+        }
+
+        const rows = new Map<number, typeof measured>();
+        for (const card of measured) rows.set(Math.round(card.top), [...(rows.get(Math.round(card.top)) ?? []), card]);
+        const multiCardRows = [...rows.values()].filter((row) => row.length > 1);
+        expect(multiCardRows.length, "1280px must place related cards beside each other").toBeGreaterThan(0);
+
+        for (const row of multiCardRows) {
+          const heights = row.map((c) => c.height);
+          expect(
+            Math.max(...heights) - Math.min(...heights),
+            `related cards in the row at y=${row[0].top.toFixed(1)} render at different heights: ${row.map((c) => `${c.href}=${c.height.toFixed(1)}`).join(", ")}`,
+          ).toBeLessThanOrEqual(1);
+
+          const bottoms = row.map((c) => c.badgeBottom);
+          expect(
+            Math.max(...bottoms) - Math.min(...bottoms),
+            `related-card badges in the row at y=${row[0].top.toFixed(1)} do not share a bottom edge: ${row.map((c) => `${c.href}=${c.badgeBottom.toFixed(1)}`).join(", ")}`,
+          ).toBeLessThanOrEqual(1);
+        }
+      },
+    );
   });
 }

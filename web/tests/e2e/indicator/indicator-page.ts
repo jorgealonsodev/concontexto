@@ -33,6 +33,15 @@ export class IndicatorPage extends BasePage {
   /** The link back to `/` (milestone 1.2). Rendered by `IndicatorPage.astro`,
    * so all six routes carry it. */
   readonly backToHome: Locator;
+  /** The page header — a `flex flex-col`, which is why the freshness badge
+   * inside it stretched to the full column width before this was measured. */
+  readonly header: Locator;
+  /** The header's freshness semaphore. Matched on the `freshness-` PREFIX
+   * because the state is baked into the test id and a geometry check must
+   * not care which of the two states it is measuring. */
+  readonly headerFreshness: Locator;
+  /** Every card in the "Indicadores relacionados" strip, in document order. */
+  readonly relatedCards: Locator;
 
   constructor(page: Page, slug: string) {
     super(page);
@@ -51,6 +60,14 @@ export class IndicatorPage extends BasePage {
     this.customRangeStatus = this.chartSection.getByTestId("custom-range-status");
     this.yoyVariation = page.getByTestId("page-yoy-variation");
     this.backToHome = page.getByTestId("back-to-home");
+    this.header = page.getByTestId("page-header");
+    this.headerFreshness = this.header.locator('[data-testid^="freshness-"]');
+    this.relatedCards = this.relatedIndicators.getByTestId("indicator-card");
+  }
+
+  /** The freshness semaphore inside one related-indicator card. */
+  badgeIn(card: Locator): Locator {
+    return card.locator('[data-testid^="freshness-"]');
   }
 
   /** One range-preset button by its preset key ("full", "5y", "10y",

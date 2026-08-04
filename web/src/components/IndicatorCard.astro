@@ -59,7 +59,7 @@ const NameTag = (headingLevel === undefined ? "span" : `h${headingLevel}`) as "s
 
 <a
   href={`/indicador/${slug}`}
-  class="group flex min-h-11 flex-col gap-2 rounded-card border border-ink/10 bg-surface p-4 shadow-card transition-colors hover:border-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+  class="group flex h-full min-h-11 flex-col gap-2 rounded-card border border-ink/10 bg-surface p-4 shadow-card transition-colors hover:border-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
   data-testid="indicator-card"
 >
   <NameTag class="text-body font-semibold text-ink group-hover:text-accent" data-testid="indicator-card-name">{name}</NameTag>
@@ -75,5 +75,33 @@ const NameTag = (headingLevel === undefined ? "span" : `h${headingLevel}`) as "s
     {formattedValue}{" "}<span class="text-body text-ink-muted">{unit}</span>
   </span>
   <span class="text-caption text-ink-muted">{es.indicatorCard.periodLabel} {latestPeriod}</span>
-  <FreshnessSemaphore state={freshness} />
+  {
+    /* `mt-auto`: the freshness badge sits on the card's BOTTOM edge, not
+       directly under the period.
+
+       `h-full` above makes every card fill its grid cell, so all the cards
+       in a row are now the same height — but that alone just moves the
+       ragged edge inward. Measured at 1280 px before `h-full`, the home
+       grid's first row rendered 156 / 156 / 188 px tall because "IPC
+       general"'s unit wraps to a second line; with equal heights and no
+       `mt-auto` the CARDS would line up while their badges still sat at
+       three different heights (319 / 319 / 351 px), which is the more
+       visible half of the defect.
+
+       Pushing the badge down is right because the badge is the one element
+       a reader compares ACROSS cards rather than within one: six freshness
+       stamps on a common baseline are read as a single horizontal scan,
+       whereas a zigzag has to be read card by card. It also puts the slack
+       whitespace in one place — between the period and the badge — instead
+       of below the badge, where it made a card look like it had ended
+       early.
+
+       The wrapper carries this, not `FreshnessSemaphore` itself: "the badge
+       sits at the bottom" is a decision only THIS card is entitled to make.
+       The indicator page's header renders the same component immediately
+       after the variation figures and must not push it anywhere. */
+  }
+  <div class="mt-auto">
+    <FreshnessSemaphore state={freshness} />
+  </div>
 </a>

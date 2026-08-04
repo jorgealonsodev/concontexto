@@ -50,10 +50,35 @@ const label = LABEL[state];
   `src/lib/design-system/contrast.ts`'s DECLARED_PAIRINGS. The border alone
   carries the full-opacity colour (a 3:1 UI-boundary contrast, not the 4.5:1
   text threshold).
+
+  `self-start` is this component's own, and it belongs HERE rather than at
+  each call site. `inline-flex` declares a pill sized to its own text, but
+  cross-axis sizing is the one property a flex or grid PARENT decides for
+  its child — and this component was dropped straight into a flex column at
+  both of its real call sites (`IndicatorCard`'s root and the indicator
+  page's header), where the default `align-items: stretch` widened the pill
+  to the container's full width. Measured on the built page at 1280 px:
+  848.0 px inside an 848.0 px header, and 238.0 px inside a 238.0 px card
+  content box. A status stamp drawn as a full-width bordered box is
+  indistinguishable from a button — on a `<span>` with no role, no
+  tabindex and no handler, which does nothing when clicked. Patching one
+  container would have left the other, and the next one.
+
+  This is NOT the component reaching into its parent's layout. It is the
+  component refusing to let a parent silently override the shape it
+  declares: `align-self` is inert outside a flex/grid context, so in normal
+  flow it costs exactly nothing. The alternative — a `class` prop callers
+  pass layout through — would also reopen the escape hatch this component's
+  header comment deliberately closes by keeping its prop surface at one
+  value.
+
+  Deliberately NOT `w-fit`: that would fix the width and leave the pill
+  stretched to the container's HEIGHT in a flex row, which is the same
+  defect on the other axis.
 */}
 <span
   class:list={[
-    "inline-flex items-center gap-1.5 rounded-pill border px-2.5 py-1 text-caption font-medium",
+    "inline-flex self-start items-center gap-1.5 rounded-pill border px-2.5 py-1 text-caption font-medium",
     state === "fresh" && "border-fresh text-fresh",
     state === "source-pending" && "border-pending text-pending",
   ]}

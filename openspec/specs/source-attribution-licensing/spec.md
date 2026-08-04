@@ -1,8 +1,16 @@
-# Delta for source-attribution-licensing
+# Spec: source-attribution-licensing
 
-Slices 3 and 9 · Milestone 0.7. Greenfield capability — no existing spec to modify.
+Baseline capability specification — the source of truth for `source-attribution-licensing`.
 
-## ADDED Requirements
+Sources: PRD §9.3.5; settled decision D2.
+Contributing changes: `phase-0-data-foundations` (archived 2026-07-29) — established this capability;
+`phase-1-indicator-page` (archived 2026-08-05) — extended "No blanket data-licence claim" to reader-facing
+surfaces.
+
+Amendment history is deliberately not restated below. `(Previously: …)` annotations are delta-relative and
+live in the archived change records under `openspec/changes/archive/`.
+
+## Requirements
 
 ### Requirement: Per-source licensing terms are authoritative
 
@@ -23,7 +31,17 @@ Each `sources/{source}.yaml` MUST record the source identity, its licence, its r
 
 ### Requirement: No blanket data-licence claim exists in the repository
 
-The repository MUST NOT assert a single licence over all derived data. Code is licensed MIT. Derived data and editorial text are offered under CC BY 4.0 with chained attribution only where per-source terms permit it, and `LICENSE-DATA` MUST defer to `sources/{source}.yaml` rather than override it.
+The repository MUST NOT assert a single licence over all derived data. Code is licensed MIT. Derived data
+and editorial text are offered under CC BY 4.0 with chained attribution only where per-source terms permit
+it, and `LICENSE-DATA` MUST defer to `sources/{source}.yaml` rather than override it.
+
+**Reader-facing surfaces are part of the repository for the purposes of this requirement.** Any site-level
+statement about the reuse of published data MUST state that no single licence covers it and that each source
+fixes its own conditions; it MUST NOT summarise, flatten or substitute for those per-source terms, and it
+MUST route a reader to the authoritative per-source configuration rather than to the deferring document.
+The CC BY 4.0 offer above is CONDITIONAL on each source permitting redistribution, so it MUST NOT appear
+beside the data on a reader-facing surface, where a conditional claim is read as an unconditional one; it
+belongs in `LICENSE-DATA`, where its condition travels with it.
 
 #### Scenario: Repository licensing files are consistent
 
@@ -32,6 +50,26 @@ The repository MUST NOT assert a single licence over all derived data. Code is l
 - THEN `LICENSE` is MIT for code
 - AND `LICENSE-DATA` states that per-source terms in `sources/{source}.yaml` govern source-derived values
 - AND no statement claims one licence over all derived data
+
+#### Scenario: The site defers on data licensing rather than asserting one
+
+- GIVEN a rendered page of the site
+- WHEN its site-level licensing statement is read
+- THEN it states in Spanish that the published data is not covered by a single licence and that each source
+  fixes its own reuse conditions
+- AND it summarises no source's conditions
+- AND it names MIT for the code and for nothing else
+- AND it links the per-source configuration directory rather than the deferring `LICENSE-DATA`
+- AND its rendered text and markup match none of `cc by`, `creative commons`, `todos los datos` or
+  `licencia de los datos`, in any casing
+
+#### Scenario: Every route entry point carries the statement
+
+- GIVEN the set of route entry points the build emits, discovered by scanning the site sources for a
+  document root rather than from a maintained list
+- WHEN the build output is inspected
+- THEN every one of them renders the site-level licensing statement
+- AND no entry point is exempted by a skip list
 
 ### Requirement: Attribution chains from the original source
 

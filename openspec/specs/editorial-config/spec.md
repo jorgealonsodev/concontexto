@@ -1,10 +1,16 @@
-# Delta for editorial-config
+# Spec: editorial-config
 
-Slices 3 and 7 · Milestones 0.5 and 0.7 (structure). Greenfield capability — no existing spec to modify.
+Baseline capability specification — the source of truth for `editorial-config`.
 
-File names `rupturas.yaml`, `eventos.yaml` and `gobiernos.yaml` are fixed by PRD §9.6 and are kept in Spanish.
+Sources: PRD §9.4, §9.6, §15.2; ADR D4.
+Contributing changes: `phase-0-data-foundations` (archived 2026-07-29) — established this capability;
+`phase-1-indicator-page` (archived 2026-08-05) — added segmented cadences, the corrected population
+cadence, and the operator-visible-only rule for unconfirmed editorial dates.
 
-## ADDED Requirements
+File names `rupturas.yaml`, `eventos.yaml` and `gobiernos.yaml` are fixed by PRD §9.6 and are kept in
+Spanish, as are editorial YAML keys and series slugs.
+
+## Requirements
 
 ### Requirement: Configuration layout
 
@@ -142,3 +148,82 @@ Series breaks MUST be persisted without any user-dismissible or default-off flag
 - GIVEN the `series_break` schema and its domain type
 - WHEN they are inspected
 - THEN neither carries a dismissible, optional or default-hidden attribute
+
+### Requirement: A series configuration expresses a cadence that changes over its life
+
+`series/{slug}.yaml` MUST be able to declare a cadence as an ordered sequence of segments, each with its
+own cadence and validity range, so a series whose real publication cadence changes is representable. A
+single uniform cadence MUST remain expressible and MUST remain the common case. `validate-config` MUST
+reject overlapping segments, gaps between segments, and a segment boundary that does not align to a valid
+period of both adjoining cadences.
+
+#### Scenario: A segmented cadence loads
+
+- GIVEN a `series/{slug}.yaml` declaring a semiannual segment followed by a quarterly segment
+- WHEN it is loaded
+- THEN both segments resolve with their cadence and validity range
+- AND the cadence applicable to any given period is unambiguous
+
+#### Scenario: Overlapping segments are rejected
+
+- GIVEN a configuration whose two cadence segments overlap
+- WHEN `validate-config` runs
+- THEN it exits non-zero naming the file and the overlapping segments
+- AND CI fails
+
+#### Scenario: A gap between segments is rejected
+
+- GIVEN a configuration whose segments leave an uncovered span
+- WHEN `validate-config` runs
+- THEN it exits non-zero naming the uncovered span
+
+#### Scenario: A uniform cadence still validates
+
+- GIVEN a `series/{slug}.yaml` declaring a single quarterly cadence
+- WHEN `validate-config` runs
+- THEN it exits zero
+
+### Requirement: The population series declares its real cadence
+
+`config/series/poblacion-residente.yaml` MUST declare the cadence `ECP320` actually publishes:
+semiannual across its historical span, quarterly from its verified quarterly-onset period. It MUST NOT
+declare a single uniform quarterly cadence.
+
+#### Scenario: The corrected configuration matches the source
+
+- GIVEN the corrected `poblacion-residente` configuration
+- WHEN it is validated against the recorded `ECP320` payload
+- THEN the declared segments match the observed cadence in both spans
+- AND the boundary period is the verified quarterly-onset period
+
+#### Scenario: The uncorrected configuration now fails
+
+- GIVEN the previous configuration declaring a uniform quarterly cadence
+- WHEN ingestion and validation run against the recorded payload
+- THEN the run fails
+- AND that failure is the correct outcome, not a regression to be worked around
+
+### Requirement: Unconfirmed editorial dates are operator-visible, never reader-visible
+
+An editorial entry whose date is unconfirmed MUST NOT be projected into the database and MUST NOT reach
+any rendered page. Reconciliation MUST report the count and identifiers of unprojected entries to
+operators through the run's structured output, so the backlog is visible to the people who can close it.
+
+#### Scenario: An unconfirmed entry is not projected and is not an error
+
+- GIVEN an editorial entry with no confirmed date
+- WHEN reconciliation runs
+- THEN no row is projected for it
+- AND reconciliation succeeds
+
+#### Scenario: Operators see the pending count
+
+- GIVEN seven editorial entries with unconfirmed dates
+- WHEN reconciliation completes
+- THEN its structured output records the count seven and the identifiers of those entries
+
+#### Scenario: Readers see nothing about pending entries
+
+- GIVEN the same unconfirmed entries
+- WHEN any indicator page is rendered
+- THEN no count, badge, warning or placeholder about them appears on the page

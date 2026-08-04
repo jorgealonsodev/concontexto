@@ -1,19 +1,36 @@
-# Delta for platform-runtime
+# Spec: platform-runtime
 
-Slice 1 · Milestone 0.1. Greenfield capability — no existing spec to modify.
+Baseline capability specification — the source of truth for `platform-runtime`.
 
-## ADDED Requirements
+Sources: PRD §14.2, §14.3, §9.2, §9.6, §15.2; ADR-7, design D-2.
+Contributing changes: `phase-0-data-foundations` (archived 2026-07-29) — established this capability;
+`phase-1-indicator-page` (archived 2026-08-05) — amended "Single binary with … subcommands".
 
-### Requirement: Single binary with five subcommands
+Amendment history is deliberately not restated below. `(Previously: …)` annotations are delta-relative and
+live in the archived change records under `openspec/changes/archive/`.
 
-The system MUST ship one Go binary exposing exactly the subcommands `serve`, `ingest`, `migrate`, `validate-config` and `healthcheck`. `serve` and `ingest` MUST be driving adapters over the same domain core.
+## Requirements
+
+### Requirement: Single binary with six subcommands
+
+The system MUST ship one Go binary exposing exactly the subcommands `serve`, `ingest`, `migrate`,
+`validate-config`, `healthcheck` and `export`. `serve` and `ingest` MUST be driving adapters over the same
+domain core. `export` MUST run the same read → validate → write path `ingest` triggers automatically after
+a successful cycle, on demand — for recovery, boot-time self-heal, and fixture generation.
 
 #### Scenario: Every subcommand is dispatchable
 
 - GIVEN the built binary
-- WHEN it is invoked with each of `serve`, `ingest`, `migrate`, `validate-config`, `healthcheck`
+- WHEN it is invoked with each of `serve`, `ingest`, `migrate`, `validate-config`, `healthcheck`, `export`
 - THEN each subcommand is recognised and executes its own entry point
 - AND an unknown subcommand exits non-zero with a usage message
+
+#### Scenario: `export` runs independently of `ingest`
+
+- GIVEN a database already holding published observations
+- WHEN `export` is invoked with no preceding `ingest` in the same process
+- THEN it produces a valid export artifact from the currently published data
+- AND it requires no source-adapter or scheduler dependency
 
 ### Requirement: Zero database access at page-request time
 

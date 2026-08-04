@@ -29,6 +29,26 @@ export interface ChartDimensions {
   marginLeft: number;
 }
 
+/** Tick type size for the wide variant, in user units.
+ *
+ * Exported rather than left as a literal in `svg.ts` because the margins the
+ * wide box reserves are DERIVED from the width of the labels drawn at this
+ * size (see `wideDimensions`). If the renderer drew ticks at one size while
+ * the geometry sized the gutters for another, the labels would be clipped
+ * again — the exact defect the derivation exists to end. One constant, so the
+ * two cannot disagree. */
+export const WIDE_TICK_FONT_SIZE = 10;
+
+/** The wide box: the four numbers that are the same for every series.
+ *
+ * `width`/`height`/`marginTop`/`marginBottom` are the box itself. The two
+ * horizontal margins here are NOT what production renders with —
+ * `wideDimensions` replaces both from the series' own axis labels, keeping 56
+ * only as a floor (`WIDE_MIN_MARGIN_LEFT`) and deriving the right one
+ * outright. Reach for this constant where a box is needed and the labels are
+ * irrelevant (pure scale tests); anything that draws or hit-tests a real
+ * series must derive its own, because a constant gutter here is precisely
+ * what clipped five labels on /indicador/poblacion-residente. */
 export const DEFAULT_DIMENSIONS: ChartDimensions = {
   width: 960,
   height: 360,
@@ -224,27 +244,33 @@ export function yTickLabels(domain: [number, number], decimals: number, count = 
 }
 
 // ---------------------------------------------------------------------------
-// Narrow-viewport geometry (phones).
+// Per-variant geometry: the narrow box (phones) and the wide one, both sized
+// by the SAME derivation (`derivedMargins`, below).
 //
-// THE PROBLEM, measured in a real browser rather than estimated. At a 375 px
-// viewport an indicator page gives the chart a 312.3 px column, so the
-// 960-unit viewBox above is drawn at a scale of 0.325 and its `font-size="10"`
-// tick labels land at 3.25 CSS px. Everything in the drawing shrinks by that
-// same factor, which is why this is a geometry problem and not a font-size
-// one.
+// THE PROBLEM THE NARROW BOX SOLVES, measured in a real browser rather than
+// estimated. At a 375 px viewport an indicator page gives the chart a 312.3 px
+// column, so the 960-unit viewBox above is drawn at a scale of 0.325 and its
+// `font-size="10"` tick labels land at 3.25 CSS px. Everything in the drawing
+// shrinks by that same factor, which is why this is a geometry problem and not
+// a font-size one.
 //
-// WHY A SECOND SET OF DIMENSIONS RATHER THAN A BIGGER FONT IN THIS ONE.
+// WHY A SECOND SET OF DIMENSIONS RATHER THAN A BIGGER FONT IN THE WIDE ONE.
 // The same browser measurement rules the simple fix out. `poblacion-residente`
-// renders y-axis labels like "49.477.903" 55.3 units wide, into the 48 units
-// `DEFAULT_DIMENSIONS` leaves between the viewBox edge and the label anchor:
-// they are ALREADY clipped today, at every viewport, at font-size 10. Type and
-// margins are one decision, not two, and the margins live here.
+// renders y-axis labels like "49.477.903" about 54 units wide, into the 48
+// units a 56-unit left margin leaves between the viewBox edge and the label
+// anchor: they were clipped at every viewport, at font-size 10, until
+// `wideDimensions` below started deriving that margin too. Type and margins
+// are one decision, not two, and the margins live here.
 //
-// WHY THE MARGINS ARE DERIVED AND NOT CONSTANTS. Sizing every page's left
-// gutter for `poblacion-residente`'s ten-glyph labels would spend a fifth of
-// a phone's screen width on empty space for the five series whose labels are
-// three or four glyphs long. The gutter is computed from the labels the
-// series really produces, so each page pays only for what it prints.
+// WHY THE MARGINS ARE DERIVED AND NOT CONSTANTS. Two reasons, one per box.
+// In the narrow box, sizing every page's left gutter for
+// `poblacion-residente`'s ten-glyph labels would spend a fifth of a phone's
+// screen width on empty space for the five series whose labels are three or
+// four glyphs long. In the wide box the pressure is the opposite one: a
+// constant gutter chosen once, for no series in particular, silently clipped
+// the widest series' labels and every page's final x tick. A gutter computed
+// from the labels the series really produces is the only version that is
+// right for both.
 //
 // WHAT THIS COSTS, stated plainly. One viewBox cannot serve a 312 px column
 // and an 848 px one: the ratio between them is 2.7, so anything legible in
@@ -322,9 +348,50 @@ const Y_LABEL_ANCHOR_GAP = 8;
  * than the average ratio still lands inside the box. */
 const LABEL_SAFETY_MARGIN = 4;
 
-function widestLabelWidth(labels: string[]): number {
+function widestLabelWidth(labels: string[], tickFontSize: number): number {
   const glyphs = labels.reduce((max, label) => Math.max(max, label.length), 0);
-  return glyphs * GLYPH_ADVANCE_RATIO * NARROW_TICK_FONT_SIZE;
+  return glyphs * GLYPH_ADVANCE_RATIO * tickFontSize;
+}
+
+/** The horizontal gutters one series needs so that no axis label is drawn
+ * outside the box — the ONE derivation both variants use.
+ *
+ * There is a single rule here because there is a single failure: `svg.ts`
+ * anchors a y label's right edge at `marginLeft - 8` and centres an x label
+ * on its own tick, so three quantities have to fit and the margins are what
+ * pays for them.
+ *
+ *   LEFT   the widest y label plus its anchor gap; and, because the FIRST x
+ *          tick is centred on the plot area's left edge, half the widest
+ *          period label. Whichever is larger wins.
+ *   RIGHT  half the widest period label, because the LAST x tick is centred
+ *          on the plot area's right edge.
+ *
+ * `minMarginLeft` is a floor, not a target: a variant may insist on a gutter
+ * wider than its labels strictly need (see `WIDE_MIN_MARGIN_LEFT`).
+ *
+ * The widths are ESTIMATED from `GLYPH_ADVANCE_RATIO`, deliberately using the
+ * wider of the two measured alphabets, so the estimate errs towards a gutter
+ * a few units too wide rather than a label a few units clipped. The browser
+ * gate in `tests/e2e/indicator/indicator-pages.spec.ts` measures the real
+ * `getBBox()` of every tick on all six built pages, so an estimate that ever
+ * stops being conservative fails there rather than shipping. */
+function derivedMargins(input: {
+  periods: string[];
+  yLabels: string[];
+  tickFontSize: number;
+  minMarginLeft?: number;
+}): { marginLeft: number; marginRight: number } {
+  const halfPeriodLabel = widestLabelWidth(input.periods, input.tickFontSize) / 2;
+  const yLabelGutter =
+    Math.ceil(widestLabelWidth(input.yLabels, input.tickFontSize)) +
+    Y_LABEL_ANCHOR_GAP +
+    LABEL_SAFETY_MARGIN;
+  const marginRight = Math.ceil(halfPeriodLabel) + LABEL_SAFETY_MARGIN;
+  return {
+    marginLeft: Math.max(input.minMarginLeft ?? 0, yLabelGutter, marginRight),
+    marginRight,
+  };
 }
 
 /**
@@ -333,22 +400,25 @@ function widestLabelWidth(labels: string[]): number {
  *
  * `periods` sizes the RIGHT margin: the last x tick is centred on the plot
  * area's right edge, so half a label has to fit beyond it or the final period
- * — the one a reader looks for first — is clipped. (The wide geometry does
- * clip it: "2026-Q2" centred on x=944 runs to 965.5 in a 960-unit box.)
+ * — the one a reader looks for first — is clipped.
  *
  * `points` and `decimals` size the LEFT margin, through the real y-tick
  * labels rather than through an assumption about magnitude.
+ *
+ * No floor: at 560 units wide the gutter is a real share of the drawing, and
+ * spending a ten-glyph series' gutter on a three-glyph one would cost a phone
+ * reader plot area they can see the loss of.
  */
 export function narrowDimensions(
   periods: string[],
   points: ChartPoint[],
   decimals: number,
 ): ChartDimensions {
-  const marginLeft =
-    Math.ceil(widestLabelWidth(yTickLabels(valueDomain(points), decimals))) +
-    Y_LABEL_ANCHOR_GAP +
-    LABEL_SAFETY_MARGIN;
-  const marginRight = Math.ceil(widestLabelWidth(periods) / 2) + LABEL_SAFETY_MARGIN;
+  const { marginLeft, marginRight } = derivedMargins({
+    periods,
+    yLabels: yTickLabels(valueDomain(points), decimals),
+    tickFontSize: NARROW_TICK_FONT_SIZE,
+  });
   // Baseline offset, plus a full em for the type itself, plus air: enough
   // that a descender never reaches the viewBox edge and gets clipped.
   const marginBottom = NARROW_X_TICK_LABEL_OFFSET + NARROW_TICK_FONT_SIZE + 8;
@@ -360,4 +430,43 @@ export function narrowDimensions(
     marginBottom,
     marginLeft,
   };
+}
+
+/** The floor under the wide variant's left gutter.
+ *
+ * 56 is what `DEFAULT_DIMENSIONS` has always reserved, and it is kept as a
+ * MINIMUM rather than dropped, for a reason the narrow box cannot claim: at
+ * 960 units wide, the ~18 units a four-glyph series would win back are 1.9%
+ * of the drawing — invisible to a reader — while the y axis is where the eye
+ * enters the chart and a label pressed against the left edge of the box reads
+ * as cramped. Nothing is bought by shrinking it, and the coordinates of five
+ * of the six pages stay where they were.
+ *
+ * The floor is a minimum in the strict sense: `poblacion-residente`'s
+ * ten-glyph labels need 76 and get 76. */
+export const WIDE_MIN_MARGIN_LEFT = 56;
+
+/**
+ * The wide box for one series, with the same margins derivation the narrow
+ * box uses — the fix for a defect the narrow variant never had because it was
+ * derived from the start.
+ *
+ * Measured before this existed, on the built /indicador/poblacion-residente:
+ * every y label ("49.477.903" and its three siblings) started between 3.6 and
+ * 6.5 units LEFT of the viewBox origin, and the last x tick ("2026-Q2") ended
+ * at 965.5 against a 960-unit box. Five clipped labels on one published
+ * chart, and one clipped x tick on all six pages.
+ */
+export function wideDimensions(
+  periods: string[],
+  points: ChartPoint[],
+  decimals: number,
+): ChartDimensions {
+  const { marginLeft, marginRight } = derivedMargins({
+    periods,
+    yLabels: yTickLabels(valueDomain(points), decimals),
+    tickFontSize: WIDE_TICK_FONT_SIZE,
+    minMarginLeft: WIDE_MIN_MARGIN_LEFT,
+  });
+  return { ...DEFAULT_DIMENSIONS, marginLeft, marginRight };
 }

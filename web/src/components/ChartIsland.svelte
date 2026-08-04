@@ -21,9 +21,9 @@
   // active toggle state itself. Changing range or transformation can never
   // drop a break that genuinely falls inside the new visible window.
   import {
-    DEFAULT_DIMENSIONS,
     NARROW_VIEWPORT_QUERY,
     projectPoints,
+    wideDimensions,
     type ChartDimensions,
     type ChartPoint,
     type ObservationStatus,
@@ -368,7 +368,17 @@
     return () => query.removeEventListener("change", sync);
   });
 
-  const activeDims: ChartDimensions = $derived(narrowViewport ? narrowVariant.dims : DEFAULT_DIMENSIONS);
+  /** The wide box for THIS series, derived exactly as `renderChartSVG`
+   * derives it when no `dims` is passed — same pure function, same inputs,
+   * same result. It is spelled out here because the hit targets below are
+   * positioned from the plot area's margins, and those margins now depend on
+   * the series' own labels: a constant here would put the buttons beside the
+   * points on any page whose y axis is wider than the old fixed gutter. */
+  const wideDims: ChartDimensions = $derived(
+    wideDimensions(rangedPeriods, rangedPoints, viewDecimals),
+  );
+
+  const activeDims: ChartDimensions = $derived(narrowViewport ? narrowVariant.dims : wideDims);
 
   const description = $derived(describeSeries({ points: rangedPoints, unit: viewUnit, decimals: viewDecimals }));
 

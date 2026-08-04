@@ -10,7 +10,9 @@ import {
   GLYPH_ADVANCE_RATIO,
   NARROW_MAX_X_TICKS,
   NARROW_TICK_FONT_SIZE,
+  WIDE_TICK_FONT_SIZE,
   narrowDimensions,
+  wideDimensions,
   type ChartPoint,
 } from "../../src/lib/chart/geometry";
 
@@ -36,6 +38,40 @@ const GOLDEN_INPUT = {
   descriptionId: "golden-description",
   tableId: "golden-table",
 };
+
+/** The estimated advance width of one axis label, using the SAME measured
+ * glyph ratio `geometry.ts` sizes the margins from — so this test and that
+ * code can only disagree if one of them is wrong. Deliberately an estimate
+ * and not a real measurement: there is no text engine here. The browser-side
+ * proof, which measures `getBBox()` on the built page for all six slugs,
+ * lives in `tests/e2e/indicator/indicator-pages.spec.ts`. */
+function estimatedLabelWidth(label: string, tickFontSize: number): number {
+  return label.length * GLYPH_ADVANCE_RATIO * tickFontSize;
+}
+
+/** Every axis label in one rendered drawing that falls outside its own
+ * viewBox, by name.
+ *
+ * Anything drawn outside the viewBox is clipped by the SVG's own overflow, so
+ * this is the whole failure mode in one function, applied identically to both
+ * variants: a y label is right-anchored at its `x` and runs leftwards from
+ * there; an x label is centred on its `x` and runs half its width each way. */
+function ticksOutsideViewBox(svg: string, tickFontSize: number): string[] {
+  const width = Number(/viewBox="0 0 (\d+) \d+"/.exec(svg)?.[1]);
+  const outside: string[] = [];
+  for (const [, x, label] of svg.matchAll(
+    /class="chart-tick chart-tick--y"[^>]*x="([\d.]+)"[^>]*>([^<]+)</g,
+  )) {
+    if (Number(x) - estimatedLabelWidth(label, tickFontSize) < 0) outside.push(label);
+  }
+  for (const [, x, label] of svg.matchAll(
+    /class="chart-tick chart-tick--x"[^>]*x="([\d.]+)"[^>]*>([^<]+)</g,
+  )) {
+    const half = estimatedLabelWidth(label, tickFontSize) / 2;
+    if (Number(x) - half < 0 || Number(x) + half > width) outside.push(label);
+  }
+  return outside;
+}
 
 describe("renderChartSVG", () => {
   it("matches the committed golden fixture (build-time/island anti-divergence device)", async () => {
@@ -116,11 +152,13 @@ describe("renderChartSVG", () => {
 // ---------------------------------------------------------------------------
 // The narrow-viewport variant.
 //
-// One renderer, two boxes. `renderChartSVG` gains four optional inputs, all
-// defaulted to exactly what it emitted before — which is what the golden
-// fixture above is now ALSO proving: if any default drifted, that snapshot
-// moves. The narrow variant is that same function called with the narrow
-// geometry (see `geometry.ts` for why the phone needs its own box at all).
+// One renderer, two boxes. `renderChartSVG` gains four optional inputs; three
+// of them (type size, label offset, tick count) default to exactly what it
+// emitted before, and `dims` defaults to the wide box DERIVED for the series
+// in hand. The golden fixture above is what proves it: if any of those
+// defaults drifted, that snapshot moves. The narrow variant is that same
+// function called with the narrow geometry (see `geometry.ts` for why the
+// phone needs its own box at all).
 describe("renderChartSVG — narrow-viewport variant", () => {
   const NARROW_INPUT = { ...GOLDEN_INPUT, titleId: "golden-title-narrow", ...narrowChartVariant(GOLDEN_POINTS, 1) };
 
@@ -181,30 +219,10 @@ describe("renderChartSVG — narrow-viewport variant", () => {
   it("draws every tick label INSIDE the viewBox, which is the whole point of the narrow margins", () => {
     // The assertion that would have caught the pre-existing clipping: no
     // y label may start left of x=0, and no x label may end right of the
-    // viewBox width. Widths are estimated with the same measured glyph
-    // ratio `geometry.ts` sizes the margins from, so this test and that
-    // code disagree only if one of them is wrong.
-    const svg = renderChartSVG(NARROW_INPUT);
-    const dims = narrowDimensions(
-      GOLDEN_POINTS.map((p) => p.period),
-      GOLDEN_POINTS,
-      1,
-    );
-
-    for (const [, x, label] of svg.matchAll(
-      /class="chart-tick chart-tick--y"[^>]*x="([\d.]+)"[^>]*>([^<]+)</g,
-    )) {
-      const width = label.length * GLYPH_ADVANCE_RATIO * NARROW_TICK_FONT_SIZE;
-      expect(Number(x) - width, `y label "${label}" starts left of the viewBox`).toBeGreaterThan(0);
-    }
-
-    for (const [, x, label] of svg.matchAll(
-      /class="chart-tick chart-tick--x"[^>]*x="([\d.]+)"[^>]*>([^<]+)</g,
-    )) {
-      const half = (label.length * GLYPH_ADVANCE_RATIO * NARROW_TICK_FONT_SIZE) / 2;
-      expect(Number(x) - half, `x label "${label}" starts left of the viewBox`).toBeGreaterThanOrEqual(0);
-      expect(Number(x) + half, `x label "${label}" runs past the viewBox`).toBeLessThanOrEqual(dims.width);
-    }
+    // viewBox width. Both variants are now judged by the SAME helper,
+    // because they are now sized by the same derivation.
+    const outside = ticksOutsideViewBox(renderChartSVG(NARROW_INPUT), NARROW_TICK_FONT_SIZE);
+    expect(outside, `clipped by the narrow viewBox: ${outside.join(", ")}`).toEqual([]);
   });
 
   it("still consumes design tokens and never a hardcoded hex, exactly like the wide variant", () => {
@@ -219,5 +237,68 @@ describe("renderChartSVG — narrow-viewport variant", () => {
     const svg = renderChartSVG(NARROW_INPUT);
     expect(svg.match(/data-testid="chart-break-band-narrow"/g) ?? []).toHaveLength(1);
     expect(svg).toContain('data-break-key="covid-2020"');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The WIDE variant's margins.
+//
+// THE DEFECT, measured with `getBBox()` in Chromium on the built page
+// /indicador/poblacion-residente at a 1280 px viewport, against the wide
+// drawing's own `viewBox="0 0 960 360"`:
+//
+//   y label      left edge          x label   right edge
+//   49.477.903     -5.46            2026-Q2      965.50
+//   49.553.982     -6.49
+//   49.630.061     -4.60
+//   49.706.140     -3.61
+//
+// All four y labels started left of the viewBox origin and the final x tick
+// ran 5.5 units past its right edge, so all five were clipped by the SVG's
+// own overflow. The same sweep over all six built pages found the last x tick
+// clipped on EVERY one of them (2026-Q2, 2026-06, 2026-Q1).
+//
+// THE CAUSE was that the wide margins were constants — 56 left, 16 right —
+// that had never been derived from anything. A y label is right-anchored at
+// `marginLeft - 8 = 48`, and a grouped eight-digit figure measures about 54
+// units at this type size, so it needed 54 units to the left of 48 and had
+// 48. Grouping separators widened the labels and made it visible; they did
+// not cause it.
+describe("renderChartSVG — the wide variant's derived margins", () => {
+  // The real shape of `poblacion-residente`: ten-glyph y labels and
+  // seven-glyph period labels, the series that breaks both edges at once.
+  const POPULATION_POINTS: ChartPoint[] = Array.from({ length: 8 }, (_, i) => ({
+    period: `${2024 + Math.floor(i / 4)}-Q${(i % 4) + 1}`,
+    value: 49_477_903 + i * 76_079,
+    status: "D" as const,
+  }));
+
+  it("keeps every axis label inside the viewBox for the series that clipped five of them", () => {
+    const svg = renderChartSVG({ ...GOLDEN_INPUT, points: POPULATION_POINTS, decimals: 0, breaks: [] });
+    const outside = ticksOutsideViewBox(svg, WIDE_TICK_FONT_SIZE);
+    expect(outside, `clipped by the wide viewBox: ${outside.join(", ")}`).toEqual([]);
+  });
+
+  it("derives those margins even when the caller passes no dims at all", () => {
+    // Two places compute this box: here, when a caller omits `dims`, and
+    // `ChartIsland.svelte`, which needs the same margins to position its
+    // interactive overlay over the drawing. One pure function serves both,
+    // and this pins it — a default that quietly became a constant again
+    // would leave the island's hit targets beside the points rather than on
+    // them, and nothing else would notice.
+    const periods = GOLDEN_POINTS.map((p) => p.period);
+    expect(renderChartSVG(GOLDEN_INPUT)).toBe(
+      renderChartSVG({ ...GOLDEN_INPUT, dims: wideDimensions(periods, GOLDEN_POINTS, 1) }),
+    );
+  });
+
+  it("keeps the LAST x tick inside the viewBox, which every one of the six pages overran", () => {
+    // Centred on the final data point, which sits exactly on the plot area's
+    // right edge — so half a label always overhangs unless the right margin
+    // is derived from the label. 16 units of margin against a 22.4-unit half
+    // label is the arithmetic that put "2026-Q2" at 965.5.
+    const svg = renderChartSVG(GOLDEN_INPUT);
+    const outside = ticksOutsideViewBox(svg, WIDE_TICK_FONT_SIZE);
+    expect(outside, `clipped by the wide viewBox: ${outside.join(", ")}`).toEqual([]);
   });
 });

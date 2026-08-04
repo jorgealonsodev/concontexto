@@ -275,9 +275,54 @@ for (const slug of SLUGS) {
         expect(measured.height).toBeGreaterThan(180);
 
         // No axis label is cut off by the viewBox edge — the failure the
-        // derived margins exist to prevent, and one the wide drawing still
-        // exhibits for ten-glyph labels.
+        // derived margins exist to prevent.
         expect(measured.clipped, `axis labels clipped by the viewBox: ${measured.clipped.join(", ")}`).toEqual([]);
+      },
+    );
+
+    // The same gate on the WIDE drawing, which had exactly the same defect
+    // and no test looking for it. Measured with `getBBox()` in Chromium at a
+    // 1280 px viewport on the built /indicador/poblacion-residente, against
+    // its `viewBox="0 0 960 360"`:
+    //
+    //   49.477.903  left  -5.46      49.630.061  left  -4.60
+    //   49.553.982  left  -6.49      49.706.140  left  -3.61
+    //   2026-Q2     right 965.50
+    //
+    // Five labels clipped on one published page; the last x tick clipped on
+    // all six. A width ESTIMATE is what the fixed margins were implicitly
+    // betting on and getting wrong, so this measures the real rendered box
+    // rather than estimating it again — the unit tests pin the geometry, and
+    // only a browser can say what that geometry actually draws in the
+    // shipped typeface.
+    test(
+      "no axis label on the wide chart is clipped by the viewBox",
+      { tag: ["@indicator-page", "@chart"] },
+      async ({ page }) => {
+        await page.setViewportSize({ width: 1280, height: 1000 });
+        const indicator = new IndicatorPage(page, slug);
+        await indicator.goto();
+
+        const wide = indicator.chartSection.locator('[data-testid="indicator-chart-svg"]');
+        const narrow = indicator.chartSection.locator('[data-testid="indicator-chart-svg-narrow"]');
+        await expect(wide).toBeVisible();
+        await expect(narrow).toBeHidden();
+
+        const clipped = await wide.evaluate((svg) => {
+          const viewBox = (svg.getAttribute("viewBox") ?? "0 0 1 1").split(" ").map(Number);
+          return [...svg.querySelectorAll(".chart-tick")]
+            .map((t) => {
+              const b = (t as SVGGraphicsElement).getBBox();
+              return { text: t.textContent ?? "", left: b.x, right: b.x + b.width };
+            })
+            // Both edges: a y label overruns the origin on the left, a
+            // centred x tick overruns the width on the right, and the fixed
+            // margins produced one of each on the same page.
+            .filter((t) => t.left < 0 || t.right > viewBox[2])
+            .map((t) => `${t.text} [${t.left.toFixed(2)}, ${t.right.toFixed(2)}]`);
+        });
+
+        expect(clipped, `axis labels clipped by the wide viewBox: ${clipped.join(", ")}`).toEqual([]);
       },
     );
 

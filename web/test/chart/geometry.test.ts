@@ -6,7 +6,10 @@ import {
   NARROW_TICK_FONT_SIZE,
   NARROW_VIEWPORT_QUERY,
   NARROW_X_TICK_LABEL_OFFSET,
+  WIDE_MIN_MARGIN_LEFT,
+  WIDE_TICK_FONT_SIZE,
   narrowDimensions,
+  wideDimensions,
   yTickLabels,
   buildBreakBands,
   buildLineSegments,
@@ -198,12 +201,13 @@ describe("buildXTicks / buildYTicks", () => {
 // WHY THE FIX IS A SECOND GEOMETRY AND NOT A BIGGER NUMBER. Raising
 // `font-size` inside the 960x360 viewBox cannot work, and the same browser
 // measurement says why: `poblacion-residente`'s y-axis label "49.477.903"
-// already renders 55.3 units wide against the 48 units `marginLeft` leaves
-// it, so it is ALREADY clipped at the left edge at font-size 10, at every
-// viewport. Every unit added to the font makes that worse. The margins have
-// to grow with the type, and the margins live in the dimensions — so the
-// narrow viewport gets its own dimensions, sized from the labels the series
-// really has rather than from a guess.
+// renders about 54 units wide against the 48 units a 56-unit `marginLeft`
+// leaves it, so it was clipped at the left edge at font-size 10, at every
+// viewport — see the wide-viewport block at the end of this file for the
+// measurements and the fix. Every unit added to the font makes that worse.
+// The margins have to grow with the type, and the margins live in the
+// dimensions — so each viewport gets its own dimensions, sized from the
+// labels the series really has rather than from a guess.
 describe("narrow-viewport geometry — the chart at a phone width", () => {
   const QUARTERLY_PERIODS = ["2024-Q1", "2024-Q2", "2024-Q3", "2024-Q4", "2025-Q1"];
   const SMALL_VALUE_POINTS: ChartPoint[] = QUARTERLY_PERIODS.map((period, i) => ({
@@ -240,11 +244,11 @@ describe("narrow-viewport geometry — the chart at a phone width", () => {
     expect(plotArea(narrow).width).toBeGreaterThan(plotArea(wide).width);
   });
 
-  it("keeps the LAST x-axis label inside the viewBox, which the wide geometry does not", () => {
-    // Measured on the live page: the final tick "2026-Q2" is centred on
-    // x=944 in a 960-wide viewBox and runs to 965.5 — clipped. The narrow
-    // geometry's right margin is half a label wide, so the last tick cannot
-    // overhang.
+  it("keeps the LAST x-axis label inside the viewBox", () => {
+    // Measured on the live page before the wide box derived its own margins:
+    // the final tick "2026-Q2" was centred on x=944 in a 960-wide viewBox and
+    // ran to 965.5 — clipped. Both boxes now reserve half a label on the
+    // right, so the last tick cannot overhang either of them.
     const dims = narrowDimensions(QUARTERLY_PERIODS, SMALL_VALUE_POINTS, 1);
     const widestPeriod = Math.max(...QUARTERLY_PERIODS.map((p) => p.length));
     const halfLabel = (widestPeriod * GLYPH_ADVANCE_RATIO * NARROW_TICK_FONT_SIZE) / 2;
@@ -293,6 +297,15 @@ describe("narrow-viewport geometry — the chart at a phone width", () => {
     expect(NARROW_MAX_X_TICKS * labelWidth).toBeLessThan(plotArea(dims).width);
   });
 
+  it("keeps the FIRST x tick inside the viewBox too, since it is centred on the left edge", () => {
+    // The mirror of the rule above, and the reason the left gutter is not
+    // sized from the y labels alone: `xForIndex(0, …)` puts the first period
+    // exactly on `plotArea().x0`, so half its label reaches into the gutter.
+    const dims = narrowDimensions(QUARTERLY_PERIODS, SMALL_VALUE_POINTS, 1);
+    const halfLabel = (7 * GLYPH_ADVANCE_RATIO * NARROW_TICK_FONT_SIZE) / 2;
+    expect(plotArea(dims).x0 - halfLabel).toBeGreaterThanOrEqual(0);
+  });
+
   it("declares a media query that matches the breakpoint the markup toggles on", () => {
     // The two variants are shown and hidden by Tailwind's `md:` utilities,
     // and the island reads the SAME boundary through `matchMedia` to know
@@ -300,5 +313,94 @@ describe("narrow-viewport geometry — the chart at a phone width", () => {
     // ever disagreed, the hit targets would sit somewhere the chart is not —
     // which is exactly the kind of drift a shared constant prevents.
     expect(NARROW_VIEWPORT_QUERY).toBe("(max-width: 47.999rem)");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Wide-viewport geometry.
+//
+// THE DEFECT, measured with `getBBox()` in Chromium on the built
+// /indicador/poblacion-residente at a 1280 px viewport, inside the wide
+// drawing's own `viewBox="0 0 960 360"`:
+//
+//   49.477.903  left edge  -5.46      2026-Q2  right edge  965.50
+//   49.553.982  left edge  -6.49
+//   49.630.061  left edge  -4.60
+//   49.706.140  left edge  -3.61
+//
+// Five clipped labels on one published chart. The same sweep across all six
+// built pages found the last x tick clipped on every one of them.
+//
+// THE CAUSE was not the grouping separators that made it visible: it was that
+// `marginLeft: 56` and `marginRight: 16` were constants nothing had ever
+// derived. The narrow box had already solved this by computing its gutters
+// from the labels the series really prints; `wideDimensions` is that same
+// derivation applied to the box it was extracted from.
+describe("wide-viewport geometry — the published chart's own margins", () => {
+  const QUARTERLY_PERIODS = ["2025-Q3", "2025-Q4", "2026-Q1", "2026-Q2"];
+  /** The real shape of `poblacion-residente`, the series that clipped. */
+  const POPULATION_POINTS: ChartPoint[] = QUARTERLY_PERIODS.map((period, i) => ({
+    period,
+    value: 49_477_903 + i * 76_079,
+    status: "D",
+  }));
+  /** The other five pages: three- and four-glyph y labels. */
+  const SMALL_VALUE_POINTS: ChartPoint[] = QUARTERLY_PERIODS.map((period, i) => ({
+    period,
+    value: 10 + i * 0.5,
+    status: "D",
+  }));
+
+  it("reserves enough left margin for the WIDEST y-axis label the series really produces", () => {
+    const dims = wideDimensions(QUARTERLY_PERIODS, POPULATION_POINTS, 0);
+    const labels = yTickLabels(valueDomain(POPULATION_POINTS), 0);
+    const widest = Math.max(...labels.map((l) => l.length));
+    const widestLabelWidth = widest * GLYPH_ADVANCE_RATIO * WIDE_TICK_FONT_SIZE;
+
+    // `svg.ts` anchors a y label's RIGHT edge at `marginLeft - 8`, so the
+    // label runs leftwards from there and must still start at a positive x.
+    // With the old constant this was 48 - 64 = -16.
+    expect(dims.marginLeft - 8 - widestLabelWidth).toBeGreaterThan(0);
+  });
+
+  it("keeps the LAST x-axis label inside the viewBox, which the constant 16 could not", () => {
+    // The last tick is centred on the final data point, which sits exactly on
+    // `plotArea().x1` — so half a label always overhangs unless the right
+    // margin pays for it. Measured on the live page: "2026-Q2" centred on
+    // x=944 ran to 965.5 in a 960-unit box.
+    const dims = wideDimensions(QUARTERLY_PERIODS, SMALL_VALUE_POINTS, 1);
+    const widestPeriod = Math.max(...QUARTERLY_PERIODS.map((p) => p.length));
+    const halfLabel = (widestPeriod * GLYPH_ADVANCE_RATIO * WIDE_TICK_FONT_SIZE) / 2;
+    expect(plotArea(dims).x1 + halfLabel).toBeLessThanOrEqual(dims.width);
+    expect(plotArea(dims).x0 - halfLabel).toBeGreaterThanOrEqual(0);
+  });
+
+  it("holds a FLOOR under the left gutter, unlike the narrow box which has none", () => {
+    // The two boxes make opposite trades because their widths are opposite.
+    // At 560 units a derived-down gutter buys a phone reader plot area they
+    // can see; at 960 units the same 18 units is 1.9% of the drawing, and
+    // spending it keeps the y axis off the edge of the box. So the wide
+    // variant floors at what it has always reserved and only ever grows.
+    const short = wideDimensions(QUARTERLY_PERIODS, SMALL_VALUE_POINTS, 1);
+    const wide = wideDimensions(QUARTERLY_PERIODS, POPULATION_POINTS, 0);
+    expect(short.marginLeft).toBe(WIDE_MIN_MARGIN_LEFT);
+    expect(wide.marginLeft).toBeGreaterThan(WIDE_MIN_MARGIN_LEFT);
+    expect(narrowDimensions(QUARTERLY_PERIODS, SMALL_VALUE_POINTS, 1).marginLeft).toBeLessThan(
+      narrowDimensions(QUARTERLY_PERIODS, POPULATION_POINTS, 0).marginLeft,
+    );
+  });
+
+  it("changes only the margins, never the box the page reserves space for", () => {
+    // `ChartIsland.svelte`'s `<style>` hard-codes `aspect-ratio: 960 / 360`
+    // to stop the page reflowing when the island hydrates. A derivation that
+    // touched width or height would silently break that promise for the one
+    // series whose labels are widest.
+    for (const points of [POPULATION_POINTS, SMALL_VALUE_POINTS]) {
+      const dims = wideDimensions(QUARTERLY_PERIODS, points, 0);
+      expect(dims.width).toBe(DEFAULT_DIMENSIONS.width);
+      expect(dims.height).toBe(DEFAULT_DIMENSIONS.height);
+      expect(dims.marginTop).toBe(DEFAULT_DIMENSIONS.marginTop);
+      expect(dims.marginBottom).toBe(DEFAULT_DIMENSIONS.marginBottom);
+    }
   });
 });

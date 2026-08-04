@@ -14,10 +14,10 @@
 // JavaScript-enabled reader does, because there is no separate JS-only band
 // layer to omit.
 import {
-  DEFAULT_DIMENSIONS,
   NARROW_MAX_X_TICKS,
   NARROW_TICK_FONT_SIZE,
   NARROW_X_TICK_LABEL_OFFSET,
+  WIDE_TICK_FONT_SIZE,
   buildBreakBands,
   buildLineSegments,
   buildXTicks,
@@ -26,6 +26,7 @@ import {
   plotArea,
   projectPoints,
   valueDomain,
+  wideDimensions,
   type ChartDimensions,
   type ChartPoint,
 } from "./geometry";
@@ -50,6 +51,10 @@ export interface RenderChartSVGInput {
   titleId: string;
   descriptionId: string;
   tableId: string;
+  /** The box to draw into. Omitted, the wide box is DERIVED for this exact
+   * series (`wideDimensions`) rather than taken from a constant — so a caller
+   * that says nothing gets margins that fit its own labels, which is what the
+   * clipped y axis on /indicador/poblacion-residente cost us. */
   dims?: ChartDimensions;
   /** Tick type size in user units. Defaults to the value this function has
    * always emitted, so an omitting caller gets byte-identical output. */
@@ -99,8 +104,9 @@ function escapeXml(value: string): string {
 }
 
 export function renderChartSVG(input: RenderChartSVGInput): string {
-  const dims = input.dims ?? DEFAULT_DIMENSIONS;
-  const tickFontSize = input.tickFontSize ?? 10;
+  const dims =
+    input.dims ?? wideDimensions(input.points.map((p) => p.period), input.points, input.decimals);
+  const tickFontSize = input.tickFontSize ?? WIDE_TICK_FONT_SIZE;
   const xTickLabelOffset = input.xTickLabelOffset ?? 16;
   const maxXTicks = input.maxXTicks ?? 6;
   // The empty default is load-bearing: it is what makes every existing test

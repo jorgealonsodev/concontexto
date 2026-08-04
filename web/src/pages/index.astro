@@ -21,6 +21,10 @@ import "../styles/theme.css";
 // imports the token file imports this one too — they are not separable.
 import "../styles/components.css";
 import HomePage, { SITE_NAME } from "../templates/HomePage.astro";
+// Site-level footer, rendered OUTSIDE `<main>` on every document that has
+// one — see that file's header for why it is a body-level sibling and not
+// part of the page composition.
+import SiteFooter from "../templates/SiteFooter.astro";
 import { loadExportArtifact, resolveLoadOptionsFromEnv } from "../lib/export/loader";
 import { homeIndicatorListing } from "../lib/indicator/homeListing";
 
@@ -45,5 +49,6 @@ const indicators = homeIndicatorListing(seriesBySlug);
     <main class="mx-auto max-w-4xl p-6">
       <HomePage indicators={indicators} />
     </main>
+    <SiteFooter />
   </body>
 </html>

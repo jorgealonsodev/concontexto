@@ -32,6 +32,10 @@ import "../../styles/theme.css";
 // imports the token file imports this one too — they are not separable.
 import "../../styles/components.css";
 import IndicatorPage, { type RelatedCardData } from "../../templates/IndicatorPage.astro";
+// See `src/pages/index.astro`. Site-level furniture belongs to the route
+// file, beside `<main>`, not to `IndicatorPage.astro`'s per-series
+// composition.
+import SiteFooter from "../../templates/SiteFooter.astro";
 import { loadExportArtifact, resolveLoadOptionsFromEnv } from "../../lib/export/loader";
 import { artifactSlugFor, resolveIndicatorRouteSlugs } from "../../lib/indicator/routes";
 import { INDICATOR_CONTENT } from "../../content/indicators";
@@ -127,5 +131,6 @@ const title = `${content.name} — ConContexto`;
         canonicalPath={canonicalPath}
       />
     </main>
+    <SiteFooter />
   </body>
 </html>

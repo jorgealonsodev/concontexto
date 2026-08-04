@@ -350,6 +350,57 @@ export const es = {
      * heading that said so would have to be edited the day that changes. */
     indicatorsHeading: "Indicadores",
   },
+  /** The site footer's copy. ALL NEW reader-facing strings — flagged for
+   * editorial sign-off, per this project's established convention. The
+   * register matches the rest of this module: impersonal, no second person,
+   * every sentence a statement of fact rather than an instruction.
+   *
+   * `dataTermsNote` IS THE CONSTRAINED ONE, and it is constrained by a hard
+   * requirement rather than by taste (spec `source-attribution-licensing`,
+   * "No blanket data-licence claim exists in the repository": "The
+   * repository MUST NOT assert a single licence over all derived data ...
+   * `LICENSE-DATA` MUST defer to `sources/{source}.yaml` rather than
+   * override it").
+   *
+   * The footer any site would write by default — "Datos bajo CC BY 4.0" —
+   * would be false here. `config/sources/eurostat.yaml` records that
+   * Commission Decision 2011/833/EU authorises reuse of Eurostat's OWN
+   * material with acknowledgement, that the permission does NOT extend to
+   * third-party material Eurostat republishes, and that some commercial
+   * redissemination is separately restricted; `ine.yaml` and
+   * `seg-social.yaml` carry different terms again. One sentence covering all
+   * three would have to drop whichever restriction did not fit.
+   *
+   * So this sentence states the ABSENCE of a blanket licence and stops
+   * there. It deliberately summarises nothing: the per-source link beside it
+   * goes to `config/sources/`, the record the spec makes authoritative, and
+   * NOT to `LICENSE-DATA` — that file itself defers to those YAML files, and
+   * routing the reader through a deferring summary is the hop this footer
+   * exists to remove.
+   *
+   * Also deliberately absent: ConContexto's own editorial text is offered
+   * under CC BY 4.0 *where a source's terms permit redistribution*
+   * (LICENSE-DATA). That is a conditional claim about authored prose, not
+   * about the values, and printing it in a footer beside the data is exactly
+   * how it would be read as covering the data. It stays in LICENSE-DATA,
+   * where its condition travels with it. */
+  footer: {
+    dataTermsNote:
+      "Los datos publicados aquí no están cubiertos por una licencia única: cada fuente fija sus propias " +
+      "condiciones de reutilización.",
+    repositoryLabel: "Repositorio del proyecto",
+    /** MIT is named here and only here, because the code IS covered by one
+     * licence — a true single claim, unlike anything that could be said
+     * about the data. */
+    codeLicenceLabel: "Licencia del código (MIT)",
+    sourceTermsLabel: "Condiciones de reutilización de cada fuente",
+    /** Honest about the destination. A reader who follows this link gets a
+     * `text/plain` listing — one line per archived raw file, each carrying
+     * its SHA-256, its source, its download timestamp and the exact URL it
+     * came from. Naming it "transparencia" or "procedencia de los datos"
+     * would promise a page this project does not have. */
+    rawFilesLabel: "Hashes SHA-256 de los ficheros originales (texto plano)",
+  },
   /** verify-report WARNING-18 remediation: `src/workbench/pages/index.astro`'s
    * own intro paragraph, moved here verbatim. Same widened-scan discovery as
    * `home.tagline` above — the workbench route was never in the

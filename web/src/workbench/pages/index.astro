@@ -16,6 +16,20 @@ import "../../styles/theme.css";
 // imports the token file imports this one too — they are not separable.
 import "../../styles/components.css";
 import WorkbenchShowcase from "../WorkbenchShowcase.astro";
+// The workbench gets the footer too, and that is a decision rather than a
+// copy-paste. Two reasons. First, discovery: `site-footer.test.ts` finds
+// route entry points by scanning for `<html>`, exactly as `favicon.test.ts`
+// does, precisely so a new route cannot ship without site-level furniture —
+// exempting this page would mean that guard carrying a hand-maintained skip
+// list, which is the failure mode verify-report WARNING-18 already
+// documented. Second, review value: this is the one page a reviewer opens
+// with both themes rendered side by side, so it is where the footer's
+// contrast and its 44 px targets get looked at rather than only measured.
+//
+// The footer states nothing that is false here: MIT covers this page's code,
+// and the sentence about the data asserts an ABSENCE of a blanket licence,
+// which holds whether or not this particular document renders any series.
+import SiteFooter from "../../templates/SiteFooter.astro";
 import { es } from "../../i18n/es";
 
 const title = "Workbench de componentes — ConContexto";
@@ -41,5 +55,6 @@ const title = "Workbench de componentes — ConContexto";
       <WorkbenchShowcase theme="light" />
       <WorkbenchShowcase theme="dark" />
     </main>
+    <SiteFooter />
   </body>
 </html>

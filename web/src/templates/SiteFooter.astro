@@ -1,0 +1,136 @@
+---
+// The site footer: four site-level destinations a reader had no route to,
+// and the one licensing sentence this project is allowed to say about its
+// data.
+//
+// Placed under `src/templates/`, not `src/components/`, for the reason that
+// directory's other occupants document: several slice 5/6 guards scan
+// `src/components/` wholesale on the assumption that every `.astro` file
+// there is one of the design system's eight catalog components. This is page
+// furniture, not a ninth catalog entry.
+//
+// WHY EACH LINE IS HERE, AND WHAT WAS LEFT OUT.
+//
+// 1. THE REPOSITORY. The site's whole thesis is that its pipeline is
+//    inspectable (PRD §14.2, principle P5) and nothing on `/` linked to it.
+//    The methodology sheet's "Ver script de ingesta en el repositorio" is a
+//    per-series deep link into one adapter directory; the homepage carried
+//    no repository link at all.
+//
+// 2. THE CODE LICENCE. MIT is a true single claim, and it is the ONLY single
+//    claim this footer makes. `LICENSE` is unambiguous and covers the whole
+//    Go/Astro source tree.
+//
+// 3. THE PER-SOURCE TERMS. See `es.footer.dataTermsNote`'s own comment for
+//    the argument in full. Short version: `source-attribution-licensing`
+//    forbids asserting one licence over all derived data, Eurostat is the
+//    concrete reason a blanket claim would be false, and the link therefore
+//    goes to `config/sources/` — the record the spec makes authoritative —
+//    rather than to `LICENSE-DATA`, which itself defers to those files.
+//
+// 4. THE RAW-FILE HASH LISTING. Every ingest republishes
+//    `STATIC_ROOT/transparencia/raw-files.sha256`
+//    (`app/cmd/concontexto/ingest_cmd.go`'s `publicHashPath`): the SHA-256,
+//    source, download timestamp and origin URL of every archived raw file.
+//    It was served and returned 200, and `grep -rn transparencia src/`
+//    returned nothing — the evidence for the project's central claim was
+//    unreachable from the site that makes the claim.
+//
+// DELIBERATELY NOT HERE:
+//   - `/data-derived/manifest.json`. It is served and unlinked too, but the
+//     action bar on every indicator page already offers that series' CSV and
+//     JSON, which is what a reader wants; the manifest is a build index
+//     (schema version, generated-at, per-file digests) whose contents are
+//     already reachable one level down. A footer is not a download hub.
+//   - Source name, licence link, origin identifier, extraction timestamp.
+//     All four are per-SERIES facts and `MethodologySheet.astro` is their
+//     authoritative home. Repeating them at site level would mean stating
+//     once, for the whole site, values that differ per series.
+//   - A `©` line. It restates nothing the two licence statements do not
+//     already carry, and it needs a year somebody has to remember to edit.
+//
+// PLACEMENT. Rendered as a sibling of `<main>`, never inside it: a `<footer>`
+// nested in `<main>` has NO landmark role, so the contentinfo landmark a
+// screen-reader user jumps to only exists at body level. Carries no heading
+// at all — it follows an `h3` on `/`, an `h2` on an indicator page and an
+// `h2` on the workbench, so any fixed level would skip on at least one of
+// them, and contentinfo is already a landmark without one.
+//
+// Ships zero runtime JavaScript: static markup, no `client:*` directive.
+import { es } from "../i18n/es";
+
+/**
+ * This project's repository. Hard-coded here rather than derived from
+ * `package.json` (which has no `repository` field) or from an env var (which
+ * would make the footer's destination depend on the build environment, and
+ * this link is a fact about the project, not about the deployment).
+ *
+ * `test/pages/site-footer.test.ts` pins this against
+ * `content/indicators/methodology.ts`'s own ingestion-script links, so the
+ * site can never advertise two different repositories.
+ */
+const REPOSITORY_URL = "https://github.com/jorgealonsodev/concontexto";
+
+/** `main`, matching the branch `methodology.ts` already links its ingestion
+ * scripts on. A permalink to a commit SHA would be more stable and would also
+ * go stale as a description of the project's CURRENT terms, which is the
+ * opposite of what a licensing link is for. */
+const CODE_LICENCE_URL = `${REPOSITORY_URL}/blob/main/LICENSE`;
+const SOURCE_TERMS_URL = `${REPOSITORY_URL}/tree/main/config/sources`;
+
+/**
+ * The published hash listing. A RUNTIME path, not a build output: the Go
+ * binary writes it into the container's `raw_hashes` volume on every ingest
+ * (`docker-compose.yml`), and `web/dist/` never contains it. So this link
+ * resolves on the deployed site and 404s under a bare `astro preview` —
+ * disclosed here and in `tests/e2e/footer/site-footer.spec.ts` rather than
+ * discovered by whoever next runs the suite. Exactly the same is already
+ * true of the action bar's `/data-derived/**` links.
+ */
+const RAW_FILES_URL = "/transparencia/raw-files.sha256";
+
+/** `min-h-11`/`min-w-11` is the 44 CSS px touch-target floor the
+ * accessibility gate sweeps at a 375 px viewport — the same classes
+ * `ActionBar.astro` and the back-to-home link use, so these controls are
+ * measured by exactly the rule every other control on the site is. */
+const linkClasses =
+  "inline-flex min-h-11 min-w-11 items-center rounded-control underline hover:text-accent " +
+  "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
+
+const links = [
+  { href: REPOSITORY_URL, label: es.footer.repositoryLabel, testId: "footer-repository" },
+  { href: CODE_LICENCE_URL, label: es.footer.codeLicenceLabel, testId: "footer-code-licence" },
+  { href: SOURCE_TERMS_URL, label: es.footer.sourceTermsLabel, testId: "footer-source-terms" },
+  { href: RAW_FILES_URL, label: es.footer.rawFilesLabel, testId: "footer-raw-files" },
+];
+---
+
+<footer data-testid="site-footer" class="mx-auto max-w-4xl px-6 pb-6 text-caption text-ink-muted">
+  <div class="flex flex-col gap-2 border-t border-ink/15 pt-4">
+    <p>{es.footer.dataTermsNote}</p>
+    {
+      /* An explicit role="list", for the same reason `HomePage.astro` states
+         it: Tailwind's preflight sets `list-style: none`, which makes WebKit
+         drop the list semantics entirely, so the "4 elementos" announcement —
+         the one thing that tells a screen-reader user how much footer there
+         is — silently disappears on Safari and VoiceOver.
+
+         A list, and NOT a navigation landmark: these are three external
+         references and one data artifact, not site navigation, and a second
+         navigation landmark beside the action bar's would make a
+         screen-reader user choose between two things both announced as
+         "navigation". */
+    }
+    <ul role="list" class="flex list-none flex-col flex-wrap gap-x-5 p-0 sm:flex-row">
+      {
+        links.map((link) => (
+          <li>
+            <a href={link.href} class={linkClasses} data-testid={link.testId}>
+              {link.label}
+            </a>
+          </li>
+        ))
+      }
+    </ul>
+  </div>
+</footer>

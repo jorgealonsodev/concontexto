@@ -3,7 +3,8 @@
 // Y entre A y B, luego desciende…". Pure-function, red-first per this
 // project's Strict-TDD convention for pure render functions.
 import { describe, expect, it } from "vitest";
-import { describeGovernmentChanges, describeSeries } from "../../src/lib/chart/description";
+import { describeEventSpans, describeGovernmentChanges, describeSeries } from "../../src/lib/chart/description";
+import type { EventSpan } from "../../src/lib/chart/eventSpans";
 import type { ChartPoint } from "../../src/lib/chart/geometry";
 
 function points(values: (number | null)[]): ChartPoint[] {
@@ -144,5 +145,81 @@ describe("describeGovernmentChanges", () => {
     const text = describeGovernmentChanges([change("Leopoldo Calvo-Sotelo", "1981")]);
     expect(text).toContain("registrados");
     expect(text).not.toMatch(/hubo|únicos|todos los cambios/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The event-span sentence — the accessibility half of the chart's FOURTH
+// annotation treatment, and the only half a screen-reader reader ever gets.
+//
+// The rails live inside a single `role="img"` SVG, which prunes its own
+// descendants from the accessibility tree: each rail's `<title>` is reachable
+// by a pointer and by nothing else. So the same facts are stated here, in
+// Spanish prose, in the paragraph the island renders beside the drawing — and
+// that paragraph is a polite live region, because unlike the change-of-
+// government sentence this one changes under the reader's own hand every time
+// they open or close an annotation group.
+describe("describeEventSpans (the projected-period sentence)", () => {
+  const span = (
+    name: string,
+    startPeriod: string,
+    endPeriod: string,
+    clamped: { start?: boolean; end?: boolean } = {},
+  ): EventSpan => ({
+    id: name,
+    group: "exogenous",
+    name,
+    startPeriod,
+    endPeriod,
+    startIndex: 0,
+    endIndex: 1,
+    clampedStart: clamped.start ?? false,
+    clampedEnd: clamped.end ?? false,
+    lane: 0,
+  });
+
+  it("says nothing at all when no group is shown, or when nothing in it can be projected", () => {
+    // An empty string, not "no hay acontecimientos": a sentence about an
+    // absence is noise beside a chart that never claimed to show one — the
+    // same rule `describeGovernmentChanges` already follows.
+    expect(describeEventSpans([])).toBe("");
+  });
+
+  it("names one projected event and the periods it really covers, in the prose register", () => {
+    const text = describeEventSpans([span("Pandemia de COVID-19", "2020-Q1", "2021-Q2")]);
+    expect(text).toContain("Pandemia de COVID-19");
+    expect(text).toContain("T1 2020");
+    expect(text).toContain("T2 2021");
+    expect(text).not.toContain("2020-Q1");
+  });
+
+  it("discloses in the same sentence why an event without an end date is not drawn", () => {
+    // `shock-energetico-2022` carries a start and no end. Nothing is drawn for
+    // it, and this clause is what stops that absence from being silent — it
+    // says the projection covers the events the registry BOUNDS, so a reader
+    // who counts two chips and one rail knows which fact accounts for the
+    // difference, without a second list naming the undrawn ones.
+    const text = describeEventSpans([span("Pandemia de COVID-19", "2020-Q1", "2021-Q2")]);
+    expect(text).toContain("fecha de inicio y de fin");
+  });
+
+  it("says an event that runs past the window is only VISIBLE from here to there", () => {
+    // The 2008-2013 crisis on a series that begins in 2010. The rail is
+    // uncapped at that end so the drawing does not claim a boundary; the
+    // sentence has to make the same distinction in words, because a listener
+    // has no serif to read.
+    const text = describeEventSpans([
+      span("Crisis financiera", "2010-Q1", "2013-Q4", { start: true }),
+    ]);
+    expect(text).toContain("visible");
+    expect(text).toContain("fuera del periodo representado");
+  });
+
+  it("joins the last of several with 'y', as Spanish lists do", () => {
+    const text = describeEventSpans([
+      span("Crisis financiera", "2008-Q1", "2013-Q4"),
+      span("Pandemia de COVID-19", "2020-Q1", "2021-Q2"),
+    ]);
+    expect(text).toMatch(/Crisis financiera[^,]*\) y Pandemia de COVID-19/);
   });
 });

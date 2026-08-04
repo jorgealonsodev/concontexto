@@ -37,10 +37,28 @@ const GOLDEN_GOVERNMENTS = [
   { id: "gobierno-ejemplo", group: "governments", name: "Gobierno de ejemplo", dateStart: "2019-10-01" },
 ];
 
+/** One editorial event SPAN inside the golden window, for exactly the reason
+ * `GOLDEN_GOVERNMENTS` above exists: a layer absent from the committed fixture
+ * is a layer the static component and the island can silently disagree about.
+ *
+ * `milestones` and not `exogenous`, deliberately — that is the one annotation
+ * group both consumers open BY DEFAULT, so the golden pins the drawing an
+ * unhydrated reader (and a reader with no JavaScript at all) really receives. */
+const GOLDEN_EVENT_SPANS = [
+  {
+    id: "hito-ejemplo",
+    group: "milestones",
+    name: "Hito de ejemplo",
+    dateStart: "2019-04-01",
+    dateEnd: "2019-12-31",
+  },
+];
+
 const GOLDEN_INPUT = {
   points: GOLDEN_POINTS,
   breaks: GOLDEN_BREAKS,
   governmentChanges: GOLDEN_GOVERNMENTS,
+  eventSpans: GOLDEN_EVENT_SPANS,
   frequency: "Q" as const,
   decimals: 1,
   unit: "% población activa",
@@ -220,6 +238,113 @@ describe("renderChartSVG", () => {
     expect(svg).not.toContain("chart-government-marker");
   });
 
+  // -------------------------------------------------------------------------
+  // The editorial event SPAN — the chart's FOURTH annotation treatment, and
+  // the first one about an interval rather than an instant or an observation:
+  //
+  //   dotted grey ALONG THE DATA PATH  = this observation is provisional
+  //                                      (RESERVED, theme.css's own header)
+  //   filled translucent VERTICAL COLUMN = a methodological rupture here
+  //   thin solid VERTICAL rule + flag  = a change of government here
+  //   solid HORIZONTAL rail + serifs   = this event covers these periods (new)
+  //
+  // The assertions below are what keep the fourth from drifting into any of
+  // the first three: never dashed, never a fill, and horizontal where the
+  // other two vertical treatments are vertical.
+  it("draws an event span as a HORIZONTAL rail, which is what separates it from the vertical rule", () => {
+    const svg = renderChartSVG(GOLDEN_INPUT);
+    const rail = /<path class="chart-event-span__rail"[^>]*d="([^"]+)"/.exec(svg)?.[1];
+    expect(rail, "no event-span rail was rendered").toBeTruthy();
+    // The rail's own leg — the horizontal one between the two serifs — has a
+    // constant y. Parsed rather than assumed: a vertical rail would pass a
+    // "there is a path" assertion and fail this one.
+    const ys = [...rail!.matchAll(/[ML]([\d.]+),([\d.]+)/g)].map((m) => Number(m[2]));
+    const xs = [...rail!.matchAll(/[ML]([\d.]+),([\d.]+)/g)].map((m) => Number(m[1]));
+    expect(new Set(ys).size).toBeGreaterThan(1); // the serifs drop below the rail
+    expect(Math.max(...xs) - Math.min(...xs)).toBeGreaterThan(0);
+    // The two INNER vertices are the rail itself and share one y.
+    expect(ys[1]).toBeCloseTo(ys[2], 5);
+  });
+
+  it("is a stroke and never a fill, which is what separates it from the break band", () => {
+    const svg = renderChartSVG(GOLDEN_INPUT);
+    const rail = /<path class="chart-event-span__rail"[^>]*>/.exec(svg)?.[0] ?? "";
+    expect(rail).toContain('fill="none"');
+    expect(rail).toContain("var(--color-event-span)");
+    expect(rail).not.toContain("var(--color-break-band)");
+  });
+
+  it("is SOLID and never borrows the reserved provisional dash", () => {
+    const svg = renderChartSVG(GOLDEN_INPUT);
+    const group = /<g class="chart-event-span"[\s\S]*?<\/g>/.exec(svg)?.[0] ?? "";
+    expect(group).not.toContain("stroke-dasharray");
+    expect(group).not.toContain("var(--color-provisional)");
+  });
+
+  it("names the event in a <title>, so a pointer reader can identify the rail they see", () => {
+    const svg = renderChartSVG(GOLDEN_INPUT);
+    expect(svg).toContain("<title>Hito de ejemplo: de T2 2019 a T4 2019</title>");
+    expect(svg).toContain('data-event-id="hito-ejemplo"');
+    expect(svg).toContain('data-annotation-group="milestones"');
+  });
+
+  it("draws no rail at all when the caller shows no annotation group", () => {
+    // The projection follows the reader's own group selection: pass nothing
+    // and the drawing is byte-identical to what it was before this layer.
+    const svg = renderChartSVG({ ...GOLDEN_INPUT, eventSpans: [] });
+    expect(svg).not.toContain("chart-event-span");
+  });
+
+  it("never projects an event that falls entirely outside the plotted span", () => {
+    // The rule the government markers established, inherited here rather than
+    // re-derived: `nearestPeriodIndex` would snap a 2005 event onto 2019-Q1.
+    const svg = renderChartSVG({
+      ...GOLDEN_INPUT,
+      eventSpans: [
+        { id: "viejo", group: "exogenous", name: "Crisis anterior", dateStart: "2005-01-01", dateEnd: "2007-12-31" },
+      ],
+    });
+    expect(svg).not.toContain("chart-event-span");
+  });
+
+  it("never projects an event the registry leaves open-ended, because there is no period to draw", () => {
+    const svg = renderChartSVG({
+      ...GOLDEN_INPUT,
+      eventSpans: [
+        { id: "abierto", group: "exogenous", name: "Shock energético", dateStart: "2019-06-01", dateEnd: null },
+      ],
+    });
+    expect(svg).not.toContain("chart-event-span");
+  });
+
+  it("leaves the CLAMPED end of a rail uncapped, so the plot's edge never reads as the event's end", () => {
+    // A span running past the last plotted period. Capped, the serif would
+    // assert the event ended in 2020-Q3; uncapped, the rail simply runs out of
+    // chart. Counted rather than eyeballed: two serifs mean four vertices,
+    // one serif means three.
+    const both = renderChartSVG({
+      ...GOLDEN_INPUT,
+      eventSpans: [{ id: "dentro", group: "milestones", name: "Dentro", dateStart: "2019-04-01", dateEnd: "2019-12-31" }],
+    });
+    const clamped = renderChartSVG({
+      ...GOLDEN_INPUT,
+      eventSpans: [{ id: "fuera", group: "milestones", name: "Fuera", dateStart: "2019-04-01", dateEnd: "2024-12-31" }],
+    });
+    const vertices = (svg: string) =>
+      (/<path class="chart-event-span__rail"[^>]*d="([^"]+)"/.exec(svg)?.[1] ?? "").match(/[ML]/g)?.length ?? 0;
+    expect(vertices(both)).toBe(4);
+    expect(vertices(clamped)).toBe(3);
+  });
+
+  it("draws the rails UNDER the data, so an annotation never obscures what it annotates", () => {
+    const svg = renderChartSVG(GOLDEN_INPUT);
+    // Not vacuous: `indexOf` returns -1 for an absent layer, which would pass
+    // every comparison below.
+    expect(svg).toContain("chart-event-span");
+    expect(svg.indexOf("chart-event-span")).toBeLessThan(svg.indexOf("chart-line-segment"));
+    expect(svg.indexOf("chart-event-span")).toBeLessThan(svg.indexOf("chart-marker"));
+  });
+
   it("never draws a line across a null-valued gap", () => {
     const svg = renderChartSVG({
       ...GOLDEN_INPUT,
@@ -323,6 +448,23 @@ describe("renderChartSVG — narrow-viewport variant", () => {
     const svg = renderChartSVG(NARROW_INPUT);
     expect(svg.match(/data-testid="chart-break-band-narrow"/g) ?? []).toHaveLength(1);
     expect(svg).toContain('data-break-key="covid-2020"');
+  });
+
+  it("still projects the event span, so a phone reader gets the fourth treatment too", () => {
+    // A second variant is a second chance to lose a layer, and the rail is the
+    // one layer whose geometry SCALES with the box (its offset, thickness and
+    // serif are multiples of the tick type size, which doubles in the narrow
+    // drawing) — so it is also the one most likely to survive as a hairline
+    // nobody can see rather than not at all.
+    const narrow = renderChartSVG(NARROW_INPUT);
+    expect(narrow.match(/data-testid="chart-event-span-narrow"/g) ?? []).toHaveLength(1);
+    const narrowStroke = Number(
+      /<path class="chart-event-span__rail"[^>]*stroke-width="([\d.]+)"/.exec(narrow)?.[1],
+    );
+    const wideStroke = Number(
+      /<path class="chart-event-span__rail"[^>]*stroke-width="([\d.]+)"/.exec(renderChartSVG(GOLDEN_INPUT))?.[1],
+    );
+    expect(narrowStroke).toBeGreaterThan(wideStroke);
   });
 
   it("still marks the change of government, so a phone reader gets the third treatment too", () => {

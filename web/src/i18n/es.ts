@@ -158,6 +158,57 @@ export const es = {
       /** Spanish joins the last item of a list with "y", not with a comma. */
       listConjunction: "y",
     },
+    /** ── The editorial event SPAN projected onto the drawing (PRD §6.1.1(b)/
+     * (c)'s `exogenous` and `milestones` groups) — the chart's fourth
+     * annotation treatment, and the first one that is about an interval.
+     *
+     * ALL NEW READER-FACING COPY — flagged for editorial sign-off, per this
+     * project's established convention. Register matched to the rest of this
+     * module: impersonal, no second person, every message a statement of fact
+     * about the series rather than an instruction. The event's own name is
+     * never translated or rephrased: it arrives from `config/eventos.yaml` and
+     * is printed verbatim.
+     *
+     * `railTitle` is the rail's `<title>`: a pointer reader hovering one of
+     * the horizontal rails learns which event it bounds without the names
+     * being printed across a 560-unit-wide drawing. It is NOT the
+     * accessibility answer — the drawing is a single `role="img"`, which
+     * prunes its own descendants — which is what `projectedNote` below is for.
+     *
+     * `projectedNote` IS THE CONSTRAINED ONE. "que el registro editorial acota
+     * con fecha de inicio y de fin" is not padding: `shock-energetico-2022`
+     * and `ngeu-primer-desembolso` carry a start and no end, so nothing is
+     * drawn for them, and this clause is what accounts for the difference
+     * between the chips a reader counts and the rails they see. Without it the
+     * sentence would read as a complete inventory of the group.
+     *
+     * `clampedListItem` carries the other disclosure. A rail whose event runs
+     * past the window is drawn UNCAPPED at that end, which says "this
+     * continues beyond what is on screen" to a sighted reader and nothing at
+     * all to a listener — so the words have to make the same distinction. */
+    eventSpan: {
+      railTitle: (name: string, from: string, to: string) => `${name}: de ${from} a ${to}`,
+      /** The same, for an event only partly inside the window: it names what
+       * is drawn and says the event itself is wider. */
+      railTitleClamped: (name: string, from: string, to: string) =>
+        `${name}: visible de ${from} a ${to}, se extiende fuera del periodo representado`,
+      /** Teaches the code. An unexplained horizontal rail is a decoration; the
+       * legend entry beside "Definitivo", "Provisional" and "Cambio de
+       * gobierno" is what makes it a mark with a meaning. */
+      legendLabel: "Periodo de un acontecimiento",
+      projectedNote: (list: string) =>
+        `Se señalan sobre el gráfico los periodos de los acontecimientos que el registro editorial acota con ` +
+        `fecha de inicio y de fin: ${list}.`,
+      listItem: (name: string, from: string, to: string) => `${name} (de ${from} a ${to})`,
+      clampedListItem: (name: string, from: string, to: string) =>
+        `${name} (visible de ${from} a ${to}; se extiende fuera del periodo representado)`,
+      /** Spanish joins the last item of a list with "y", not with a comma.
+       * Deliberately its own key rather than a reference to the government
+       * layer's identical one: these are two separate vocabularies that happen
+       * to share a conjunction, and reaching across would tie one sentence's
+       * wording to the other's. */
+      listConjunction: "y",
+    },
     transforms: {
       raw: "Serie original",
       yoy: "Variación interanual",

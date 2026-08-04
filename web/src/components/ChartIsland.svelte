@@ -29,7 +29,8 @@
     type ObservationStatus,
   } from "../lib/chart/geometry";
   import { narrowChartVariant, renderChartSVG } from "../lib/chart/svg";
-  import { describeGovernmentChanges, describeSeries } from "../lib/chart/description";
+  import { describeEventSpans, describeGovernmentChanges, describeSeries } from "../lib/chart/description";
+  import { selectEventSpans } from "../lib/chart/eventSpans";
   import { selectGovernmentChanges } from "../lib/chart/governmentMarkers";
   import { periodFromCalendarDate, periodOrdinalIndex, type Frequency } from "../lib/chart/periods";
   import { computeIntraPeriodRate, computeYoY } from "../lib/transform/yoy";
@@ -457,11 +458,41 @@
   const governmentChanges = $derived(selectGovernmentChanges(annotations, rangedPeriods, frequency));
   const governmentNote = $derived(describeGovernmentChanges(governmentChanges));
 
+  // ---- The event-span projection (PRD §6.1.1(b)/(c)) ----
+  //
+  // WHICH EVENTS, AND ON WHOSE ACTION. The projection rides the annotation
+  // GROUP toggle that already exists rather than growing a per-entry control,
+  // and that is a judgement about clutter measured against the real registry
+  // rather than a shortcut. Turning on `exogenous` on the heaviest series
+  // (/indicador/tasa-de-paro-epa) yields exactly two rails — the 2008-2013
+  // crisis and the 2020-2021 pandemic — which do not overlap and therefore
+  // share one lane; the other two entries in that group carry no end date and
+  // project nothing. A per-entry control would mean a 44x44 target per chip,
+  // which on a 375 px phone would push the chart itself off screen, and it
+  // could only work with JavaScript — leaving a no-JS reader a row of chips
+  // that look selectable and are not. When a series ever carries enough
+  // overlapping spans for lanes to stack deeply, `selectEventSpans` already
+  // packs them; that is the point at which per-entry selection earns its cost.
+  //
+  // FED THE GROUPS THE READER HAS OPEN, and re-derived when they change: this
+  // is what makes the drawing answer the toggle. `rangedPeriods` and not the
+  // raw ones, for the same reason the government markers use them — a rail is
+  // a statement about the drawing in front of the reader, so narrowing the
+  // range re-selects and re-clamps it with no second filter to keep in step.
+  const shownAnnotations = $derived(annotations.filter((a) => openGroups[a.group]));
+  const eventSpans = $derived(selectEventSpans(shownAnnotations, rangedPeriods, frequency));
+  const eventSpanNote = $derived(describeEventSpans(eventSpans));
+
   const chartInput = $derived({
     points: rangedPoints,
     breaks: visibleBreaks.map((b) => ({ key: b.key, date: b.date })),
     // Unfiltered on purpose — see `IndicatorChart.astro`'s own call site.
     governmentChanges: annotations,
+    // Filtered on purpose, and by the ONE thing the renderer cannot know: which
+    // annotation groups the reader is currently showing. Every other rule about
+    // these events — end date, window, clamping, stacking — belongs to
+    // `buildEventSpanRails` inside the shared renderer.
+    eventSpans: shownAnnotations,
     frequency,
     decimals: viewDecimals,
     unit: viewUnit,
@@ -818,6 +849,32 @@
     {description}{governmentNote ? ` ${governmentNote}` : ""}
   </p>
 
+  <!-- The event-span sentence: the visible legend that names which events the
+       rails bound, AND the only route a screen-reader reader has to them (the
+       drawing is a single `role="img"`, which prunes its own children).
+
+       A POLITE LIVE REGION, unlike the government sentence one element above,
+       and for a reason specific to this layer: it is interactive. Opening or
+       closing an annotation group re-selects the spans and redraws the rails,
+       so the sentence has to re-narrate rather than change silently under a
+       reader who cannot see it. That is exactly what the live regions this
+       component already uses for the government range and the custom range are
+       for, and — like both of those — it is deliberately NOT in the drawing's
+       `aria-describedby`: it states transient selection state, not a permanent
+       property of the series.
+
+       Rendered as an always-present node rather than inside an `{#if}`, so the
+       region exists in the accessibility tree BEFORE the reader's first
+       toggle. A live region created at the same moment its content appears is
+       routinely missed by assistive technology. -->
+  <p
+    class="mt-1 text-caption text-ink-muted"
+    aria-live="polite"
+    data-testid="chart-event-spans-note"
+  >
+    {eventSpanNote}
+  </p>
+
   {#if effectiveTransform !== "raw"}
     <p class="mt-1 text-caption text-ink-muted" data-testid="chart-derivation-note">
       {es.chart.transforms.derivationNote(transformLabel)}
@@ -855,6 +912,19 @@
           <line x1="5" y1="0" x2="5" y2="14" stroke="currentColor" stroke-width="1" />
         </svg>
         {es.chart.government.markerLegendLabel}
+      </li>
+    {/if}
+    <!-- The fourth entry, present only while the drawing really carries a
+         rail. The glyph is the rail itself in miniature — a horizontal stroke
+         with two serifs turning down — so the legend and the drawing are the
+         same object at two sizes, and the ORIENTATION that separates it from
+         the government marker above is visible in the legend too. -->
+    {#if eventSpans.length > 0}
+      <li class="flex items-center gap-1.5" data-testid="chart-legend-event-span">
+        <svg aria-hidden="true" viewBox="0 0 16 8" class="h-2 w-4 shrink-0 text-event-span" fill="none">
+          <path d="M1 7 L1 2 L15 2 L15 7" stroke="currentColor" stroke-width="1.5" />
+        </svg>
+        {es.chart.eventSpan.legendLabel}
       </li>
     {/if}
   </ul>

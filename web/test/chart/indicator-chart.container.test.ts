@@ -257,3 +257,82 @@ describe("IndicatorChart — changes of government", () => {
     expect(html).not.toContain("cambios de gobierno registrados");
   });
 });
+
+// ---------------------------------------------------------------------------
+// The editorial event SPAN — the chart's fourth annotation treatment, as the
+// STATIC (zero-JavaScript) component renders it.
+//
+// This component is the workbench's catalog entry and the no-JS gate's
+// subject, never a reader route, and it has one honest limitation the island
+// does not: its annotation toggle is a CSS checkbox, which reveals and hides
+// CHIPS with no script at all and cannot redraw an SVG serialised to a string
+// at build time. So the drawing here shows the groups that are open BY
+// DEFAULT — the exact map `ChartIsland.svelte` initialises its own toggle
+// state from — and stays there. That is asserted below rather than left as a
+// comment, because a future change that quietly started projecting every group
+// would be projecting annotations the reader never asked to see.
+describe("IndicatorChart — editorial event spans", () => {
+  it("projects the default-open group's spans onto BOTH drawings", async () => {
+    const container = await AstroContainer.create();
+    const html = await container.renderToString(IndicatorChart, { props: { ...fx.indicatorChart } });
+    // `hito-2021` is the fixture's one milestone carrying both dates, and
+    // milestones is the group open by default.
+    expect((html.match(/data-testid="chart-event-span"/g) ?? []).length).toBe(1);
+    expect((html.match(/data-testid="chart-event-span-narrow"/g) ?? []).length).toBe(1);
+    expect(html).toContain('data-event-id="hito-2021"');
+  });
+
+  it("projects nothing for a group the reader has not opened", async () => {
+    // `pandemia-ejemplo` sits squarely inside the fixture's span and would be
+    // drawn the moment `exogenous` were shown — so this is a statement about
+    // the selection, not about the data.
+    const container = await AstroContainer.create();
+    const html = await container.renderToString(IndicatorChart, { props: { ...fx.indicatorChart } });
+    expect(html).not.toContain('data-event-id="pandemia-ejemplo"');
+    // ...and its chip is still there. The annotation layer is not withheld;
+    // only its projection follows the toggle.
+    expect(html).toContain("Pandemia (ejemplo)");
+  });
+
+  it("projects nothing for an event with no end date, or for one outside the plotted span", async () => {
+    const container = await AstroContainer.create();
+    const html = await container.renderToString(IndicatorChart, { props: { ...fx.indicatorChart } });
+    expect(html).not.toContain('data-event-id="reforma-2012"'); // no end date
+    expect(html).not.toContain('data-event-id="crisis-2008"'); // ends before the series begins
+  });
+
+  it("teaches the code with a legend entry carrying the rail's own glyph", async () => {
+    const container = await AstroContainer.create();
+    const html = await container.renderToString(IndicatorChart, { props: { ...fx.indicatorChart } });
+    expect(html).toContain('data-testid="chart-legend-event-span"');
+    expect(html).toContain("Periodo de un acontecimiento");
+  });
+
+  it("names the projected events in a sentence, which is the only route a screen reader has to them", async () => {
+    const container = await AstroContainer.create();
+    const html = await container.renderToString(IndicatorChart, { props: { ...fx.indicatorChart } });
+    const note = /data-testid="chart-event-spans-note"[^>]*>([\s\S]*?)<\/p>/.exec(html)?.[1] ?? "";
+    expect(note).toContain("Hito normativo (ejemplo)");
+    expect(note).toContain("T1 2021");
+    // The clause that accounts for the entries carrying no end date, so the
+    // sentence never reads as a complete inventory of the group.
+    expect(note).toContain("fecha de inicio y de fin");
+  });
+
+  it("has no rail, no legend entry and an empty sentence when nothing can be projected", async () => {
+    const container = await AstroContainer.create();
+    const noSpans = {
+      ...fx.indicatorChart,
+      annotations: fx.indicatorChart.annotations!.map((a) => ({ ...a, dateEnd: null })),
+    };
+    const html = await container.renderToString(IndicatorChart, { props: noSpans });
+    // Matched on the rail's own class rather than on the bare `chart-event-span`
+    // prefix: the sentence's node is `chart-event-spans-note`, which is always
+    // in the markup (a live region has to exist before its first change) and
+    // would make a prefix match report a rail that is not there.
+    expect(html).not.toContain("chart-event-span__rail");
+    expect(html).not.toContain('data-testid="chart-legend-event-span"');
+    const note = /data-testid="chart-event-spans-note"[^>]*>([\s\S]*?)<\/p>/.exec(html)?.[1] ?? "x";
+    expect(note.trim()).toBe("");
+  });
+});

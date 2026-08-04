@@ -7,6 +7,7 @@
 import { es } from "../../i18n/es";
 import { formatNumber } from "../format/number";
 import { formatPeriodProse } from "../format/period";
+import type { EventSpan } from "./eventSpans";
 import type { ChartPoint } from "./geometry";
 import type { GovernmentChange } from "./governmentMarkers";
 
@@ -144,11 +145,62 @@ export function describeSeries(input: DescribeSeriesInput): string {
 export function describeGovernmentChanges(changes: readonly GovernmentChange[]): string {
   if (changes.length === 0) return "";
   const items = changes.map((change) => es.chart.government.changeListItem(change.name, change.year));
-  // Spanish joins the final item with "y", never with a comma. One item is
-  // its own list; two or more take the conjunction before the last.
+  return joinSpanishList(items, es.chart.government.listConjunction, es.chart.government.changesNote);
+}
+
+/**
+ * The editorial event spans projected onto the drawing, in one Spanish
+ * sentence — or the empty string when the visible window projects none.
+ *
+ * WHY THIS EXISTS AT ALL, and it is the same argument as above one layer over:
+ * the rails are drawn inside a single `role="img"` SVG, which prunes its own
+ * descendants from the accessibility tree, so each rail's `<title>` is
+ * reachable by a pointer and by nothing else. A visual annotation a
+ * screen-reader reader cannot reach is a half-built feature.
+ *
+ * WHY IT IS ALSO THE VISIBLE LEGEND. The event names are long — "Crisis
+ * financiera global y crisis de deuda soberana europea" is 54 glyphs against a
+ * 560-unit-wide narrow drawing — so they cannot be printed on the chart at all.
+ * They live in prose, oldest first, which is the same left-to-right order the
+ * rails appear in.
+ *
+ * WHY IT IS RENDERED INTO A LIVE REGION and the government sentence is not:
+ * this one changes under the reader's own hand. Opening or closing an
+ * annotation group re-selects the spans, so the sentence has to re-narrate,
+ * which is exactly what the polite live regions this component already uses
+ * for the government range and the custom range are for.
+ *
+ * WHAT IT DELIBERATELY DOES NOT CLAIM. `es.chart.eventSpan.projectedNote` says
+ * these are the events the registry ACOTA — bounds — with a start date and an
+ * end date. It does not present itself as an inventory of the group: an event
+ * carrying no `date_end` (`shock-energetico-2022`, `ngeu-primer-desembolso`)
+ * has no period to project and is deliberately absent from the drawing, and
+ * that clause is what accounts for the difference between the chips a reader
+ * counts and the rails they see.
+ */
+export function describeEventSpans(spans: readonly EventSpan[]): string {
+  if (spans.length === 0) return "";
+  const items = spans.map((span) => {
+    const from = formatPeriod(span.startPeriod);
+    const to = formatPeriod(span.endPeriod);
+    // A rail clamped at either edge is drawn UNCAPPED there, which says
+    // "continues beyond this chart" to a sighted reader. A listener has no
+    // serif to read, so the words carry the same fact.
+    return span.clampedStart || span.clampedEnd
+      ? es.chart.eventSpan.clampedListItem(span.name, from, to)
+      : es.chart.eventSpan.listItem(span.name, from, to);
+  });
+  return joinSpanishList(items, es.chart.eventSpan.listConjunction, es.chart.eventSpan.projectedNote);
+}
+
+/** Spanish joins the final item of a list with "y", never with a comma. One
+ * item is its own list; two or more take the conjunction before the last.
+ *
+ * Extracted when the event-span sentence needed the identical rule: two copies
+ * of one grammatical fact is one copy too many, and the copy that was not
+ * updated would be the one a reader met. */
+function joinSpanishList(items: string[], conjunction: string, wrap: (list: string) => string): string {
   const list =
-    items.length === 1
-      ? items[0]
-      : `${items.slice(0, -1).join(", ")} ${es.chart.government.listConjunction} ${items[items.length - 1]}`;
-  return es.chart.government.changesNote(list);
+    items.length === 1 ? items[0] : `${items.slice(0, -1).join(", ")} ${conjunction} ${items[items.length - 1]}`;
+  return wrap(list);
 }

@@ -174,6 +174,11 @@ export const indicatorChart: IndicatorChartProps = {
       href: null,
     },
     {
+      // ENTIRELY OUTSIDE this fixture's span (2019-Q1 onwards), and kept that
+      // way for the span layer exactly as `gob-2018` is kept outside for the
+      // marker layer: the chip names it, because the series really did live
+      // through it, and no rail is drawn, because a rail here would claim the
+      // crisis covered quarters this chart never saw.
       id: "crisis-2008",
       group: "exogenous",
       name: "Crisis financiera",
@@ -182,11 +187,40 @@ export const indicatorChart: IndicatorChartProps = {
       href: "/glosario/crisis-financiera-2008",
     },
     {
+      // INSIDE the span, so turning on "shocks exógenos" in the workbench's
+      // island section really projects a rail (the design-system spec asks
+      // each catalog component for at least one state variant, and an undrawn
+      // layer is not one). Illustrative like every other value in this file.
+      id: "pandemia-ejemplo",
+      group: "exogenous",
+      name: "Pandemia (ejemplo)",
+      dateStart: "2020-03-14",
+      dateEnd: "2021-05-09",
+      href: null,
+    },
+    {
+      // No end date, deliberately: the registry's real `shock-energetico-2022`
+      // and `ngeu-primer-desembolso` are shaped like this, and the workbench
+      // has to show what that looks like — a chip carrying a single year and
+      // no rail at all, because an event with no recorded end has no period to
+      // project and inventing one would be the P4 failure this project's
+      // `date_status` machinery exists to prevent.
       id: "reforma-2012",
       group: "milestones",
       name: "Reforma laboral",
       dateStart: "2012-02-01",
       dateEnd: null,
+      href: null,
+    },
+    {
+      // A milestone WITH a span, in the one group that is open by default —
+      // so the static catalog entry, which cannot redraw its own SVG when the
+      // CSS toggle flips, still demonstrates the rail.
+      id: "hito-2021",
+      group: "milestones",
+      name: "Hito normativo (ejemplo)",
+      dateStart: "2021-01-01",
+      dateEnd: "2021-06-30",
       href: null,
     },
   ],

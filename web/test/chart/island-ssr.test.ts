@@ -45,7 +45,28 @@ const GOLDEN_ANNOTATIONS = [
     dateEnd: null,
     href: null,
   },
+  // ...and svg.test.ts's own GOLDEN_EVENT_SPANS. `milestones` because that is
+  // the one group both consumers open BY DEFAULT: the island's `openGroups`
+  // starts `{governments: false, exogenous: false, milestones: true}` and
+  // `IndicatorChart.astro`'s `DEFAULT_OPEN` says the same, so this entry is
+  // projected in the unhydrated render the golden fixture pins — which is what
+  // makes the fourth annotation treatment part of the anti-divergence device
+  // rather than a layer the two halves could quietly disagree about.
+  {
+    id: "hito-ejemplo",
+    group: "milestones" as const,
+    name: "Hito de ejemplo",
+    dateStart: "2019-04-01",
+    dateEnd: "2019-12-31",
+    href: null,
+  },
 ];
+
+/** The subset of `GOLDEN_ANNOTATIONS` the island passes to the renderer as
+ * `eventSpans` — the groups open at first render. Spelled out here rather than
+ * re-filtered, so this test states the expected selection instead of repeating
+ * the component's own expression. */
+const GOLDEN_SHOWN_ANNOTATIONS = GOLDEN_ANNOTATIONS.filter((a) => a.group === "milestones");
 
 /** One of the island's two rendered drawings, by its own test id.
  *
@@ -113,6 +134,7 @@ describe("ChartIsland — island-parity golden test (task 8.12)", () => {
       points: GOLDEN_POINTS,
       breaks: GOLDEN_BREAKS.map((b) => ({ key: b.key, date: b.date })),
       governmentChanges: GOLDEN_ANNOTATIONS,
+      eventSpans: GOLDEN_SHOWN_ANNOTATIONS,
       frequency: "Q",
       decimals: 1,
       unit: "% población activa",
@@ -366,5 +388,89 @@ describe("ChartIsland — changes of government", () => {
     expect(body).not.toContain("chart-government-marker");
     expect(body).not.toContain('data-testid="chart-legend-government"');
     expect(body).not.toContain("cambios de gobierno registrados");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The editorial event SPAN — the chart's fourth annotation treatment, on the
+// half a real `/indicador/{slug}` page actually composes.
+//
+// The INTERACTIVE half (opening a group redraws the rails and re-narrates the
+// sentence) cannot be proven here: `onMount` and event handlers are documented
+// no-ops on the server, so the SSR view is always the default group selection.
+// It is proven in a real browser by `tests/e2e/indicator/indicator-pages.spec.ts`.
+// What this file pins is the half that reaches a reader with no JavaScript at
+// all — which is exactly the default selection, and nothing more.
+describe("ChartIsland — editorial event spans", () => {
+  const ANNOTATIONS = [
+    // Inside the span, in the group that is OPEN by default.
+    { id: "hito-dentro", group: "milestones" as const, name: "Hito dentro", dateStart: "2019-04-01", dateEnd: "2019-12-31", href: null },
+    // Inside the span, in a group that is CLOSED by default.
+    { id: "shock-dentro", group: "exogenous" as const, name: "Shock dentro", dateStart: "2019-04-01", dateEnd: "2019-12-31", href: null },
+    // Open-ended, in the open group: a chip, never a rail.
+    { id: "hito-abierto", group: "milestones" as const, name: "Hito abierto", dateStart: "2019-07-01", dateEnd: null, href: null },
+  ];
+
+  function renderWithSpans() {
+    const { body } = render(ChartIsland, {
+      props: {
+        slug: "tasa-de-paro-epa",
+        name: "Tasa de paro",
+        unit: "% población activa",
+        frequency: "Q" as const,
+        decimals: 1,
+        points: GOLDEN_POINTS,
+        annotations: ANNOTATIONS,
+        transforms: { yoy: false, qoq: false, perCapita: false },
+      },
+    });
+    return body;
+  }
+
+  it("projects only the groups the reader currently has open, in BOTH drawings", () => {
+    const body = renderWithSpans();
+    expect(body).toContain('data-event-id="hito-dentro"');
+    // `shock-dentro` is identical in every respect except its group, which is
+    // closed by default — so this is a statement about the selection and not
+    // about the data.
+    expect(body).not.toContain('data-event-id="shock-dentro"');
+    expect((body.match(/data-testid="chart-event-span"/g) ?? []).length).toBe(1);
+    expect((body.match(/data-testid="chart-event-span-narrow"/g) ?? []).length).toBe(1);
+  });
+
+  it("never projects an event the registry leaves open-ended, but still lists its chip", () => {
+    const body = renderWithSpans();
+    expect(body).not.toContain('data-event-id="hito-abierto"');
+    expect(body).toContain("Hito abierto");
+  });
+
+  it("carries the legend entry and the naming sentence, in a live region that can re-narrate", () => {
+    const body = renderWithSpans();
+    expect(body).toContain('data-testid="chart-legend-event-span"');
+    const note = /data-testid="chart-event-spans-note"[^>]*>([\s\S]*?)<\/p>/.exec(body)?.[1] ?? "";
+    expect(note).toContain("Hito dentro");
+    expect(note).toContain("T2 2019");
+    // The live region is what makes the sentence usable at all: the rails are
+    // inside a `role="img"`, and the reader changes which of them exist.
+    expect(body).toMatch(/aria-live="polite"[^>]*data-testid="chart-event-spans-note"/);
+  });
+
+  it("says nothing at all for a series whose shown groups project nothing", () => {
+    const { body } = render(ChartIsland, {
+      props: {
+        slug: "tasa-de-paro-epa",
+        name: "Tasa de paro",
+        unit: "% población activa",
+        frequency: "Q" as const,
+        decimals: 1,
+        points: GOLDEN_POINTS,
+        annotations: ANNOTATIONS.filter((a) => a.group !== "milestones"),
+        transforms: { yoy: false, qoq: false, perCapita: false },
+      },
+    });
+    expect(body).not.toContain("chart-event-span__rail");
+    expect(body).not.toContain('data-testid="chart-legend-event-span"');
+    const note = /data-testid="chart-event-spans-note"[^>]*>([\s\S]*?)<\/p>/.exec(body)?.[1] ?? "x";
+    expect(note.trim()).toBe("");
   });
 });

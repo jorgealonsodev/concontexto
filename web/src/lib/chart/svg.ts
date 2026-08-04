@@ -30,7 +30,9 @@ import {
   type ChartDimensions,
   type ChartPoint,
 } from "./geometry";
+import { buildEventSpanRails, type EventSpanAnnotation } from "./eventSpans";
 import { buildGovernmentMarkers, type GovernmentChangeAnnotation } from "./governmentMarkers";
+import { formatPeriodProse } from "../format/period";
 import type { Frequency } from "./periods";
 // The marker's `<title>` is read by a person, so its words live where every
 // other reader-facing string does. (The `<title>` two elements above — "
@@ -52,6 +54,18 @@ export interface RenderChartSVGInput {
    * drawing carries no marker and is byte-identical to what it was before
    * this layer existed. */
   governmentChanges?: GovernmentChangeAnnotation[];
+  /** The editorial events whose PERIOD may be projected onto the plot — the
+   * chart's fourth annotation treatment.
+   *
+   * Unlike `governmentChanges` above, this list arrives ALREADY filtered to
+   * the annotation groups the reader has chosen to see, because that choice is
+   * the caller's own state and not a property of the series: the static
+   * component reads its default-open map, the island reads its live toggle
+   * state. Everything else — the end-date rule, the window rule, the clamping
+   * and the stacking — is `buildEventSpanRails`' single decision, made inside
+   * the renderer both consumers share. Omitted (or empty), the drawing carries
+   * no rail and is byte-identical to what it was before this layer existed. */
+  eventSpans?: EventSpanAnnotation[];
   frequency: Frequency;
   decimals: number;
   unit: string;
@@ -223,6 +237,91 @@ export function renderChartSVG(input: RenderChartSVGInput): string {
     })
     .join("");
 
+  // The editorial event span — the chart's FOURTH annotation treatment, and
+  // the first one whose subject is a DURATION. What a reader is meant to learn
+  // from each of the four, now:
+  //
+  //   dotted grey ALONG THE DATA PATH   "this observation is provisional; the
+  //                                      source may still revise it"
+  //                                      (RESERVED — theme.css's own header)
+  //   wide translucent VERTICAL BAND    "the series changed methodology here;
+  //                                      the two sides are not directly
+  //                                      comparable"
+  //   thin SOLID vertical rule + flag   "a different government took office
+  //                                      here"
+  //   solid HORIZONTAL rail + serifs    "the editorial registry dates this
+  //                                      event from here to here" (this)
+  //
+  // Four separations, and not one of them is colour:
+  //
+  //   AGAINST THE PROVISIONAL DASH — solid, and drawn ACROSS the top of the
+  //   plot rather than along the data path. `test/design-system/
+  //   reserved-semantics.test.ts` fails the moment this stroke gains a dash.
+  //
+  //   AGAINST THE BREAK BAND — a STROKE against a FILL. The band shades a
+  //   region because a rupture affects the data on both sides of it; the rail
+  //   marks an extent without touching the values under it at all. (It is also
+  //   the reason the rail is not simply a wider, differently-coloured band:
+  //   that would leave hue as the only channel, which PRD §12.5 forbids, and
+  //   would wash out a quarter of the plot on the real 2008-2013 case.)
+  //
+  //   AGAINST THE GOVERNMENT RULE — orientation, which is the property a
+  //   reader reads before any other: horizontal against vertical, an interval
+  //   against an instant. The serifs turn DOWN into the plot so the eye
+  //   projects the interval onto the curve, which is the whole point of
+  //   drawing it over the data rather than listing it beside it.
+  //
+  //   AGAINST THE DATA — no new glyph shape is introduced, so the definitive
+  //   circle, the provisional diamond and the government triangle keep meaning
+  //   exactly what they meant.
+  //
+  // An UNCAPPED end is load-bearing rather than a saved vertex: a serif says
+  // "the event began/ended here", so putting one at the edge of a window the
+  // event runs past would turn the plot's own boundary into a claim about the
+  // calendar. `buildEventSpanRails` records which end was clamped; this reads
+  // it.
+  //
+  // Drawn UNDER the axis and the series, above the break bands, exactly like
+  // the government markers: annotation never obscures the data it annotates.
+  const eventSpanRails = buildEventSpanRails(
+    input.eventSpans ?? [],
+    periods,
+    input.frequency,
+    dims,
+    tickFontSize,
+  )
+    .map((rail) => {
+      const y = rail.y;
+      const foot = y + rail.serifLength;
+      const start = `${rail.x1.toFixed(2)},${y.toFixed(2)}`;
+      const end = `${rail.x2.toFixed(2)},${y.toFixed(2)}`;
+      const d =
+        (rail.clampedStart ? `M${start}` : `M${rail.x1.toFixed(2)},${foot.toFixed(2)} L${start}`) +
+        ` L${end}` +
+        (rail.clampedEnd ? "" : ` L${rail.x2.toFixed(2)},${foot.toFixed(2)}`);
+      const from = formatPeriodProse(rail.startPeriod);
+      const to = formatPeriodProse(rail.endPeriod);
+      const title =
+        rail.clampedStart || rail.clampedEnd
+          ? es.chart.eventSpan.railTitleClamped(rail.name, from, to)
+          : es.chart.eventSpan.railTitle(rail.name, from, to);
+      return (
+        `<g class="chart-event-span" data-testid="chart-event-span${idSuffix}" ` +
+        `data-event-id="${escapeXml(rail.id)}" data-annotation-group="${escapeXml(rail.group)}">` +
+        // Pointer-only, exactly like the government marker's: the root `<svg>`
+        // is a single `role="img"`, which prunes its own descendants from the
+        // accessibility tree. The screen-reader reader is served by the
+        // sentence `describeEventSpans` renders beside the drawing, in a
+        // polite live region — this layer is interactive, so that sentence has
+        // to re-narrate when the reader's selection changes.
+        `<title>${escapeXml(title)}</title>` +
+        `<path class="chart-event-span__rail" d="${d}" fill="none" stroke="var(--color-event-span)" ` +
+        `stroke-width="${rail.strokeWidth.toFixed(2)}" stroke-linecap="butt" stroke-linejoin="miter" />` +
+        `</g>`
+      );
+    })
+    .join("");
+
   // Line: each individual EDGE (the segment between two consecutive
   // plotted points) is coloured/dashed on its own, based on whether the
   // point it arrives AT is provisional — not the whole contiguous run. A
@@ -300,6 +399,7 @@ export function renderChartSVG(input: RenderChartSVGInput): string {
     `aria-describedby="${input.descriptionId} ${input.tableId}" xmlns="http://www.w3.org/2000/svg">` +
     `<title id="${input.titleId}">Evolución de la serie (${escapeXml(input.unit)})</title>` +
     bandRects +
+    eventSpanRails +
     governmentMarkers +
     axisLine +
     linePaths +

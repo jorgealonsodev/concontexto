@@ -45,6 +45,18 @@ export class IndicatorPage extends BasePage {
   /** The legend entry that teaches what a marker means. Absent — not empty —
    * when the visible window carries no change of government. */
   readonly legendGovernment: Locator;
+  /** The editorial event spans inside the WIDE drawing — the chart's fourth
+   * annotation treatment, and the only one about an interval. Scoped to one
+   * variant for the same reason the government markers are: both drawings are
+   * in the document at once and an unscoped locator would count every rail
+   * twice. */
+  readonly eventSpans: Locator;
+  readonly eventSpansNarrow: Locator;
+  /** The legend entry that teaches what a rail means, and the sentence that is
+   * a screen-reader reader's only route to the rails (the drawing is a single
+   * `role="img"`, which prunes its own children). */
+  readonly legendEventSpan: Locator;
+  readonly eventSpansNote: Locator;
   readonly yoyVariation: Locator;
   /** The link back to `/` (milestone 1.2). Rendered by `IndicatorPage.astro`,
    * so all six routes carry it. */
@@ -80,6 +92,10 @@ export class IndicatorPage extends BasePage {
     this.governmentMarkers = this.chartSection.locator('[data-testid="chart-government-marker"]');
     this.governmentMarkersNarrow = this.chartSection.locator('[data-testid="chart-government-marker-narrow"]');
     this.legendGovernment = this.chartSection.getByTestId("chart-legend-government");
+    this.eventSpans = this.chartSection.locator('[data-testid="chart-event-span"]');
+    this.eventSpansNarrow = this.chartSection.locator('[data-testid="chart-event-span-narrow"]');
+    this.legendEventSpan = this.chartSection.getByTestId("chart-legend-event-span");
+    this.eventSpansNote = this.chartSection.getByTestId("chart-event-spans-note");
     this.yoyVariation = page.getByTestId("page-yoy-variation");
     this.backToHome = page.getByTestId("back-to-home");
     this.header = page.getByTestId("page-header");
@@ -96,6 +112,23 @@ export class IndicatorPage extends BasePage {
    * "since-2008", "since-2018"). */
   rangePreset(preset: string): Locator {
     return this.chartSection.getByTestId(`range-preset-${preset}`);
+  }
+
+  /** One annotation group's show/hide control ("governments", "exogenous",
+   * "milestones") — the same gesture that projects that group's event spans
+   * onto the drawing. */
+  annotationToggle(group: string): Locator {
+    return this.chartSection.getByTestId(`annotation-toggle-${group}`);
+  }
+
+  /** One point button by the period its announcement names — "T1 2020" and so
+   * on, the prose register `pointLabel` builds its `aria-label` from. Used to
+   * measure WHERE a projected span really landed against the observation a
+   * reader would look for. */
+  pointFor(periodLabel: string): Locator {
+    return this.chartSection.locator(
+      `[data-testid="chart-island-point"][aria-label^="${periodLabel}:"]`,
+    );
   }
 
   async goto(): Promise<void> {

@@ -152,6 +152,9 @@ describe("reserved semantics: a dash in the chart means provisional data and not
     governmentChanges: [
       { id: "gobierno-ejemplo", group: "governments", name: "Gobierno de ejemplo", dateStart: "2019-07-01" },
     ],
+    eventSpans: [
+      { id: "hito-ejemplo", group: "milestones", name: "Hito de ejemplo", dateStart: "2019-04-01", dateEnd: "2019-09-30" },
+    ],
     frequency: "Q" as const,
     decimals: 1,
     unit: "% población activa",
@@ -189,6 +192,32 @@ describe("reserved semantics: a dash in the chart means provisional data and not
       expect(marker).not.toContain("stroke-dasharray");
       expect(marker).not.toContain("var(--color-provisional)");
       expect(marker).not.toContain("var(--color-break-band)");
+    });
+
+    // The FOURTH treatment, held to the same standard as the third and for the
+    // same reason. "Una línea punteada que abarque el periodo" is the obvious
+    // way to draw a span — and it is exactly the thing that must not happen,
+    // because the dash already means "this observation is provisional" and one
+    // reader cannot hold two meanings for one code.
+    //
+    // Mutation-checked rather than assumed: add `stroke-dasharray` to the rail
+    // in `svg.ts`, or repaint it in the provisional grey, and this fails.
+    it(`the ${variantName} event-span rail is solid and borrows no other layer's encoding`, () => {
+      const svg = renderChartSVG(input);
+      const rail = /<g class="chart-event-span"[\s\S]*?<\/g>/.exec(svg)?.[0];
+      expect(rail, "no event span was rendered, so this guard would pass vacuously").toBeTruthy();
+      expect(rail).not.toContain("stroke-dasharray");
+      expect(rail).not.toContain("var(--color-provisional)");
+      // Not the break band's wash either: the separation between a rail and a
+      // band is stroke-versus-fill, so a rail that gained a fill would have
+      // collapsed the two treatments into one whatever colour it used.
+      expect(rail).not.toContain("var(--color-break-band)");
+      expect(rail).toContain('fill="none"');
+      // Nor the government rule's ink. Colour is the SECOND channel here, but
+      // two marks in one ink that differ only by orientation is a weaker
+      // separation than this chart can afford now that it carries four.
+      expect(rail).not.toContain("var(--color-ink)");
+      expect(rail).toContain("var(--color-event-span)");
     });
   }
 });

@@ -31,7 +31,8 @@
 import AccessibleDataTable, { type AccessibleDataTablePoint } from "./AccessibleDataTable.astro";
 import BreakBand from "./BreakBand.astro";
 import AnnotationChip from "./AnnotationChip.astro";
-import { describeGovernmentChanges, describeSeries } from "../lib/chart/description";
+import { describeEventSpans, describeGovernmentChanges, describeSeries } from "../lib/chart/description";
+import { selectEventSpans } from "../lib/chart/eventSpans";
 import { selectGovernmentChanges } from "../lib/chart/governmentMarkers";
 import { narrowChartVariant, renderChartSVG } from "../lib/chart/svg";
 import { periodFromCalendarDate, type Frequency } from "../lib/chart/periods";
@@ -102,12 +103,37 @@ const tableId = `chart-table-${idBase}`;
 
 const description = describeSeries({ points, unit, decimals });
 
+const GROUPS: AnnotationGroup[] = ["governments", "exogenous", "milestones"];
+const DEFAULT_OPEN: Record<AnnotationGroup, boolean> = {
+  governments: false,
+  exogenous: false,
+  milestones: true,
+};
+
 // The changes of government this series may honestly mark. The SAME list feeds
 // the drawing and the sentence below it, so the rules a sighted reader counts
 // and the names a screen-reader reader hears can never disagree — and neither
 // can be produced without the other.
 const governmentChanges = selectGovernmentChanges(annotations, points.map((p) => p.period), frequency);
 const governmentNote = describeGovernmentChanges(governmentChanges);
+
+// The event-span projection, over the groups that are open BY DEFAULT — the
+// exact same map `ChartIsland.svelte` initialises its own toggle state from,
+// which is what keeps this component's drawing byte-identical to the island's
+// server-rendered one (`test/chart/island-ssr.test.ts`'s golden parity).
+//
+// STATED PLAINLY, because it is a real limitation and not an oversight: the
+// CSS-only checkbox below reveals and hides this component's annotation CHIPS
+// with zero JavaScript, and it cannot redraw an SVG that was serialised to a
+// string at build time. So in this component — the workbench's static catalog
+// entry, never a reader route — the drawing shows the default-open groups and
+// stays there. The reader route is `/indicador/{slug}`, which composes the
+// island; there the same toggle re-selects the spans, redraws the rails and
+// re-narrates the sentence. This component's job is the no-JS BASELINE, and
+// the baseline it renders is exactly what a no-JS reader of a real page gets.
+const shownAnnotations = annotations.filter((a) => DEFAULT_OPEN[a.group]);
+const eventSpans = selectEventSpans(shownAnnotations, points.map((p) => p.period), frequency);
+const eventSpanNote = describeEventSpans(eventSpans);
 
 const chartInput = {
   points,
@@ -116,6 +142,8 @@ const chartInput = {
   // `buildGovernmentMarkers`' single decision, made inside the renderer both
   // this component and the island share.
   governmentChanges: annotations,
+  // Filtered on purpose, and only by group visibility — see above.
+  eventSpans: shownAnnotations,
   frequency,
   decimals,
   unit,
@@ -150,12 +178,6 @@ function annotationDateLabel(ann: IndicatorChartAnnotation): string {
   return startYear === endYear ? startYear : `${startYear}–${endYear}`;
 }
 
-const GROUPS: AnnotationGroup[] = ["governments", "exogenous", "milestones"];
-const DEFAULT_OPEN: Record<AnnotationGroup, boolean> = {
-  governments: false,
-  exogenous: false,
-  milestones: true,
-};
 const groupedAnnotations = GROUPS.map((group) => ({
   group,
   label: es.chart.annotationGroupLabel[group],
@@ -205,6 +227,17 @@ const breakDisplay = breaks.map((b) => ({
     {description}{governmentNote && ` ${governmentNote}`}
   </p>
 
+  {/*
+    The event-span sentence — the visible legend naming which events the rails
+    bound, and the only route a screen-reader reader has to them (the drawing
+    is a single `role="img"`, which prunes its own children). It carries
+    `aria-live` here purely so this component's markup stays a faithful catalog
+    of the island's; nothing on a static page can change it.
+  */}
+  <p class="mt-1 text-caption text-ink-muted" aria-live="polite" data-testid="chart-event-spans-note">
+    {eventSpanNote}
+  </p>
+
   <ul class="chart-legend mt-2 flex flex-wrap gap-4 text-caption text-ink-muted" data-testid="chart-legend">
     <li class="flex items-center gap-1.5">
       {/* The authored --radius-pill token via its own utility, never
@@ -237,6 +270,21 @@ const breakDisplay = breaks.map((b) => ({
             <line x1="5" y1="0" x2="5" y2="14" stroke="currentColor" stroke-width="1" />
           </svg>
           {es.chart.government.markerLegendLabel}
+        </li>
+      )
+    }
+    {
+      /* The fourth entry, on the same terms as the third: present only while
+         the drawing really carries a rail, and carrying the rail's own glyph
+         in miniature rather than a swatch. The ORIENTATION that separates this
+         mark from the government marker above — horizontal against vertical —
+         is what the legend shows first. */
+      eventSpans.length > 0 && (
+        <li class="flex items-center gap-1.5" data-testid="chart-legend-event-span">
+          <svg aria-hidden="true" viewBox="0 0 16 8" class="h-2 w-4 shrink-0 text-event-span" fill="none">
+            <path d="M1 7 L1 2 L15 2 L15 7" stroke="currentColor" stroke-width="1.5" />
+          </svg>
+          {es.chart.eventSpan.legendLabel}
         </li>
       )
     }

@@ -126,4 +126,16 @@ export const DECLARED_PAIRINGS: readonly ContrastPairing[] = [
   // surfaces a chart can sit on.
   { name: "government-change marker rule on page background", fg: "ink", bg: "bg", level: CONTRAST_LEVEL.GRAPHIC },
   { name: "government-change marker rule on surface", fg: "ink", bg: "surface", level: CONTRAST_LEVEL.GRAPHIC },
+  // The editorial event span's rail — the chart's FOURTH annotation treatment.
+  // It gets a token of its own rather than borrowing one, because every
+  // existing colour is already spoken for: purple is the break band, blue the
+  // accent, ink the government rule, and amber/grey are RESERVED semantics.
+  // Rose is the one hue left that no other mark on this chart uses.
+  //
+  // Colour is the SECOND channel here and never the first — the rail is
+  // horizontal where every other vertical treatment is vertical, and a stroke
+  // where the band is a fill — but a non-text graphic still has to meet WCAG
+  // 1.4.11, in both themes and against both surfaces a chart can sit on.
+  { name: "event-span rail on page background", fg: "event-span", bg: "bg", level: CONTRAST_LEVEL.GRAPHIC },
+  { name: "event-span rail on surface", fg: "event-span", bg: "surface", level: CONTRAST_LEVEL.GRAPHIC },
 ];

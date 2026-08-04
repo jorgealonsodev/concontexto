@@ -70,6 +70,7 @@
   --color-pending: #a15c00; /* RESERVED: pending-data semantic only (amber) */
   --color-provisional: #5b6472; /* RESERVED: provisional-data semantic only (grey), always paired with a dotted stroke pattern, never colour alone */
   --color-break-band: #6b4fa0; /* free choice per ADR-8, NOT a reserved semantic: IndicatorChart's break-band shading only (slice 7) — a methodological break is neither "pending" nor "provisional", so it gets its own token rather than borrowing a reserved one */
+  --color-event-span: #a3186a; /* free choice per ADR-8, NOT a reserved semantic: the editorial event span's rail only — rose because every other hue on this chart is taken (purple = break band, blue = accent, ink = government rule, amber/grey = RESERVED), and because a rail is told apart from those by ORIENTATION and stroke-vs-fill before colour is consulted at all */
   --color-tooltip-bg: #14171c; /* tooltip surface, explicit — not derived from --color-ink */
   --color-tooltip-ink: #ffffff; /* tooltip text */
 
@@ -121,6 +122,7 @@
   --color-pending: #e2a33d; /* RESERVED: pending-data semantic only (amber) */
   --color-provisional: #9aa1ad; /* RESERVED: provisional-data semantic only (grey) */
   --color-break-band: #b79ce8; /* free choice, not reserved — see light-mode comment */
+  --color-event-span: #f08fc4; /* free choice, not reserved — see light-mode comment; authored for this theme, never derived from the light value */
   --color-tooltip-bg: #2a2f38;
   --color-tooltip-ink: #ffffff;
 }

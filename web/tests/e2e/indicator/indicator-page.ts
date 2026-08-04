@@ -70,6 +70,13 @@ export class IndicatorPage extends BasePage {
    * `role="img"`, which prunes its own children). */
   readonly legendEventSpan: Locator;
   readonly eventSpansNote: Locator;
+  /** The policy-measure stubs in the WIDE drawing's bottom gutter, and the
+   * sentence that is the ONLY identification any reader gets for them: a
+   * measure carries no on-drawing label, because the gutter has no room for
+   * one without putting words over the axis. */
+  readonly measureMarks: Locator;
+  readonly measureMarksNarrow: Locator;
+  readonly measuresNote: Locator;
   readonly yoyVariation: Locator;
   /** The link back to `/` (milestone 1.2). Rendered by `IndicatorPage.astro`,
    * so all six routes carry it. */
@@ -114,6 +121,9 @@ export class IndicatorPage extends BasePage {
     this.eventSpansNarrow = this.chartSection.locator('[data-testid="chart-event-span-narrow"]');
     this.legendEventSpan = this.chartSection.getByTestId("chart-legend-event-span");
     this.eventSpansNote = this.chartSection.getByTestId("chart-event-spans-note");
+    this.measureMarks = this.chartSection.locator('[data-testid="chart-measure-mark"]');
+    this.measureMarksNarrow = this.chartSection.locator('[data-testid="chart-measure-mark-narrow"]');
+    this.measuresNote = this.chartSection.getByTestId("chart-measures-note");
     this.yoyVariation = page.getByTestId("page-yoy-variation");
     this.backToHome = page.getByTestId("back-to-home");
     this.header = page.getByTestId("page-header");
@@ -137,6 +147,29 @@ export class IndicatorPage extends BasePage {
    * onto the drawing. */
   annotationToggle(group: string): Locator {
     return this.chartSection.getByTestId(`annotation-toggle-${group}`);
+  }
+
+  /** The chips listed under one annotation group, in document order. Scoped to
+   * that group's own content container: an unscoped `annotation-chip` locator
+   * would mix all four groups into one list and make "the chips name exactly
+   * what the marks name" unprovable per layer. */
+  annotationChips(group: string): Locator {
+    return this.annotationGroupContent(group).locator('[data-testid="annotation-chip"]');
+  }
+
+  /** One group's whole chip container — a SINGLE node, which is what a
+   * `not.toContainText` assertion needs: the same negation over the chip list
+   * is a strict-mode violation the moment the group holds more than one chip,
+   * and "this entry is named nowhere in the group" is exactly the claim worth
+   * asserting after a range narrows. */
+  annotationGroupContent(group: string): Locator {
+    return this.chartSection.getByTestId(`annotation-group-content-${group}`);
+  }
+
+  /** The whole annotation section — absent, not empty, when no group has an
+   * entry inside the window on screen. */
+  get annotations(): Locator {
+    return this.chartSection.getByTestId("chart-annotations");
   }
 
   /** One point button by the period its announcement names — "T1 2020" and so

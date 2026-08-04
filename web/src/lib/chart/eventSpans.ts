@@ -67,6 +67,7 @@
 // statement. The sentence this layer generates says so in its own words
 // ("...que el registro editorial acota con fecha de inicio y de fin"), so the
 // absence is disclosed rather than silent.
+import { intervalOrdinalsInWindow, periodWindow } from "./annotationWindow";
 import { xForIndex, plotArea, type ChartDimensions } from "./geometry";
 import { nearestPeriodIndex, periodFromCalendarDate, periodOrdinalIndex, type Frequency } from "./periods";
 
@@ -162,9 +163,8 @@ export function selectEventSpans(
   periods: readonly string[],
   frequency: Frequency,
 ): EventSpan[] {
-  if (periods.length === 0) return [];
-  const firstOrdinal = periodOrdinalIndex(periods[0], frequency);
-  const lastOrdinal = periodOrdinalIndex(periods[periods.length - 1], frequency);
+  const window = periodWindow(periods, frequency);
+  if (window === null) return [];
   const mutablePeriods = [...periods];
 
   const candidates = annotations
@@ -181,15 +181,17 @@ export function selectEventSpans(
       const endLabel = periodFromCalendarDate(annotation.dateEnd, frequency);
       const startOrdinal = periodOrdinalIndex(startLabel, frequency);
       const endOrdinal = periodOrdinalIndex(endLabel, frequency);
-      // Fail closed (P4) on a registry entry whose end predates its start:
-      // silently swapping the bounds would draw a span nobody configured.
-      if (endOrdinal < startOrdinal) return [];
-      // Intersection, not containment — see this file's header for why an
-      // interval needs the weaker test and a change of government does not.
-      if (endOrdinal < firstOrdinal || startOrdinal > lastOrdinal) return [];
+      // Intersection, not containment, plus the fail-closed refusal of an end
+      // that predates its start — both read from `annotationWindow` rather
+      // than restated here. See this file's header for why an interval needs
+      // the weaker test and a change of government does not, and that module's
+      // header for why the rule now lives in one place: the annotation chips
+      // below the chart ask the same question, and a rail and a chip
+      // disagreeing about the same event is the defect this fixed.
+      if (!intervalOrdinalsInWindow(startOrdinal, endOrdinal, window)) return [];
 
-      const clampedStart = startOrdinal < firstOrdinal;
-      const clampedEnd = endOrdinal > lastOrdinal;
+      const clampedStart = startOrdinal < window.firstOrdinal;
+      const clampedEnd = endOrdinal > window.lastOrdinal;
       // `nearestPeriodIndex` is monotone in the target ordinal, so an
       // unclamped end can never snap to the left of an unclamped start.
       const startIndex = clampedStart ? 0 : nearestPeriodIndex(mutablePeriods, frequency, startLabel);

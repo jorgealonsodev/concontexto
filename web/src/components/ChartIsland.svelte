@@ -35,6 +35,7 @@
     describePolicyMeasures,
     describeSeries,
   } from "../lib/chart/description";
+  import { annotationsInWindow } from "../lib/chart/annotationWindow";
   import { selectEventSpans } from "../lib/chart/eventSpans";
   import { selectGovernmentChanges } from "../lib/chart/governmentMarkers";
   import { selectPolicyMeasures } from "../lib/chart/measureMarks";
@@ -741,11 +742,60 @@
   }
 
   const GROUPS: AnnotationGroup[] = ["governments", "exogenous", "milestones", "measures"];
+
+  /** The entries the chips may name: those the CURRENTLY VISIBLE window
+   * covers, judged by the same rule the marks are drawn under.
+   *
+   * This is the defect that produced this expression, measured in a browser
+   * rather than reasoned about. On /indicador/tasa-de-paro-epa with the
+   * measures group open, selecting "Desde 2018" narrowed the series from 98
+   * points to 34 and the measure stubs from 12 to 8 — and left the chip row
+   * naming all three measures, including a 2012 reform, under a chart that
+   * begins in 2018. `governments` and `exogenous` did the same, and
+   * `governments` did it even at the full range: six chips over three rules,
+   * because three of that registry's confirmed investitures predate 2002.
+   *
+   * `annotationsInWindow` is the ONE rule, and reusing it rather than writing
+   * a second predicate here is the whole point — see
+   * `lib/chart/annotationWindow.ts`. An instant (a change of government, a
+   * measure's entry into force, or an event the registry gave no end date)
+   * must fall inside the span on screen; an interval need only intersect it,
+   * exactly as its rail does, because a 2008-2013 crisis really does cover
+   * 2010-2013 of a window that starts in 2010.
+   *
+   * Fed `rangedPeriods`, like all three mark layers and unlike the government
+   * `<select>`'s own option list: a chip beneath the drawing is a statement
+   * about the drawing in front of the reader, while that control is a
+   * statement about the series' history. */
+  const windowedAnnotations = $derived(annotationsInWindow(annotations, rangedPeriods, frequency));
+
+  /** A group with no entry in the window is ABSENT, not present and empty.
+   *
+   * The same rule `availablePresets` and the government filter already follow
+   * ("a control that does not apply does not exist"), and the same one the
+   * break list follows in this very component — `visibleBreaks` disappears
+   * when the window carries no rupture, and P4's "always visible" means "never
+   * dismissible", not "shown when it is off screen".
+   *
+   * The argument is stronger here than for either precedent, and it is not
+   * that an empty list looks untidy. This toggle GATES THE DRAWING: with
+   * nothing in range, opening it draws no mark and lists no chip, so keeping
+   * it would ship a 44x44 focus stop that cannot change one pixel of the page.
+   * A disabled or empty control that says nothing is exactly what the project
+   * decided against twice already.
+   *
+   * THE COST, STATED RATHER THAN GLOSSED: a reader who narrows far enough
+   * watches the group vanish under their own hand, and nothing on screen says
+   * "none in this period". That is a real loss of a real affordance. What
+   * makes it the better trade is that it is one click from being undone —
+   * "Completo" is the one preset offered on every series, whatever its span —
+   * and that the alternative asks the reader to keep, and tab through, a
+   * control which has nothing left to control. */
   const groupedAnnotations = $derived(
     GROUPS.map((group) => ({
       group,
       label: es.chart.annotationGroupLabel[group],
-      entries: annotations.filter((a) => a.group === group),
+      entries: windowedAnnotations.filter((a) => a.group === group),
     })).filter((g) => g.entries.length > 0),
   );
 

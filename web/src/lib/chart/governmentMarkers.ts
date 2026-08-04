@@ -60,6 +60,7 @@
 // marker over that stretch. Inventing one there would be exactly the
 // unverified-fact-as-verified-fact failure `date_status` exists to prevent.
 import { GOVERNMENTS_GROUP } from "../transform/governmentTerms";
+import { instantOrdinalInWindow, periodWindow } from "./annotationWindow";
 import { xForIndex, type ChartDimensions } from "./geometry";
 import { nearestPeriodIndex, periodFromCalendarDate, periodOrdinalIndex, type Frequency } from "./periods";
 
@@ -117,9 +118,8 @@ export function selectGovernmentChanges(
   periods: readonly string[],
   frequency: Frequency,
 ): GovernmentChange[] {
-  if (periods.length === 0) return [];
-  const firstOrdinal = periodOrdinalIndex(periods[0], frequency);
-  const lastOrdinal = periodOrdinalIndex(periods[periods.length - 1], frequency);
+  const window = periodWindow(periods, frequency);
+  if (window === null) return [];
   const mutablePeriods = [...periods];
 
   return annotations
@@ -129,9 +129,13 @@ export function selectGovernmentChanges(
     .flatMap((annotation) => {
       const targetLabel = periodFromCalendarDate(annotation.dateStart, frequency);
       const targetOrdinal = periodOrdinalIndex(targetLabel, frequency);
-      // Inclusive at both edges — see this file's header for why the edge
-      // case is the point rather than a rounding artefact.
-      if (targetOrdinal < firstOrdinal || targetOrdinal > lastOrdinal) return [];
+      // The INSTANT rule, read from `annotationWindow` rather than restated
+      // here — see this file's header for why the edge case is the point
+      // rather than a rounding artefact, and that module's header for why the
+      // rule now lives in one place: the annotation chips below the chart ask
+      // the same question, and three copies of it is how they came to answer
+      // it differently.
+      if (!instantOrdinalInWindow(targetOrdinal, window)) return [];
       const index = nearestPeriodIndex(mutablePeriods, frequency, targetLabel);
       return [
         {

@@ -37,6 +37,7 @@ import {
   describePolicyMeasures,
   describeSeries,
 } from "../lib/chart/description";
+import { annotationsInWindow } from "../lib/chart/annotationWindow";
 import { selectEventSpans } from "../lib/chart/eventSpans";
 import { selectGovernmentChanges } from "../lib/chart/governmentMarkers";
 import { selectPolicyMeasures } from "../lib/chart/measureMarks";
@@ -218,10 +219,44 @@ function annotationDateLabel(ann: IndicatorChartAnnotation): string {
   return startYear === endYear ? startYear : `${startYear}–${endYear}`;
 }
 
+// The chips name what the drawing marks, and nothing else.
+//
+// They used to name the whole group regardless of the window, which on the
+// island's own reader route produced the defect this fixed: a chart narrowed
+// to 2018 onwards drew two measure stubs and listed three chips. It was wrong
+// here too, and visibly so at the FULL range — /indicador/tasa-de-paro-epa
+// begins in 2002 and its registry carries six confirmed investitures, three of
+// them earlier, so the group listed six entries over three rules.
+//
+// `annotationsInWindow` is the SAME rule the three selectors above apply,
+// read from the one module that owns it: an instant must fall inside the span
+// on screen, an interval need only intersect it, and an event the registry
+// gave no end date is an instant because that is all it has. See
+// `lib/chart/annotationWindow.ts` for the whole argument.
+//
+// The window here is `points` — the entire series, always, because this
+// component has no range control. That is exactly right for its job: it is
+// the no-JS baseline, and a reader with JavaScript disabled cannot narrow the
+// chart, so the full series IS the window in front of them.
+const windowedAnnotations = annotationsInWindow(annotations, points.map((p) => p.period), frequency);
+
+// A group whose entries all fall outside the window is ABSENT, not present
+// and empty — the same rule `availablePresets` and the government filter
+// already follow, and the same rule the break list follows two elements up
+// (`visibleBreaks` simply disappears when the window carries no rupture).
+//
+// The argument is stronger for this control than for either of those, and it
+// is not "an empty list looks untidy". This toggle GATES THE DRAWING: with no
+// entry in range it draws nothing and lists nothing, so leaving it would ship
+// a 44x44 focus stop that cannot change one pixel of the page. Stated as the
+// real trade it is — a reader who narrows far enough loses the affordance
+// along with the entries, and nothing on screen says "none in this period".
+// What makes that acceptable is that the loss is one click from being undone:
+// "Completo" is the one range preset always offered, whatever the series.
 const groupedAnnotations = GROUPS.map((group) => ({
   group,
   label: es.chart.annotationGroupLabel[group],
-  entries: annotations.filter((a) => a.group === group),
+  entries: windowedAnnotations.filter((a) => a.group === group),
   defaultOpen: DEFAULT_OPEN[group],
 })).filter((g) => g.entries.length > 0);
 

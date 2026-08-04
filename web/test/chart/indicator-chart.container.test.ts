@@ -132,6 +132,78 @@ describe("IndicatorChart", () => {
     expect(html).toContain("Provisional");
   });
 
+  // ── The chips answer the same window the marks do ────────────────────────
+  //
+  // Measured in a real browser before it was written down: on
+  // /indicador/tasa-de-paro-epa narrowed to "Desde 2018" the drawing marked
+  // two policy measures and the chip row beneath it listed three, naming a
+  // 2012 reform as though it were in view. The same held for `governments`
+  // and `exogenous`, and `governments` was inconsistent even at the FULL
+  // range — six chips over three rules, because three investitures predate
+  // that series' first observation.
+  //
+  // These tests hold the STATIC half, which is also the no-JS baseline: it
+  // has no range control, so its window is always the whole series and these
+  // assertions are about entries outside the series itself.
+
+  it("a chip is printed only for an entry inside the window the marks are drawn against", async () => {
+    const container = await AstroContainer.create();
+    const html = await container.renderToString(IndicatorChart, { props: { ...fx.indicatorChart } });
+    // `gob-2018` (2018-06-01) predates this fixture's 2019-Q1 first
+    // observation, so no rule is drawn for it — and now no chip names it
+    // either.
+    expect(html).not.toContain("Cambio de gobierno</a>");
+    expect(html).toContain("Cambio de gobierno (ejemplo)");
+    // `crisis-2008` (2008-2013) does not intersect 2019-2026 at all.
+    expect(html).not.toContain("Crisis financiera");
+    expect(html).toContain("Pandemia (ejemplo)");
+    // `reforma-2012` is a milestone with NO end date — an instant, judged by
+    // its one date, which is seven years before this series begins.
+    expect(html).not.toContain("Reforma laboral");
+    expect(html).toContain("Hito normativo (ejemplo)");
+  });
+
+  it("an interval that merely overlaps the window keeps its chip", async () => {
+    // The chip must agree with the RAIL, and a rail is drawn on intersection
+    // rather than containment (`eventSpans.ts`): the 2008-2013 crisis really
+    // does cover the 2013 quarters of a series that starts in 2013.
+    const container = await AstroContainer.create();
+    const overlapping = {
+      ...fx.indicatorChart,
+      points: [
+        { period: "2013-Q1", value: 26.9, status: "D" as const },
+        { period: "2013-Q2", value: 26.1, status: "D" as const },
+      ],
+    };
+    const html = await container.renderToString(IndicatorChart, { props: overlapping });
+    expect(html).toContain("Crisis financiera");
+  });
+
+  it("a group whose every entry falls outside the window has no control at all", async () => {
+    // The project's established rule, applied to `availablePresets` and to the
+    // government filter before this: a control that would select nothing is
+    // ABSENT rather than present and empty. Here the argument is stronger than
+    // for either of those, because this toggle also gates the DRAWING — with
+    // no entry in range it draws nothing and lists nothing, so it is a 44x44
+    // focus stop that cannot change one pixel of the page.
+    const container = await AstroContainer.create();
+    const allOutside = {
+      ...fx.indicatorChart,
+      points: [
+        { period: "2025-Q1", value: 11.4, status: "D" as const },
+        { period: "2025-Q2", value: 11.2, status: "D" as const },
+      ],
+    };
+    const html = await container.renderToString(IndicatorChart, { props: allOutside });
+    // Every fixture annotation predates 2025, so all four groups vanish and
+    // the section they live in goes with them.
+    expect(html).not.toContain('data-testid="annotation-toggle-governments"');
+    expect(html).not.toContain('data-testid="annotation-toggle-exogenous"');
+    expect(html).not.toContain('data-testid="annotation-toggle-milestones"');
+    expect(html).not.toContain('data-testid="annotation-toggle-measures"');
+    expect(html).not.toContain('data-testid="chart-annotations"');
+  });
+
   it("renders no chart-breaks section and no chart-annotations section when both are empty", async () => {
     const container = await AstroContainer.create();
     const minimal = { ...fx.indicatorChart, breaks: [], annotations: [] };

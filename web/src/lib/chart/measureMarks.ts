@@ -66,6 +66,7 @@
 // It computes a single x and two y's in the gutter. Nothing here can be
 // extended into a claim about the data without first adding a field to a
 // registry that deliberately has none.
+import { instantOrdinalInWindow, periodWindow } from "./annotationWindow";
 import { plotArea, xForIndex, type ChartDimensions } from "./geometry";
 import { nearestPeriodIndex, periodFromCalendarDate, periodOrdinalIndex, type Frequency } from "./periods";
 
@@ -179,9 +180,8 @@ export function selectPolicyMeasures(
   periods: readonly string[],
   frequency: Frequency,
 ): PolicyMeasure[] {
-  if (periods.length === 0) return [];
-  const firstOrdinal = periodOrdinalIndex(periods[0], frequency);
-  const lastOrdinal = periodOrdinalIndex(periods[periods.length - 1], frequency);
+  const window = periodWindow(periods, frequency);
+  if (window === null) return [];
   const mutablePeriods = [...periods];
 
   return annotations
@@ -197,7 +197,10 @@ export function selectPolicyMeasures(
     .flatMap((annotation) => {
       const targetLabel = periodFromCalendarDate(annotation.dateStart, frequency);
       const targetOrdinal = periodOrdinalIndex(targetLabel, frequency);
-      if (targetOrdinal < firstOrdinal || targetOrdinal > lastOrdinal) return [];
+      // The same INSTANT rule the government markers apply, and now literally
+      // the same expression: `annotationWindow` owns it, so the mark and the
+      // chip below the chart cannot disagree about the same measure.
+      if (!instantOrdinalInWindow(targetOrdinal, window)) return [];
       const index = nearestPeriodIndex(mutablePeriods, frequency, targetLabel);
       return [
         {

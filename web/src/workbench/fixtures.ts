@@ -147,11 +147,17 @@ export const indicatorChart: IndicatorChartProps = {
     {
       // OUTSIDE this fixture's span (2019-Q1 onwards), and kept that way on
       // purpose: it demonstrates the half of the marker rule that is easiest
-      // to get wrong. The chip below the chart still names this government —
-      // it genuinely governed the series — but no vertical rule is drawn for
-      // it, because the change of government happened before the first
-      // observation and a rule at the left edge would claim it happened
-      // there.
+      // to get wrong. No vertical rule is drawn for it, because the change of
+      // government happened before the first observation and a rule at the
+      // left edge would claim it happened there.
+      //
+      // AND NO CHIP EITHER, which is what changed. The chip row used to name
+      // this government on the argument that it genuinely governed the series
+      // — but the row sits under a drawing that does not mark it, and on the
+      // island the same reasoning left a 2012 measure listed beneath a chart
+      // narrowed to 2018 onwards. A chip now names what the drawing marks
+      // (`lib/chart/annotationWindow.ts`), so this entry demonstrates a
+      // registry entry the current window has nothing to say about.
       id: "gob-2018",
       group: "governments",
       name: "Cambio de gobierno",
@@ -176,9 +182,12 @@ export const indicatorChart: IndicatorChartProps = {
     {
       // ENTIRELY OUTSIDE this fixture's span (2019-Q1 onwards), and kept that
       // way for the span layer exactly as `gob-2018` is kept outside for the
-      // marker layer: the chip names it, because the series really did live
-      // through it, and no rail is drawn, because a rail here would claim the
-      // crisis covered quarters this chart never saw.
+      // marker layer: no rail is drawn, because a rail here would claim the
+      // crisis covered quarters this chart never saw, and no chip either,
+      // because the chips now answer the same window the marks do. Note that
+      // the test for this is INTERSECTION rather than containment — move this
+      // fixture's `dateEnd` past 2019-01-01 and both the rail and the chip
+      // come back.
       id: "crisis-2008",
       group: "exogenous",
       name: "Crisis financiera",
@@ -200,11 +209,16 @@ export const indicatorChart: IndicatorChartProps = {
     },
     {
       // No end date, deliberately: the registry's real `shock-energetico-2022`
-      // and `ngeu-primer-desembolso` are shaped like this, and the workbench
-      // has to show what that looks like — a chip carrying a single year and
-      // no rail at all, because an event with no recorded end has no period to
-      // project and inventing one would be the P4 failure this project's
-      // `date_status` machinery exists to prevent.
+      // and `ngeu-primer-desembolso` are shaped like this — an event with no
+      // recorded end has no period to project, and inventing one would be the
+      // P4 failure this project's `date_status` machinery exists to prevent.
+      //
+      // Its date is also before this fixture's span, which makes it the
+      // workbench's demonstration of the OTHER half of that rule: an end-less
+      // event is judged as an INSTANT, by the one date it has, so this one is
+      // out of the window and carries neither rail nor chip. The registry's
+      // real pair fall INSIDE /indicador/tasa-de-paro-epa, where they are what
+      // makes that page show four exogenous chips over two rails.
       id: "reforma-2012",
       group: "milestones",
       name: "Reforma laboral",

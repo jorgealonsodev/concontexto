@@ -141,6 +141,54 @@ test.describe("ChartIsland — the policy-measure layer", () => {
   );
 
   test(
+    "narrowing past the measure removes its chip, its mark and its sentence together",
+    { tag: ["@chart-island", "@annotation-range"] },
+    async ({ page }) => {
+      // The reported defect, for the group it was reported on. On
+      // /indicador/tasa-de-paro-epa with the measures group open, selecting
+      // "Desde 2018" narrowed the series from 98 points to 34 and the measure
+      // stubs from 12 to 8 — and left the chip row naming all three measures,
+      // including a 2012 reform, under a chart beginning in 2018.
+      //
+      // Proved HERE rather than on that page for the reason this file's header
+      // already gives: the built e2e artifact's registry carries no measures,
+      // and the workbench's fixture does. Same island, same renderer, same
+      // toggle a reader meets on /indicador/{slug}.
+      //
+      // The fixture's one measure enters into force on 2021-09-15, so a custom
+      // range ending in 2020 puts it outside the window while leaving real
+      // data on screen — a narrowing, not an emptying.
+      const workbench = new WorkbenchPage(page);
+      await workbench.goto();
+      await workbench.waitForChartIslandHydrated();
+      const island = workbench.chartIsland;
+      const chips = island
+        .getByTestId("annotation-group-content-measures")
+        .getByTestId("annotation-chip");
+
+      await expect(chips).toHaveCount(1);
+      await expect(island.locator('[data-measure-id="medida-ejemplo-2021"]')).toHaveCount(2);
+
+      await island.getByTestId("custom-range-from").fill("2019-01-01");
+      await island.getByTestId("custom-range-to").fill("2020-12-31");
+      await island.getByTestId("custom-range-apply").click();
+      await expect(island.getByTestId("custom-range-status")).toContainText(
+        "Rango personalizado aplicado",
+      );
+
+      // All three together. A chip naming an instrument the drawing does not
+      // mark is the defect; a sentence that still named it would be worse,
+      // because it is the only identification a measure ever gets.
+      await expect(island.locator('[data-measure-id="medida-ejemplo-2021"]')).toHaveCount(0);
+      await expect(island.getByTestId("chart-measures-note")).toHaveText("");
+      // The group is ABSENT, not present and empty — its only entry is out of
+      // range, so its toggle could not have changed one pixel of the page.
+      await expect(island.getByTestId("annotation-toggle-measures")).toHaveCount(0);
+      await expect(chips).toHaveCount(0);
+    },
+  );
+
+  test(
     "the measure's chip links to the primary source the registry recorded",
     { tag: ["@chart-island"] },
     async ({ page }) => {

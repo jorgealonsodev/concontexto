@@ -21,9 +21,15 @@ rebuild + redeploy (see `config_embed_test.go` at the repository root).
   of `phase-0-data-foundations` and reconciled by
   `ingestion.ReconcileEditorialConfig` into `series_break`/`event`. An
   entry whose effective date is not yet confirmed against its source's own
-  methodological note carries `date_status: unconfirmed` + `todo` instead
-  of a guessed date; ReconcileEditorialConfig never projects such an entry
-  into the database (see `app/internal/ingestion/reconcile.go`).
+  methodological note carries `date_status: unconfirmed` + `todo`;
+  ReconcileEditorialConfig never projects such an entry into the database
+  (see `app/internal/ingestion/reconcile.go`). It **may** also carry a
+  provisional date, and usually should: the current best reading plus the
+  `todo` tells the next editor both what the date probably is and which
+  document confirms it, where an empty field tells them only that somebody
+  stopped. What holds the entry back is the declared status, never the
+  emptiness of the date field — `validate-config` accepts that shape and
+  the reconcile refuses to project it.
   An event entry may also declare an optional `scope`
   (`global` | `series` | `dataset` | `source`) and an optional `source_url`.
   Every entry authored today is `global` — a change of government and a

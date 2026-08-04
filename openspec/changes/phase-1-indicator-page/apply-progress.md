@@ -4696,6 +4696,12 @@ of that path has no production exercise.
 
 ### An unconfirmed editorial date reaches the artifact — verified here, and it contradicts two doc comments
 
+> **SUPERSEDED by slice 38 (`9483d23`, 2026-08-04 22:05). Everything in this section describes the state at
+> `5af95c5` and is FALSE at HEAD**: the guard now reads the declared status, the entry is in none of the ten
+> exported series documents, and all three doc comments were rewritten. Left standing rather than deleted
+> per this file's supersede-don't-delete rule — the measurements below are what the fix had to answer. The
+> resolution is in "Slice 38" at the end of this file and in `design.md`'s Open Question for this defect.
+
 Slice 32's commit body disclosed this and nothing in the record carried it forward. **Re-verified at
 `5af95c5` for this record rather than accepted second-hand:**
 
@@ -4905,3 +4911,301 @@ code**, not in a later documentation pass. When that is genuinely impossible, tr
 as blocking at **one** commit rather than at seventeen — the cost of closing it grows superlinearly and the
 evidence it needs decays. And when a verify pass raises the same finding twice, its second appearance is
 information about the process, not about the finding.
+
+---
+
+# Slices 37–39 — the record's own last commit, the defect it disclosed, and closing the last scenario (2026-08-04 … 2026-08-05, `374eb80` / `9483d23` / this pass)
+
+Written to close verify-report pass-9 **WARNING-59**, **WARNING-41** and **WARNING-57**. Pass 9 returned
+**0 CRITICAL, 0 blockers and no defect in the delivered product**, at 78/79 requirements and 175/176
+scenarios, with a single untested scenario holding the envelope at `fail`.
+
+Measured here before writing, not taken from the report:
+
+```
+git log --oneline 5af95c5..HEAD          →  2   (374eb80, 9483d23)
+git show --numstat 374eb80               →  6 files, 2605 insertions(+), 332 deletions(-)
+git show --numstat 9483d23               →  7 files,  614 insertions(+), 433 deletions(-)
+```
+
+## Slice 37 — `374eb80`, the record catches up, and immediately falls behind again
+
+The commit that closed pass-7 CRITICAL-46. Six files, all under
+`openspec/changes/phase-1-indicator-page/`: task rows for slices 20–36 (`tasks.md` +1,042), the narrative
+and TDD Cycle Evidence for them (`apply-progress.md` +856), the WARNING-47 spec decision as two new
+requirements (`specs/indicator-page/spec.md` +57, `specs/source-attribution-licensing/spec.md` +67), the
+design-level open items (`design.md` +184), and pass 8's verify report swept in.
+
+**Its own failure mode is the interesting part.** `9483d23` landed thirty-one minutes later and neither
+commit was recorded until this pass — so the commit that closed a seventeen-commit record gap opened a
+two-commit one before the day was out. Pass 9 raised it as WARNING-59: the **second** staleness finding in
+two passes and the **fifth** occurrence in this change. The rule slice 37 itself wrote — *append the task
+rows in the same commit as the code* — was not followed by the very next commit.
+
+Recorded rather than escalated, and pass 9 said why: one commit, with an unusually complete and (checked
+line by line against the code) accurate commit body. What it cost is not zero, though, and it is the same
+cost as before: this section is a reconstruction, and the RED for slice 38 exists here only because the
+**verifier** produced it by mutation, not because anyone recorded it at the time.
+
+## Slice 38 — `9483d23`, an entry the configuration declares unverified is held back
+
+**What.** `config/eventos.yaml`'s `ngeu-primer-desembolso` carries `date_status: unconfirmed` **and** a
+provisional `date_start: 2021-08-01`, with a `todo` saying the month comes from unverified general
+knowledge. The configuration was saying the date is a guess and the product was publishing it as fact:
+`reconcile.go`'s projection guard tested `e.DateStart == nil` and never read `e.DateStatus`. All three
+clauses of `editorial-config`'s "Unconfirmed editorial dates are operator-visible, never reader-visible"
+failed at once — the entry was projected, it reached all ten published series documents and every rendered
+page with no disclosure of its pendingness, and the operator backlog reported **six** pending entries where
+the configuration declares **seven**.
+
+**Where.** `app/internal/ingestion/reconcile.go` (+39/−12), `app/internal/adapters/config/types.go`
+(+39/−14), `app/internal/adapters/postgres/events_read.go` (+14/−3),
+`app/cmd/concontexto/fase0_closure_test.go` (+5/−3), `app/internal/adapters/config/validate.go` (+2/−2),
+and `app/internal/ingestion/reconcile_test.go` (+189, all new tests). `verify-report.md` in the same commit
+is pass 8's report being swept in, not part of the fix.
+
+**The fix is one predicate, and it is a class fix.** `isDatePending(dateStatus string, date *time.Time)
+bool` (`reconcile.go:167-168`) is `dateStatus == config.DateStatusUnconfirmed || date == nil`, called at
+`:74` for breaks and `:87` for events. `BreakConfig` carried the identical latent defect — same triple,
+same nil-date guard — latent only because all four unconfirmed breaks in the shipped YAML happen to omit
+their dates. Both were fixed together, before any shipped break exercised it. `DateStatus` is read in
+exactly three non-test places at HEAD: the two call sites and `validate.go`'s two switch statements, which
+now switch on the named constant rather than a bare literal.
+
+**The provisional-date shape is blessed, not tolerated, and that is the decision worth keeping.**
+`types.go:63-68` now records it: the guess plus the `todo` tells the next editor both the current best
+reading AND what to check, where an empty field tells them only that somebody stopped. So `validate-config`
+keeps allowing the shape and the reconcile holds it back — the safety comes from the declared status, never
+from the emptiness of the date field.
+
+**Three shipped comments that asserted this could not happen were rewritten rather than left accidentally
+true.** `reconcile.go:10-12`'s parenthetical — "(Date/DateStart is nil)" — *was* the defect: it encoded an
+equivalence between "unconfirmed" and "no date" that `validate.go` never enforced. `events_read.go:47-49`
+gained the load-bearing point that the `event` table has **no `date_status` column at all**, so a projected
+unconfirmed entry would be indistinguishable there and that function could not filter it even if it tried;
+the guarantee holds upstream or not at all. And `fase0_closure_test.go`'s comment said "never projects a nil
+date", which was trivially true and told a reader nothing.
+
+**`config/**` was left untouched, deliberately.** The date is checkable against the RRF disbursement
+calendar the `todo` names, but confirming it is an editorial act on a **four-eyes path** and this was a
+single reviewer. Seven was the correct number all along: four breaks plus three events, counted from what
+the YAML **declares** — which is what both the shipped closure test and the spec scenario already counted.
+The product's six counted what the guard **inferred**.
+
+### The two tests are complementary, and the mutation results are what prove it
+
+Pass 9 ran six mutations, restoring the tree with `git checkout` after each. This is the RED the commit body
+does not transcribe, and it is recorded here because it exists nowhere else durable:
+
+| # | Mutation | Result |
+|---|---|---|
+| M1 | `isDatePending` → `return date == nil` (the pre-fix guard, exactly) | **Both new tests FAIL** |
+| M2 | Half-applied: breaks fixed, events left on `e.DateStart == nil` | **Both new tests FAIL** |
+| M3 | Half-applied: events fixed, breaks left on `b.Date == nil` | The class test **FAILS**; the shipped-config test **passes** |
+| M4 | `isDatePending` → drop `\|\| date == nil` | **The entire Go suite stays green** — WARNING-58 |
+| M5 | Drop `\|\| current.RetiredAt != nil` from **both** un-retire clauses | `TestReconcileBreaks_FullReconcileIsTransactionalIdempotentAndSoftRetires` FAILS |
+| M6 | Drop it from the **events** clause only (`editorial.go:397`) | **The entire Go suite stays green** — SUGGESTION-60 |
+
+**M3 is why the two tests are not redundant.** The shipped-config test
+(`TestReconcileEditorialConfig_ShippedConfigPendingListsAreExactlyItsUnconfirmedEntries`,
+`reconcile_test.go:536`) **cannot** catch a breaks-only regression, because all four unconfirmed breaks in
+the shipped YAML happen to omit their dates — so on the real configuration the old guard and the new one
+agree about every break. The class test
+(`TestReconcileEditorialConfig_AProvisionalDateOnAnUnconfirmedEntryIsStillHeldBack`,
+`reconcile_test.go:457`) carries that half, because it builds a break that has both a provisional date and
+an unconfirmed status, which no editor has yet written. Each test covers what the other structurally
+cannot: one asserts the rule against a shape the configuration does not currently contain, the other
+asserts it against whatever the editors actually wrote, without anyone having to predict the shape in
+advance. The suite had exactly one of those before, which is why it was blind to CRITICAL-54 for five
+passes.
+
+### WARNING-58 — the same species, in the test written to prevent it
+
+`reconcile_test.go:530-535`'s doc comment says deriving the expectation from `DateStatus` alone *"keeps this
+from degenerating into a restatement of the implementation: were the guard to drop **either half** of its
+condition, the two would disagree here."*
+
+**M4 falsifies that for the nil half.** Dropping `|| date == nil` leaves that test green, the sibling class
+test green and the entire Go suite green. Only the `DateStatus` half is discriminated. The nil half cannot
+be discriminated by any test running the shipped configuration, because `validate-config` makes the
+confirmed-with-no-date shape unreachable — which `isDatePending`'s own comment states correctly two files
+away.
+
+**This is not a defect and it is recorded anyway, because of what it is an instance of.** The branch is
+deliberately inert defence, documented as such, and the code is right. What is wrong is a comment asserting
+a property nothing enforces — the exact species this change has chased for nine passes, appearing this time
+inside the test written to prevent that species. The accurate sentence is "were the guard to drop the
+**status** half". **Left open**: correcting it means editing `app/`, which the pass that wrote this section
+did not own.
+
+### SUGGESTION-60 — the events half of the un-retire clause is untested, and this fix made it load-bearing
+
+`editorial.go:397` resurrects a soft-retired event when it returns to the configuration:
+`case current.ConfigDigest != in.ConfigDigest || current.RetiredAt != nil:` … `retired_at=NULL`.
+
+That clause is now the **only** path by which the three pending events can ever reach a reader, and it
+matters more than it looks because **the digest cannot help it**. `eventDigest` (`reconcile.go:193-199`)
+covers id, group, name, both dates, note, scope and source URL — **not `date_status`**. Confirming
+`ngeu-primer-desembolso` means deleting `date_status` and `todo`, which leaves `config_digest`
+byte-identical. Without `|| current.RetiredAt != nil` the entry would stay retired forever while
+reconciliation reported zero changes, and nothing would say so.
+
+M5 shows the **breaks** half of that clause is covered. M6 shows the **events** half is not: the whole Go
+suite passes with it removed. No defect exists today — the clause is present and correct, and pass 9
+verified the resulting behaviour by reading the update path. It is a coverage gap on the same seam and of
+the same shape as the one that produced CRITICAL-54: a correct guard with no test exercising the state the
+real configuration now sits in. **Left open** for the same reason as WARNING-58.
+
+### TDD Cycle Evidence — Slices 37–38
+
+| Slice / task | RED — what kind, and what it actually was | GREEN | REFACTOR |
+|---|---|---|---|
+| 37.1–37.5 | n/a — a record commit. It changes only `openspec/`, which no suite reads, and it correctly ran nothing but `validate-config` for that reason. | `tasks.md` (+1,042), `apply-progress.md` (+856), `design.md` (+184), two spec deltas (+124) | The WARNING-47 gap was closed by **restating an existing requirement and adding one scenario that reaches the page**, rather than by inventing a new capability — the smallest move that puts a legal-weight claim under contract |
+| 38.1–38.5 | **Mutation check ×6, produced by verify-report pass 9 and not by the writer** — the table above. M1 reproduces the pre-fix guard exactly and kills both new tests, which is the genuine red state for this fix. **It was not recorded at the time**, and that is the finding rather than a footnote: like slices 28, 30 and 36 before it, this commit's red state exists only because a verify pass went and produced it. | `reconcile.go:167-168` (`isDatePending`), called at `:74` and `:87`; `types.go:63-68`; `events_read.go:47-49`; `validate.go`'s two switches on `config.DateStatusUnconfirmed` | Both registries collapsed onto **one predicate** instead of two parallel guards, so a half-applied fix is not expressible — the same move slices 26, 35 and 36 made for chart margins, the in-range rule and the table summary. The nil check survives as a **dereference guard at the call site**, not as a restatement of the rule |
+| 38.6 | **The deeper red state, and it is about the suite rather than the code**: no test could exhibit this defect. Every unconfirmed fixture in the suite paired the status with a nil date, so the suite was structurally blind to the real configuration's shape for five verify passes. | `reconcile_test.go:457` (class test: a break and an event in one call) and `:536` (shipped config against a real database, identifiers and total count asserted **separately**, because those two failed apart here) | The shipped-config test derives its expectation from `DateStatus` **alone**, using the string literal rather than the constant, so it is independent of both the predicate and the declaration. M1 confirms it dies when implementation and declaration disagree |
+| 38.7 | n/a — a deliberate non-change. `config/**` untouched on four-eyes grounds. | — | — |
+| — | **Two coverage gaps this fix leaves open**, recorded above at length: WARNING-58 (M4 — the nil half of the predicate is undiscriminable by any test running the shipped configuration, and the test's own doc comment claims otherwise) and SUGGESTION-60 (M6 — the events half of the un-retire clause is untested, and `eventDigest`'s exclusion of `date_status` makes it the only resurrection path). | — | — |
+
+## Slice 39 — the last open scenario, closed by amending a bound rather than by accommodating the code
+
+**WARNING-41, open since pass 4.** `pipeline-operations` / "A failed rebuild raises an alert
+**immediately**" was the single untested scenario holding requirement coverage at 78/79 and scenario
+coverage at 175/176. Two honest resolutions existed and both were in scope, since `pipeline-operations` is
+this change's own delta: amend the scenario, or implement a GitHub-API poll of the dispatched run's
+conclusion.
+
+**The scenario was amended — but only after establishing on the code that the amendment was available.** A
+spec edited to match whatever the implementation happens to do is how specs get hollowed out, and this
+change has spent nine passes refusing exactly that. So the question asked first was not "what does the code
+do" but **"does the system genuinely detect a rebuild that dispatched and then failed, and within what
+bound?"** It does:
+
+- `scheduler.RebuildLatencyBreached` (`app/internal/scheduler/watchdog.go:98-110`) compares the live
+  artifact's `manifest.generated_at` against the `generated_at` of the artifact the **deployed pages were
+  built from**. Its own doc comment states the reason it exists: `PublishLatencyBreached` "is structurally
+  blind to the three links that follow: a dispatch never sent, a rebuild that failed, and a deploy that
+  never landed."
+- `publishLatencyWatchdog` (`app/cmd/concontexto/schedule.go:478-482`) runs that comparison once per
+  scheduler tick and raises `alerting.PublishLatencyBreach` naming the source and the elapsed time.
+- **A failed rebuild cannot advance the deployed side of that comparison.** `deploy.yml:39` gates on
+  `github.event.workflow_run.conclusion == 'success'`, so a failed rebuild pushes no image; and
+  `/web/build-manifest.json` is written by exactly one mechanism, the Dockerfile stage at `162-194`, which
+  **fails the build** rather than shipping an image whose deploy cannot be observed. So the divergence
+  necessarily outlives the budget and the watchdog necessarily fires.
+
+**The word that changed is a bound, not a promise.** The new bound is the **configured publish-latency
+budget** — `APP_PUBLISH_LATENCY_BUDGET`, defaulting to `scheduler.DefaultPublishLatencyBudget` = 30 minutes
+(`watchdog.go:20`) — which is not a number invented for this amendment: it is the budget this same delta's
+own "Publish latency has a stated budget" requirement already declares, with its own two scenarios.
+
+**The amended scenario still forbids three things, each mapped to a test that exists and passes:**
+
+| The amended scenario forbids | Test |
+|---|---|
+| Silence after the budget when the deployed pages never caught up | `app/cmd/concontexto/schedule_rebuild_watchdog_test.go:79-107` — `TestPublishLatencyWatchdog_AlertsWhenTheDeployedPagesNeverCaughtUp` |
+| Alerting while the cycle is still inside the budget | `app/internal/scheduler/watchdog_test.go:106-113` — "within budget raises nothing even though the pages are still older" |
+| Alerting once the pages carry the artifact this cycle produced | `app/cmd/concontexto/schedule_rebuild_watchdog_test.go:109-128` — `TestPublishLatencyWatchdog_SilentWhenTheDeployedPagesCarryTheCurrentArtifact` |
+
+**What was dropped, and why it is not a loss.** The old scenario's "AND the currently deployed site
+continues to be served unchanged" is now the amended scenario's own **GIVEN** — it is the condition the
+alert fires on, not a consequence of it — and the reader-facing half is already carried by this
+requirement's "The condition never reaches a reader" scenario, which pass 9 marks compliant. The old
+"naming the ingestion run and the build failure" was dropped outright because it is not true and never was:
+this layer has no single run identifier (`alerting.go:222-227` records that reasoning for `DispatchFailed`)
+and no channel through which a build failure's cause could reach it.
+
+**What was deliberately NOT written.** Two further refusals of this watchdog are implemented and tested and
+were left out of the scenario rather than folded in, because the amendment's job was to correct one bound
+and not to grow the requirement: it declines to fire when rebuild dispatch is deliberately off
+(`APP_REBUILD_DISPATCH`), and it declines to fire when the deployed artifact is **unknown** rather than
+stale. The second is the anti-fabrication guarantee and is worth a scenario of its own in a later change;
+`schedule_rebuild_watchdog_test.go:130-152` and `:154-173` already pin both.
+
+**Recorded as an amendment, per the `(Previously: …)` convention** this delta already uses at
+`pipeline-operations/spec.md:91`, `publishing-export/spec.md:231`, `source-ingestion-ine/spec.md:132` and
+`platform-runtime/spec.md:18`. Because the amended requirement sits under `## ADDED Requirements`, the
+`(Previously: …)` block opens by saying so explicitly: it supersedes **this delta's own earlier text**, not
+a baseline requirement, and the requirement's normative sentence is unchanged.
+
+### `config/**` — the authoring prose corrected (WARNING-57)
+
+`9483d23` corrected three source comments and two type doc comments. It did not correct the two documents an
+editor actually **reads before writing an entry**, and both stated the retired rule:
+
+- `config/rupturas.yaml:10-16` said an entry whose date is not confirmed *"omite `date`"*.
+- `config/README.md:23-26` said such an entry carries the status *"instead of a guessed date"* — and this
+  one covers `eventos.yaml`, where the shipped configuration does the opposite.
+
+Both now say what `types.go:63-68` says: the entry **may** carry a provisional date, and usually should, and
+what makes it safe is the declared status rather than the emptiness of the field. The behaviour was already
+correct and no reader was affected; what was wrong is that the guidance told the next editor to write the
+weaker entry.
+
+**`config/**` is a four-eyes path (`.github/CODEOWNERS:17`) and this was a single reviewer.** The change is
+confined to comment and documentation prose that no loader parses, it adds no entry and authorises no data
+shape that `validate-config` did not already accept, and it *removes* a claim the shipped configuration
+already violates. Recorded rather than waved through: the governance gap itself is unchanged and is still
+tracked in `design.md`'s four-eyes Open Question.
+
+### Verification for this pass (2026-08-05)
+
+- **Requirement and scenario totals, counted rather than asserted.**
+  `grep -c '^### Requirement:' specs/*/spec.md` and `grep -c '^#### Scenario:' specs/*/spec.md`, summed:
+  **79 requirements, 176 scenarios** — unchanged. The amendment renamed one scenario heading and rewrote its
+  bullets; it added and removed none. With WARNING-41 closed, coverage is **79/79 and 176/176**, and the one
+  non-compliant requirement pass 9 recorded no longer has an uncovered scenario.
+- **`go run ./app/cmd/concontexto validate-config`** → `validate-config: ok`, exit **0**. Run because this
+  pass edits `config/**`.
+- **`go test -race -count=1 ./...`** → exit **0**, **23 packages ok** + 2 with no test files, zero race
+  reports. Run because `fase0_closure_test.go` reads the config tree and could assert on its prose or its
+  counts. Playwright deliberately **not** run concurrently.
+- **Run from the repository ROOT, not from `app/`, and the difference caught something worth recording.**
+  `go.mod` sits at the repository root, so `cd app && go test -race -count=1 ./...` reports **22** packages
+  and silently omits the **root** package — whose `config_embed_test.go` is the one test that reads
+  `config/`, which is exactly the tree this pass edits. From the root it is 23, matching verify-report pass
+  9's own figure. The `app/`-relative form would have skipped the only package this pass could plausibly
+  have broken; it was run from the root and it is green.
+- **Task counts, counted rather than asserted.** `grep -c "^- \[x\]" tasks.md` → **447**;
+  `grep -c "^- \[ \]" tasks.md` → **0**. Was 419/0 before this pass, so slices 37–39 and this pass's own
+  verification section add **28** task rows. All checked, because all of it is landed work being recorded
+  after the fact plus this pass's own completed work.
+- **Per-commit figures** for slices 37 and 38 read from `git show --numstat <sha>` individually, never from
+  a commit body.
+- **The mutation results in slice 38 are verify-report pass 9's measurements, cited as such and not re-run
+  here.** Attributing them to this pass would be the class of claim this record exists to prevent.
+- **No structural validator exists for these spec files.** `which openspec` returns nothing and no
+  repository script parses `openspec/**/spec.md`. The amended scenario was checked by hand against the shape
+  every sibling delta uses and against the four `(Previously: …)` precedents named above. **Nothing
+  machine-checks it**, and this pass does not imply otherwise.
+- **`verify-report.md` was not touched.** It is the auditor's record.
+
+## A fourth process finding — the record fell behind again one commit after the commit that fixed it falling behind
+
+Stated because this is now the **fifth** occurrence of record drift in this change and the **second** in two
+verify passes, and because its shape has changed in a way worth naming.
+
+The first three occurrences were about **cadence** — nobody was appending. This one is not. `374eb80` was
+the appending, and it wrote down the rule in its own words: *append the task rows and the TDD row in the
+same commit as the code.* The very next commit, thirty-one minutes later, did not. The rule was correct,
+freshly written, and by its own author's hand not applied.
+
+**What that says.** A rule written into a record does not create the habit it describes; it only makes the
+omission legible afterwards. The thing that actually caught `9483d23` was not the rule — it was pass 9
+re-reading the tree against the record. So the durable control here is the verify pass, not the
+self-instruction, and the honest conclusion is that this change's record has been kept accurate **by
+audit**, five times, and not once by discipline.
+
+**The sharper cost, and it is not the missing task rows.** `9483d23` is a genuinely good commit: its body
+argues its alternatives, names its rejected fixes on the merits, and is accurate line by line against the
+code. What it does **not** contain is its own red state. The mutation table in slice 38 above — the six
+mutations, and specifically M1 reproducing the pre-fix guard — is the RED for that fix, and it exists only
+because the **verifier** went and produced it. A `git checkout`-and-mutate loop run at the time would have
+cost ten minutes; run three weeks later against a moved tree it would cost far more, and for six earlier
+commits in this change it is now permanently impossible. **The red state is the perishable part of a
+record.** Everything else in a commit body can be reconstructed by reading the diff; a failing run cannot.
+
+**What to do differently, concretely, beyond what slice 37 already said.** When a fix has no naturally
+failing test to run first — because the defect is one the existing suite is structurally blind to, which is
+exactly what happened here — **run the mutation before the commit and paste its output into the TDD row**.
+That is the substitute for a RED transcript, it is available at the moment the fix is written, and it is the
+one piece of evidence that stops being producible the moment the tree moves.

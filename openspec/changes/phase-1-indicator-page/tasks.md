@@ -2143,3 +2143,160 @@ both get requirements**, and the reasoning is below rather than in a commit body
   files this pass writes were checked by hand against the established shape — `## ADDED Requirements` /
   `## MODIFIED Requirements`, `### Requirement:`, `#### Scenario:`, GIVEN/WHEN/THEN/AND bullets — and
   against the sibling deltas in this change. Nothing machine-checks them.
+
+---
+
+## Slice 37 — bringing the record to HEAD, and pinning two surfaces that shipped unspecced
+
+Commit `374eb80` (2026-08-04 21:34 +0200). 2,605 added, 332 removed across 6 files, **all of them under
+`openspec/changes/phase-1-indicator-page/`**: `tasks.md` (+1,042), `apply-progress.md` (+856), `design.md`
+(+184/−…), `specs/source-attribution-licensing/spec.md` (+67), `specs/indicator-page/spec.md` (+57),
+`verify-report.md` (sweeping in pass 8's report). Figures read from `git show --numstat 374eb80`, not from
+the commit body.
+
+- [x] 37.1 Closed verify-report pass-7 **CRITICAL-46**: `tasks.md` and `apply-progress.md` had last been
+  written by `823311e` and seventeen commits had landed since. Task rows for slices 20–36 and the matching
+  narrative plus TDD Cycle Evidence tables were written in this one commit.
+- [x] 37.2 The **WARNING-47** spec decision was taken and written: the site footer gets a **MODIFIED**
+  requirement in `specs/source-attribution-licensing/` and the homepage an **ADDED** requirement in
+  `specs/indicator-page/`, both bounded to shipped behaviour. Reasoning in `apply-progress.md`'s
+  "The WARNING-47 spec decision, and what it rests on".
+- [x] 37.3 Three decisions that existed only in commit bodies were moved into the record: migration 0007's
+  retention argument, slice 36's revert scope, and the unconfirmed-editorial-date disclosure.
+- [x] 37.4 **This commit is the reason the third process finding exists.** Reconstructing seventeen commits
+  after the fact left six of them with no reconstructible red state, permanently. Recorded in
+  `apply-progress.md`'s "A third process finding".
+- [x] 37.5 **Recorded late, and recording that is the point.** This slice was itself unrecorded for one
+  commit — `9483d23` landed 31 minutes later and neither commit appeared in `tasks.md` or
+  `apply-progress.md` until this pass. Verify-report pass 9 raised it as WARNING-59, the second staleness
+  finding in two passes and the fifth occurrence in this change overall.
+
+---
+
+## Slice 38 — an entry the configuration declares unverified is held back
+
+Commit `9483d23` (2026-08-04 22:05 +0200). 614 added, 433 removed across 7 files; excluding
+`verify-report.md` (which this commit only swept pass 8's report into), the code change is **288 added, 34
+removed across 6 files**: `reconcile_test.go` (+189), `types.go` (+39/−14), `reconcile.go` (+39/−12),
+`events_read.go` (+14/−3), `fase0_closure_test.go` (+5/−3), `validate.go` (+2/−2). Figures read from
+`git show --numstat 9483d23`.
+
+- [x] 38.1 **The defect.** `config/eventos.yaml`'s `ngeu-primer-desembolso` carries `date_status:
+  unconfirmed` **and** a provisional `date_start`, and its own `todo` says the month comes from unverified
+  general knowledge. `reconcile.go`'s projection guard tested `e.DateStart == nil` and never read
+  `e.DateStatus`, so the entry was projected, reached all ten published series documents and every rendered
+  page with no disclosure of its pendingness, and the operator backlog reported **six** pending entries
+  where the configuration declares **seven**. All three clauses of `editorial-config`'s "Unconfirmed
+  editorial dates are operator-visible, never reader-visible" failed at once.
+- [x] 38.2 **The fix, as a class fix.** Both registries now route through one predicate,
+  `isDatePending(dateStatus string, date *time.Time) bool` (`app/internal/ingestion/reconcile.go:167-168`),
+  called at `:74` (breaks) and `:87` (events). It reads the **declared status** first; the nil check stays
+  as its second half, guarding the pointer dereference at the call site if `validate-config` is ever
+  bypassed, rather than restating the rule.
+- [x] 38.3 `BreakConfig` carried the identical latent defect — same triple, same nil-date guard — latent
+  only because all four unconfirmed breaks in the shipped YAML happen to omit their dates. Fixed in the
+  same commit, before any shipped break exercised it.
+- [x] 38.4 **The provisional-date shape is now blessed, not merely tolerated.** `types.go:63-68` records
+  that a provisional date alongside `DateStatus: unconfirmed` is allowed and is usually the better entry:
+  the guess plus the `todo` tells the next editor the current best reading AND what to check, where an
+  empty field tells them only that somebody stopped. Validation keeps allowing the shape; the reconcile
+  holds it back.
+- [x] 38.5 Three shipped comments that asserted this could not happen were rewritten rather than left
+  accidentally true: `reconcile.go:10-12`, `events_read.go:47-49` (which gained the load-bearing point that
+  the `event` table has **no `date_status` column at all**, so a projected unconfirmed entry would be
+  indistinguishable there and that function could not filter it even if it tried — the guarantee holds
+  upstream or not at all), and the `fase0_closure_test.go` comment that said "never projects a nil date",
+  which was trivially true and told a reader nothing. `validate.go` switched to the named
+  `config.DateStatusUnconfirmed` constant in both switch statements.
+- [x] 38.6 **Two tests, complementary rather than redundant — and pass 9's mutation testing is what
+  establishes which half each carries.** `TestReconcileEditorialConfig_AProvisionalDateOnAnUnconfirmedEntryIsStillHeldBack`
+  (`reconcile_test.go:457`) is the class test, asserting a break and an event in one call so a half-applied
+  fix fails. `TestReconcileEditorialConfig_ShippedConfigPendingListsAreExactlyItsUnconfirmedEntries`
+  (`reconcile_test.go:536`) runs the **shipped** config through `ReconcileEditorialConfig` against a real
+  database, deriving its expectation from `DateStatus` alone and asserting the identifiers and the total
+  count **separately**, because those two failed apart here. See the TDD Cycle Evidence table for the
+  mutation results.
+- [x] 38.7 `config/**` was left untouched, deliberately. The date is checkable against the RRF disbursement
+  calendar the `todo` names, but confirming it is an editorial act on a **four-eyes path** and this was a
+  single reviewer. Seven remains the correct number: four breaks plus three events, counted from what the
+  YAML **declares**, which is what both the shipped closure test and the spec scenario already counted; the
+  product's six counted what the guard **inferred**.
+- [x] 38.8 The two rejected fixes, rejected on the merits: confirming the date under four eyes fixes one
+  instance and leaves the guard wrong, so the next provisional date ships just as silently; filtering in the
+  web layer leaves a guessed date in the database, in the artifact and in every JSON consumer, correcting
+  only what a browser happens to show.
+
+---
+
+## Slice 39 — the last open scenario, and the record brought to HEAD again
+
+This pass. Changes `openspec/changes/phase-1-indicator-page/**` and two `config/**` prose headers; it
+touches no `app/` or `web/` source and no `verify-report.md`.
+
+- [x] 39.1 **WARNING-41 closed by amending the scenario, after establishing on the code that the amendment
+  is available.** `pipeline-operations` / "A failed rebuild raises an alert **immediately**" had no covering
+  test since pass 4 and held requirement coverage at 78/79 and scenario coverage at 175/176. Verified before
+  writing: a rebuild that dispatched and then failed **is** genuinely caught, by
+  `scheduler.RebuildLatencyBreached` (`app/internal/scheduler/watchdog.go:98-110`) via
+  `publishLatencyWatchdog` (`app/cmd/concontexto/schedule.go:478-482`), which raises
+  `alerting.KindPublishLatencyBreach` naming the source and the elapsed time. The bound is the configured
+  publish-latency budget (`APP_PUBLISH_LATENCY_BUDGET`, defaulting to
+  `scheduler.DefaultPublishLatencyBudget` = 30 minutes, `watchdog.go:20`) — the same budget this delta's own
+  "Publish latency has a stated budget" requirement already declares.
+- [x] 39.2 Why the detection is real and not a plausible story: a failed rebuild pushes no image
+  (`deploy.yml:39`'s conclusion gate), and `/web/build-manifest.json` is written by exactly one mechanism —
+  the Dockerfile stage that fails the build rather than shipping an unobservable image (`Dockerfile:162-194`).
+  So `deployed.GeneratedAt` cannot advance, the divergence outlives the budget, and the watchdog fires.
+- [x] 39.3 The amended scenario is falsifiable in three directions, each mapped to a passing test: it must
+  fire after the budget with stale pages (`app/cmd/concontexto/schedule_rebuild_watchdog_test.go:79-107`),
+  must stay silent inside the budget (`app/internal/scheduler/watchdog_test.go:106-113`), and must stay
+  silent once the pages carry the current artifact
+  (`app/cmd/concontexto/schedule_rebuild_watchdog_test.go:109-128`).
+- [x] 39.4 The amendment is recorded **as an amendment**, with a `(Previously: …)` block carrying the
+  original scenario text verbatim and stating explicitly that it supersedes this delta's own earlier text
+  rather than a baseline requirement. Requirement and scenario counts are unchanged: **79 / 176**.
+- [x] 39.5 **WARNING-59 closed**: slices 37 and 38 above, plus their TDD Cycle Evidence rows in
+  `apply-progress.md`.
+- [x] 39.6 **`design.md`'s open item for this defect corrected.** It was unchecked and asserted in the
+  present tense that `reconcile.go:86` "never reads `e.DateStatus`" and that the entry "reaches the
+  published artifact" — both false at HEAD. Ticked, with a resolution block appended and the original body
+  left standing under an explicit header warning, per this change's supersede-don't-delete rule.
+  `design.md`'s "(reconcile already refuses nil dates)" parenthetical corrected the same way; that item
+  itself correctly stays open, because the seven dates still need confirming.
+- [x] 39.7 **WARNING-57 closed**: `config/rupturas.yaml`'s header and `config/README.md`'s editorial-registry
+  paragraph both said an unconfirmed entry omits its date / carries the status "instead of a guessed date".
+  Both contradicted `types.go:63-68` and the shipped `eventos.yaml`. Corrected in Spanish and English
+  respectively. **`config/**` is a four-eyes path and this is a single reviewer** — the change is prose
+  only, inside comment and documentation text that no loader parses, and it *removes* a claim the shipped
+  configuration already violates rather than authorising any new data shape.
+- [x] 39.8 **WARNING-58 and SUGGESTION-60 recorded, not closed.** Both are pass-9 findings about test
+  coverage in `app/`, which this pass may not touch. Written into `apply-progress.md`'s slice 38 TDD Cycle
+  Evidence and its accompanying prose so archive freezes them as known open coverage gaps rather than losing
+  them with the verify report.
+
+---
+
+## Record-pass verification (2026-08-05, at `9483d23` + this pass's working tree)
+
+- [x] V37.1 Requirement and scenario totals **counted, not asserted**:
+  `grep -c '^### Requirement:' specs/*/spec.md` and `grep -c '^#### Scenario:' specs/*/spec.md`, summed —
+  **79** and **176**, unchanged by the amendment, which renamed one scenario and rewrote its bullets
+  without adding or removing a heading.
+- [x] V37.2 Task counts **counted, not asserted**: `grep -c "^- \[x\]" tasks.md` and
+  `grep -c "^- \[ \]" tasks.md`. Figures reported in `apply-progress.md`'s verification section.
+- [x] V37.3 Per-commit figures for slices 37 and 38 read from `git show --numstat <sha>` for each commit
+  individually, never from a commit body.
+- [x] V37.4 `go run ./app/cmd/concontexto validate-config` — run because this pass edits `config/**`.
+- [x] V37.5 `go test -race -count=1 ./...` — exit **0**, **23 packages ok** + 2 with no test files, zero
+  race reports. Run because `fase0_closure_test.go` reads the config tree and could assert on its prose or
+  counts. Playwright deliberately **not** run concurrently.
+- [x] V37.6 **Run from the repository ROOT, not from `app/`, and the difference is load-bearing.** `go.mod`
+  is at the root, so `cd app && go test ./...` reports 22 packages and silently omits the **root** package —
+  whose `config_embed_test.go` is the one test that reads `config/`, the tree this pass edits. From the root
+  it is 23. Verify-report pass 9's own 23-package figure is the root form; the `app/`-relative form would
+  have skipped the only package this pass could plausibly have broken.
+- [x] V37.7 **There is still no structural validator for these spec files.** `which openspec` returns
+  nothing and no repository script parses `openspec/**/spec.md`. The amended scenario was checked by hand
+  against the shape every sibling delta uses and against the `(Previously: …)` convention in
+  `publishing-export/spec.md:231`, `source-ingestion-ine/spec.md:132`, `platform-runtime/spec.md:18` and
+  this same file's line 91. Nothing machine-checks it.

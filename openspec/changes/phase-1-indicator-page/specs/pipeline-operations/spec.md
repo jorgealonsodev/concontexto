@@ -42,12 +42,32 @@ and the page MUST NOT be given any mechanism to detect it.
 - THEN an alert is raised naming the series, the ingestion run and the elapsed time
 - AND the alert is delivered through the same sink as ingestion and validation alerts
 
-#### Scenario: A failed rebuild raises an alert immediately
+#### Scenario: A failed rebuild alerts once the publish-latency budget elapses
 
-- GIVEN a rebuild dispatched by a successful ingestion that fails
-- WHEN the failure is observed
-- THEN an alert is raised naming the ingestion run and the build failure
-- AND the currently deployed site continues to be served unchanged
+- GIVEN a rebuild dispatched by a successful ingestion that fails, so the pages still being served are the
+  ones built from an artifact older than the one this publish cycle produced
+- WHEN latency is evaluated after the configured publish-latency budget has elapsed
+- THEN an alert is raised naming the source and the elapsed time, through the same sink as ingestion and
+  validation alerts
+- AND nothing is raised while the cycle is still inside that budget
+- AND nothing is raised once the pages being served carry the artifact this cycle produced
+
+(Previously — this delta's own earlier text, not the baseline's; the requirement above is ADDED by this
+delta and its normative sentence is unchanged. The scenario read: "A failed rebuild raises an alert
+**immediately**" — GIVEN a rebuild dispatched by a successful ingestion that fails / WHEN the failure is
+observed / THEN an alert is raised naming the ingestion run and the build failure / AND the currently
+deployed site continues to be served unchanged. Nothing in this system ever observes a dispatched run's
+conclusion: the alerting package raises on a failed dispatch *call* (`KindDispatchFailed`) and on the
+budget elapsing (`KindPublishLatencyBreach`), and the only `workflow_run` in the repository is
+`deploy.yml:16`'s deploy trigger, not an alerting receiver. So neither "immediately" nor "naming the
+ingestion run and the build failure" was ever reachable from inside the container, and the scenario had gone
+untested since verify pass 4. **What is amended is the bound, not the promise**: the detection is real, it is bounded
+by the publish-latency budget this same delta already requires — a configured value defaulting to 30
+minutes — and it is bounded because a failed rebuild pushes no image, so the artifact the served pages were
+built from cannot advance and the divergence outlives the budget. The dropped "continues to be served
+unchanged" clause is not lost: it is now the scenario's own GIVEN, which is the condition the alert fires
+on, and the reader-facing half is already carried by this requirement's "The condition never reaches a
+reader" scenario below.)
 
 #### Scenario: The condition never reaches a reader
 

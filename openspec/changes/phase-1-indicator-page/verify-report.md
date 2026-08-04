@@ -1,52 +1,59 @@
 ```yaml
 schema: gentle-ai.verify-result/v1
-evidence_revision: sha256:a4c8a6c1b5a98a8673f0cf2d22e6a773b42a6fb3e1571b5d12858173548c143e
+evidence_revision: sha256:26e39e4e22dabf5280cfba04bcfbc8d1f58800b6fabf368779fce257fd0a46e8
 verdict: fail
-blockers: 1
-critical_findings: 1
-requirements: 77/79
-scenarios: 173/176
+blockers: 0
+critical_findings: 0
+requirements: 78/79
+scenarios: 175/176
 test_command: go test -race -count=1 ./... && npm --prefix web run check && npm --prefix web test && npx --prefix web playwright test --config web/playwright.config.ts
 test_exit_code: 0
-test_output_hash: sha256:9b85bcebc9d66b02365ed5c4d8c991f70f33d976af88d2a9fe498dcbd18ecfa5
+test_output_hash: sha256:5f13c2c5122da0104fa461f95c698fad6ad997d75b3a5872d4462955591af400
 build_command: EXPORT_DIR=data-derived npm --prefix web run build
 build_exit_code: 0
-build_output_hash: sha256:f904035dc9bed32173aadb4c0a4989b3ec997acbb3d4ff0c7fbb863dc713a59f
+build_output_hash: sha256:f8605122d845816f1947fca196bb798e5aee65132bdf92b9891a676bfb4eb87f
 ```
 
 # Verification Report — phase-1-indicator-page
 
-**Verifier**: `sdd-verify` (pass 8)
-**Date**: 2026-08-04
+**Verifier**: `sdd-verify` (pass 9)
+**Date**: 2026-08-05
 **Change**: `phase-1-indicator-page`
 **Mode**: hybrid (OpenSpec file + Engram `sdd/phase-1-indicator-page/verify-report`), Strict TDD active
-**Artifacts read**: proposal, design, 13 capability delta specs, tasks, apply-progress, pass-7 verify-report
-**Verified against**: the REPOSITORY (`feat/phase-1-indicator-page` @ `374eb80`, working tree clean before
-and after every probe), the RUNNER, a FRESH BUILD at HEAD, and the RUNNING STACK. Every number below was
+**Artifacts read**: proposal, design, 13 capability delta specs, tasks, apply-progress, pass-8 verify-report
+**Verified against**: the REPOSITORY (`feat/phase-1-indicator-page` @ `9483d23`, working tree clean before
+and after every probe, including after five source mutations), the RUNNER, a FRESH EXPORT taken from the
+live database at HEAD, a FRESH SITE BUILD from that export, and the running stack. Every number below was
 re-measured here. Nothing was taken from a session summary, a commit body, or the record under review.
 
 ---
 
 ## Verdict
 
-**FAIL — one blocker, and this time it is code.**
+**FAIL on evidence completeness. Zero CRITICAL findings. Zero blockers. No defect in the delivered
+product.**
 
-Pass 7's blocker is genuinely closed. The record now reaches HEAD, `tasks.md` is 419/419 counted rather
-than asserted, TDD Cycle Evidence tables exist for slices 20–36, migration 0007's retention reasoning has a
-durable home, and the WARNING-47 spec decision was taken and written. Every declared command exits 0.
+CRITICAL-54 is closed, and closed as a class rather than as an instance. `ngeu-primer-desembolso` is held
+back by the declared status alone; the same predicate governs both registries; the operator backlog now
+reports seven where the configuration declares seven; and the entry appears in zero of the ten freshly
+exported series documents and zero of the seven freshly built pages.
 
-What blocks archive is **CRITICAL-54**, and it comes from the seam this change has been bitten on in seven
-of eight passes: `ngeu-primer-desembolso` is declared `date_status: unconfirmed` in `config/eventos.yaml`,
-is nonetheless projected into the database, reaches all ten published series documents, is present in the
-rendered markup of all six indicator pages, and **is displayed to a reader as a positioned annotation at a
-date the configuration itself says is unverified**. Three clauses of a requirement in this change's own
-`editorial-config` delta forbid exactly that. The operator backlog that is supposed to make this visible
-reports six pending entries where the repository's own shipped test counts seven.
+The seam that produced a defect in seven of the previous eight passes was probed again, this time in both
+directions — the projection path and the resurrection path. The projection path is correct and now
+mutation-proof. The resurrection path is correct in the product and half-covered in the suite; that is
+recorded as SUGGESTION-60, not as a defect.
 
-This is the disagreement the record pass declined to adjudicate and opened for this pass. It is upheld —
-though against a different requirement than the one the record named, and the difference matters (§C.1).
+**What holds the envelope at `fail` is not code.** One spec scenario —
+`pipeline-operations` / "A failed rebuild raises an alert **immediately**" — has had no covering test since
+pass 4. Scenario coverage is therefore 175/176 and requirement coverage 78/79, and the verification contract
+treats incomplete coverage as not-archive-ready regardless of blocker count. Through passes 4–8 this sat
+inside the counts alongside a real blocker and was never the last item; with CRITICAL-54 closed, it is.
+This is a re-statement of an already-recorded gap, not a new finding.
 
-The remedy is a code or configuration change, not a record update.
+Three new WARNINGs and one new SUGGESTION are recorded. None is a defect in the delivered product: two are
+inaccurate prose that survived a commit whose stated purpose was to eliminate inaccurate prose about this
+exact invariant, one is the SDD record falling one commit behind again, and one is a coverage gap on a
+correct code path.
 
 ---
 
@@ -54,310 +61,311 @@ The remedy is a code or configuration change, not a record update.
 
 | Dimension | Compliant | Total |
 |---|---|---|
-| **Requirements** | **77** | **79** |
-| **Scenarios** | **173** | **176** |
+| **Requirements** | **78** | **79** |
+| **Scenarios** | **175** | **176** |
 | Tasks checked | 419 | 419 (0 unchecked) |
 
-Authoritative totals parsed from `openspec/changes/phase-1-indicator-page/specs/*/spec.md` at `374eb80`:
-data-model-vintages 4/8, data-validation 2/16, design-system 9/14, **editorial-config 3/9**,
-**indicator-page 16/39** (was 15/34), pipeline-operations 4/10, platform-runtime 1/2, publishing-export
-12/21, series-transformations 8/14, **source-attribution-licensing 1/3** (new 13th delta),
-source-ingestion-eurostat 3/7, source-ingestion-ine 6/17, web-accessibility-gates 10/16.
+Authoritative totals re-parsed from `openspec/changes/phase-1-indicator-page/specs/*/spec.md` at `9483d23`:
+data-model-vintages 4/8, data-validation 2/16, design-system 9/14, editorial-config 3/9,
+indicator-page 16/39, pipeline-operations 4/10, platform-runtime 1/2, publishing-export 12/21,
+series-transformations 8/14, source-attribution-licensing 1/3, source-ingestion-eurostat 3/7,
+source-ingestion-ine 6/17, web-accessibility-gates 10/16. Totals: **79 requirements, 176 scenarios** —
+unchanged from pass 8, as expected: `9483d23` touches no spec file.
 
-Pass 7's 77 requirements / 168 scenarios grew to 79/176 through `374eb80`, which adds one requirement with
-five scenarios to `indicator-page` and a new `source-attribution-licensing` delta restating one requirement
-with three scenarios (one baseline, two new). **The record's claimed 79/176 is confirmed by count.**
-
-**Non-compliant requirements (2)**:
+**Non-compliant requirement (1)**:
 
 | Capability / Requirement | Why |
 |---|---|
-| `editorial-config` / "Unconfirmed editorial dates are operator-visible, never reader-visible" | All three clauses violated by one shipped entry. **CRITICAL-54**, §C.1 |
-| `pipeline-operations` / "An ingestion not followed by a rebuild alerts operators" | 3 of 4 scenarios pass. "A failed rebuild raises an alert **immediately**" is substituted by budget-delayed detection. WARNING-41, carried from pass 4, re-verified here |
+| `pipeline-operations` / "An ingestion not followed by a rebuild alerts operators" | 3 of 4 scenarios pass. The requirement's own normative sentence — alert when a successful ingestion is not followed by a completed rebuild inside the budget — **is** implemented and tested. The sub-scenario "A failed rebuild raises an alert **immediately**" is not: nothing observes the dispatched run's conclusion. WARNING-41, open since pass 4, re-verified here |
 
-**Non-compliant scenarios (3)**:
+**Non-compliant scenario (1)**: `pipeline-operations` / "A failed rebuild raises an alert immediately" — ❌ UNTESTED.
 
-| Scenario | Status |
-|---|---|
-| `editorial-config` / "An unconfirmed entry is not projected and is not an error" | ❌ FAILING against the shipped configuration |
-| `editorial-config` / "Operators see the pending count" | ❌ FAILING — records six, spec says seven, repository counts seven |
-| `pipeline-operations` / "A failed rebuild raises an alert immediately" | ❌ UNTESTED |
+**Moved this pass**: `editorial-config` / "Unconfirmed editorial dates are operator-visible, never
+reader-visible" ❌ → ✅, with both of its failing scenarios ❌ → ✅ (§B).
 
 ---
 
 ## A. Execution evidence — every number re-measured here
 
-Working tree clean at `374eb80` before and after every probe (`git status --porcelain` → 0 lines). Go and
-Playwright ran sequentially inside one `&&` chain, never concurrently.
+Working tree clean at `9483d23` before and after every probe (`git status --porcelain` → 0 lines), verified
+again after each of the six source mutations in §C. Go and Playwright ran sequentially inside one `&&`
+chain, never concurrently.
 
 | Command | Exit | Result |
 |---|---|---|
 | `go build ./...` | 0 | clean |
 | `go vet ./...` | 0 | clean |
 | `gofmt -l .` | 0 | no output |
-| `go test -race -count=1 ./...` | **0** | 22 packages ok + 2 with no test files, zero race reports |
+| `go test -race -count=1 ./...` | **0** | **23 packages ok** + 2 with no test files, zero race reports |
 | `validate-config` | 0 | `validate-config: ok` |
 | `npm run check` (astro check) | 0 | 131 files, 0 errors, 0 warnings, 2 hints |
 | `npm test` (Vitest) | 0 | **799 passed / 799**, 52 files |
-| `npx playwright test` | 0 | **191 passed / 191**, no flake observed |
+| `npx playwright test` | 0 | **191 passed / 191**, no flake observed (`chart-island.spec.ts` clean) |
 | `EXPORT_DIR=data-derived npm run build` | **0** | **7 pages**: six `/indicador/{slug}/` + `/` |
+| `ingest --reconcile` (live DB, binary built at HEAD) | 0 | see §B.1 |
+| `export` (live DB, binary built at HEAD) | 0 | 10 series, `schema_version=1` |
 
-Vitest and Playwright totals are byte-identical to pass 7's, which is the expected result and is itself
-evidence: `374eb80` touches only `openspec/changes/phase-1-indicator-page/**` and adds no test.
+Package count is 23, not pass 8's 22 — a counting difference in the earlier report, not a change: the full
+`go test` output lists 23 `ok` lines and 2 `[no test files]` lines at both revisions.
 
-`dist/index.html` links exactly the six frozen slugs, re-measured on this build:
-`ipc-general`, `ipc-subyacente`, `ocupados-epa`, `pib`, `poblacion-residente`, `tasa-de-paro-epa`.
+Vitest and Playwright totals are byte-identical to passes 7 and 8. Expected and itself evidence: `9483d23`
+adds no web test and touches no web source.
 
 ---
 
-## B. The record pass, audited
+## B. CRITICAL-54, closed — four independent proofs
 
-### B.1 Is the record accurate at HEAD?
+The governing requirement, `specs/editorial-config/spec.md:70-74`, has three clauses: not projected into the
+database, not reaching any rendered page, and count-plus-identifiers reported to operators. Each was checked
+separately, against the product.
 
-Re-measured, not accepted:
+### B.1 Clause 3 — the operator backlog, first-hand
 
-```
-git log --oneline 823311e..5af95c5 | wc -l   →  17          (record says 17)
-git diff --shortstat 823311e..5af95c5        →  112 files changed, 14631 insertions(+), 425 deletions(-)
-grep -c "^- \[x\]" tasks.md                  →  419         (record says 419)
-grep -c "^- \[ \]" tasks.md                  →  0
-git show --stat 374eb80                      →  6 files, all under openspec/changes/phase-1-indicator-page/
-wc -c web/src/pages/index.astro              →  2713        (record's correction; the stale 1,002 is superseded in place)
-```
-
-Every figure matches. I also spot-verified the sharpest falsifiable claim in the new tables — slice 21.2's
-"`homeListing.test.ts` 6 `it(` + `home.container.test.ts` 8 `it(` = 14, counted at `ac69a29`":
+A binary built from HEAD, run against the live database:
 
 ```
-git show ac69a29:web/test/indicator/homeListing.test.ts   | grep -c '  it('  →  6
-git show ac69a29:web/test/pages/home.container.test.ts    | grep -c '  it('  →  8
+ingest --reconcile: breaks inserted=0 updated=0 retired=0; events inserted=0 updated=0 retired=0; ...
+ingest --reconcile: breaks pending=4 (unconfirmed date), not projected: epa-cnae2025-doble-codificacion,
+                    cn-revision-base-sept-2025, sec-cambios-deuda-deficit, ss-cnae2025-afiliacion
+ingest --reconcile: events pending=3 (unconfirmed date), not projected: ngeu-primer-desembolso,
+                    reforma-laboral-2021, gobierno-suarez-1976
 ```
 
-Exact. The tables are measured, not confabulated, and that materially raises confidence in the rest.
+Four plus three is seven, `ngeu-primer-desembolso` is named, and the run is idempotent.
 
-One residual staleness, cosmetic: the record prints `git log --oneline 823311e..HEAD | wc -l → 17`, which
-run today returns 18, because `374eb80` is itself now in that range. The section labels its state
-`at 5af95c5`, so it is self-consistent. Not a finding.
+### B.2 The arithmetic — all three surfaces agree, measured on the product
 
-### B.2 The RED evidence, adjudicated — honest record, real shortfall, **WARNING not CRITICAL**
-
-The record states plainly that **no commit in the seventeen recorded literal failing-test output**, and
-classifies every row into one of three kinds: measured defect (10 slices), mutation check (5, two of them
-credited to pass 7 rather than claimed), and nothing at all (6). It calls the six "the finding, not a
-footnote".
-
-**Adjudication: this is an honest record, and the shortfall is a WARNING.** Committing to the answer:
-
-1. The Strict TDD verify module's operational RED check is *"test file EXISTS in the codebase — flag
-   CRITICAL if the test file does not exist"*. Every test file named across all four new tables exists at
-   `374eb80` and passes in the run above. The module's own gate is met.
-2. The CRITICAL trigger in that module is *"if apply-progress has no TDD evidence table"*. Four tables now
-   exist covering slices 20–36. That trigger is not met.
-3. Nothing was invented. The two mutation checks attributed to pass 7 are correctly attributed — they are
-   pass 7 §B.4 (docker-compose, two mutations) and §D (the signature, three mutations), plus SUGGESTION-49
-   (svg.test.ts halo). Attributing an auditor's evidence to the auditor rather than absorbing it is the
-   opposite of the behaviour that produced this change's fabricated-signature incident.
-4. The "measured defect" class is red-state evidence in substance, not a euphemism. Slice 26's y-labels at
-   −5.5 / −6.5 / −4.6 / −3.6 against a viewBox starting at 0, and slice 24's semaphore at 100.0% of
-   container against a shipped 70% threshold, are before-states that provably fail the gate that shipped
-   with the fix. That is what RED means, minus the transcript.
-5. Precedent inside this change: slice 1's reconstructed table was accepted at WARNING-9 and closed "as a
-   disclosed reconstruction". The same standard applies here or neither.
-
-What remains genuinely deficient is that **six of seventeen slices have no red-state evidence of any kind**
-and it is not reconstructible. That is a real Strict-TDD shortfall, permanently. Recorded as **WARNING-55**.
-It does not block archive, because the alternative — demanding evidence that cannot be produced without
-fabricating it — is the failure this change already suffered once.
-
-### B.3 The two spec files — the argument checked, and every new scenario mapped to a passing test
-
-**The `source-attribution-licensing` argument is correct.** Verified against the baseline at
-`openspec/specs/source-attribution-licensing/spec.md`: the requirement's text reads *"The repository MUST
-NOT assert a single licence over all derived data"*, and its **only** scenario is "Repository licensing
-files are consistent", whose GIVEN is `LICENSE` and `LICENSE-DATA` — two files, neither a rendered page. So
-a footer asserting CC BY over all derived data would have violated the requirement's sentence while passing
-its only check. Adding a scenario to the existing requirement rather than inventing a new one is the
-smaller and better-placed fix. Pass 7's WARNING-47 was, as the record says, nearly right rather than right.
-
-Every new scenario maps to a test that **exists and passed in this run**, not to an intention:
-
-| New scenario | Covering test | Result |
+| Surface | Value | Measured by |
 |---|---|---|
-| `indicator-page` / The homepage lists exactly the six frozen slugs | `test/indicator/homeListing.test.ts:31`; `test/pages/home.container.test.ts:46` (reads hrefs, not a card count) | ✅ |
-| `indicator-page` / A slug the artifact does not carry fails the build | `homeListing.test.ts:37` — deletes `ocupados-epa`, asserts throw on `/ocupados-epa/` **and** `/PIPELINE PROBLEM/`; `test/indicator/routes.test.ts:107` | ✅ |
-| `indicator-page` / The homepage and the routes resolve the same list | Behavioural: `homeListing.ts` delegates to `resolveIndicatorRouteSlugs`, and the deletion above propagates through both. Second clause unasserted — SUGGESTION-56 | ✅ |
-| `indicator-page` / Each listed indicator carries its published figures | `home.container.test.ts:52/60/105`; `homeListing.test.ts:87` covers the no-observations refusal (`toThrow(/no observations/)`) | ✅ |
-| `indicator-page` / Every indicator page offers a way back | `test/pages/indicator-page.container.test.ts:1016-1022`, per slug, asserting the testid, the exact `es.page.backToHomeLabel` and `href="/"`; e2e `home.spec.ts:112` clicks it | ✅ |
-| `source-attribution-licensing` / The site defers on data licensing rather than asserting one | `test/pages/site-footer.test.ts:141/147/164/173` — including a four-regex ban on `cc by`, `creative commons`, `todos los datos`, `licencia de los datos` asserted against **both** visible text and raw markup | ✅ |
-| `source-attribution-licensing` / Every route entry point carries the statement | `site-footer.test.ts:100/112/119` — entry points discovered by globbing `**/*.astro` and filtering on `<html>`, with **no skip list**, then asserted for every discovered entry | ✅ |
+| The YAML itself | 4 breaks + 3 events = **7** | `grep -n date_status config/` → `rupturas.yaml` 39/56/104/250, `eventos.yaml` 56/71, `gobiernos.yaml` 28 |
+| Shipped closure gate | **7** | `fase0_closure_test.go:234` → `registry has 14 confirmed-date and 7 unconfirmed-date entries` |
+| Reconciliation output | **7** | `TestReconcileEditorialConfig_ShippedConfigPendingListsAreExactlyItsUnconfirmedEntries` → `shipped configuration: 4 pending breaks, 3 pending events, 7 total`; and §B.1's live run |
+| Spec scenario | **7** | `specs/editorial-config/spec.md` — "GIVEN seven editorial entries with unconfirmed dates … records the count seven" |
 
-The homepage requirement is bounded as the record claims: it names the six frozen slugs and asserts
-all-or-nothing derivation, so it cannot grow into milestones 1.3–1.7's catalogue and search.
+The commit's claim is upheld on the product, not on the record: seven was always right, the closure gate and
+the spec both counted what the YAML declares, and the product's six counted what the guard inferred.
 
----
+### B.3 Clauses 1 and 2 — the database, the artifact, the pages
 
-## C. New findings, pass 8
+- **Database.** On a fresh database the entry is never inserted (`TestReconcileEditorialConfig_
+  ShippedConfigPendingListsAreExactlyItsUnconfirmedEntries` asserts `series_break` and `event` hold no row
+  for any pending id). On the live database — where the entry had been projected before the fix — the row is
+  **soft-retired**, `retired_at = 2026-08-04 19:59:26+00`, and `ListActiveEvents` filters `retired_at IS
+  NULL`. The only other `SELECT … FROM event` in the codebase (`editorial.go:422`, `allEvents`) is
+  reconcile-internal; there is no unfiltered read on any publish path.
+- **Artifact.** `web/data-derived` was deleted and regenerated from the live database with a binary built at
+  HEAD. `grep -ro ngeu web/data-derived/` → **0 hits** across all ten series documents. The `events` array of
+  `ipc-general.json` is now the nine confirmed entries.
+- **Pages.** `web/dist` was deleted and rebuilt from that export. `grep -roi 'ngeu' web/dist/` → **0 hits**;
+  a case-insensitive search for `ngeu|next generation|Recuperación y Resiliencia` across the whole build
+  returns nothing. Seven pages built. Cross-checked against the running stack at `127.0.0.1:8080`: zero hits
+  on `/indicador/ipc-general/`, `/indicador/tasa-de-paro-epa/`, `/indicador/pib/`, and the entry is absent
+  from the artifact it serves at `/data-derived/series/ipc-general.json`.
 
-### CRITICAL-54 — An entry the configuration declares unverified is published and shown to readers as fact
+All three clauses satisfied. Both previously failing scenarios are **✅ COMPLIANT**, each with a covering
+test that passed at runtime in this pass's run.
 
-**The governing requirement**, `specs/editorial-config/spec.md:70-74`:
+### B.4 The fix is a class fix, not an instance fix
 
-> An editorial entry whose date is unconfirmed MUST NOT be projected into the database and MUST NOT reach
-> any rendered page. Reconciliation MUST report the count and identifiers of unprojected entries to
-> operators through the run's structured output, so the backlog is visible to the people who can close it.
+`reconcile.go:74` and `:87` both call `isDatePending(status, date)`; there is no second guard. `DateStatus`
+is read in exactly three non-test places — the two call sites and `validate.go`'s two switch statements,
+which now switch on the named `config.DateStatusUnconfirmed` constant rather than a bare literal.
 
-**All three clauses are violated by one entry.** `config/eventos.yaml` declares:
-
-```yaml
-- id: ngeu-primer-desembolso
-  group: exogenous
-  date_start: 2021-08-01
-  date_status: unconfirmed
-  todo: >-
-    ... el mes (agosto de 2021) proviene de conocimiento general
-    no verificado en vivo esta sesión.
-```
-
-It is the **only** entry in the shipped configuration carrying both a date and `date_status: unconfirmed`.
-Measured across all three files: `rupturas.yaml` has four unconfirmed entries, all with no `date`;
-`eventos.yaml` has two, one of which (`ngeu-primer-desembolso`) has a `date_start`; `gobiernos.yaml` has
-one, with no `date_start`.
-
-**Clause 1 — projected.** `app/internal/ingestion/reconcile.go:86` guards on `if e.DateStart == nil` and
-never reads `e.DateStatus`. Non-nil date ⇒ projected. Confirmed on the running stack, which prints its own
-structured output:
-
-```
-reconcile-1 | ingest --reconcile: breaks pending=4 (unconfirmed date), not projected: epa-cnae2025-doble-codificacion, cn-revision-base-sept-2025, sec-cambios-deuda-deficit, ss-cnae2025-afiliacion
-reconcile-1 | ingest --reconcile: events pending=2 (unconfirmed date), not projected: reforma-laboral-2021, gobierno-suarez-1976
-```
-
-`ngeu-primer-desembolso` appears in neither list. `config/` is unchanged between the stack's build and
-HEAD except for the removed `medidas.yaml`, so this output is valid for HEAD.
-
-**Clause 2 — reaches every rendered page.** It is in the `events` array of all **ten** published series
-documents under `web/data-derived/series/`, and in the rendered markup of all six indicator pages of a
-build I made at HEAD. Then, driving that build in a real browser:
-
-```
-/indicador/ipc-general/  → click "Mostrar shocks exógenos"
-NGEU VISIBLE:               true
-CONTEXT:                    Inicio de los desembolsos del Mecanismo de Recuperación
-                            y Resiliencia (Next Generation EU)
-SAYS "pendiente de confirmar": false
-```
-
-A reader enabling the exogenous group sees the entry positioned at 2021-08-01, with nothing on the visible
-surface indicating that the date is a guess. The `noteMd` disclaimer that exists in the YAML does not reach
-the chip. This is precisely the unverified-fact-as-verified-fact failure (PRD principle P4) that the entire
-`date_status` machinery exists to prevent — named as such in four separate shipped source comments.
-
-**Clause 3 — the operator backlog under-reports.** The shipped closure gate counts by `DateStatus`:
-
-```
-fase0_closure_test.go:234: registry has 14 confirmed-date and 7 unconfirmed-date entries
-```
-
-The reconcile reports 4 + 2 = **six**. The scenario "Operators see the pending count" is written with the
-literal number: *"GIVEN **seven** editorial entries with unconfirmed dates ... THEN its structured output
-records the count **seven** and the identifiers of those entries."* The spec's seven matches the
-repository's seven. The product reports six. The seventh is not held back and is not reported — it is
-silently published.
-
-**Three shipped comments state that this cannot happen.**
-
-- `reconcile.go:10-12` — *"A break or event whose DateStatus is 'unconfirmed' (Date/DateStart is nil) is
-  NEVER projected into series_break/event."* The parenthetical is the defect: it asserts an equivalence
-  `validateEvent` does not enforce. `validate.go:610-630` requires only a `todo` when `date_status` is
-  `unconfirmed`; it never requires `date_start` to be absent.
-- `events_read.go:47-50` — *"An unconfirmed (date_status='unconfirmed') entry never reaches this table at
-  all ... so this function never needs to skip one itself."* False for this entry.
-- `fase0_closure_test.go:236` logs *"so nothing wrong reaches series_break/event"* while itself counting
-  the seven that includes the one that does.
-
-**Why no test caught it.** Every test that exercises the pending path builds its fixture by hand with a nil
-date — `reconcile_test.go:37` (`{DateStatus: "unconfirmed", Todo: "confirmar"}`, no `Date`),
-`ingest_reconcile_cmd_test.go:171`, `events_read_test.go:20`. No test runs the **real** configuration
-through `ReconcileEditorialConfig` and asserts the pending lists. The unconfirmed-with-a-date state is
-unrepresented in every fixture, so the suite cannot exhibit it.
-
-**Scope.** `editorial-config` is a delta capability of this change; `reconcile.go` is this change's code
-(tasks 7.4/7.5); the entry ships in this change's configuration. In scope, and blocking.
-
-**On pass 7.** Pass 7 marked `editorial-config` fully compliant and reported the pipeline/publish seam as
-clean for the first time in seven passes. That verdict is **overturned** on this requirement. The record
-pass was right to measure it and right not to overturn a compliance verdict from inside a document it may
-not edit; it named `indicator-page` / "Enabling a group renders only confirmed events" as the relevant
-scenario, and that scenario is in fact **compliant** — its GIVEN is scoped to *government* dates and group
-(a), and `gobierno-suarez-1976` (no `date_start`) is correctly excluded. The governing text is
-`editorial-config`'s, which says *any* rendered page with no group qualification. The finding survives the
-correction of its own framing.
-
-**Not blocking, and correctly reasoned by the record**: the sibling scenarios "Readers see nothing about
-pending entries" and "Pending editorial entries are operator-visible only" are about not disclosing
-*pendingness* to a reader. Nothing here discloses pendingness. Both remain ✅ COMPLIANT.
-
-**Remedies** (the record lists three; my ordering):
-
-1. Confirm the date in `eventos.yaml` against the official disbursement calendar and drop `date_status`.
-   A four-eyes editorial act, not a code change, and the only option that loses no information.
-2. Read `DateStatus` in the reconcile guard alongside the nil check. Smallest code change; it retires the
-   entry from the artifact until the date is confirmed, and it makes the three comments true.
-3. Carry `dateStatus` into the artifact and filter in the web layer. Largest, and it puts an editorial
-   status on a machine surface for the first time.
-
-Whichever is chosen, the fixture gap is the durable lesson: a test asserting the pending lists against the
-**real** configuration would have caught this on the day it landed.
-
-### WARNING-55 — Six of seventeen slices carry no red-state evidence, permanently
-
-Slices 20, 25, 29, 31, 32 and 34 record no RED of any kind and none is reconstructible. Under Strict TDD
-the cycle evidence is the primary artifact, and for roughly a third of this window it does not exist. The
-record states this in its own words rather than papering over it, and invents nothing. Adjudicated in §B.2
-as non-blocking; recorded so archive does not freeze it as satisfied.
-
-### SUGGESTION-56 — "No second derivation exists" is asserted by no test
-
-`indicator-page` / "The homepage and the routes resolve the same list" ends *"AND no second derivation of
-the indicator list exists"*. The behavioural half is proven — deleting a slug from the artifact throws
-through both surfaces. The structural non-existence claim is not asserted: a rewrite of `homeListing.ts`
-doing its own `Object.keys(INDICATOR_CONTENT)` walk while still throwing on a missing slug would keep every
-test green. Given that CRITICAL-27 in this same change was *exactly* a second, weaker derivation, a test
-reading `homeListing.ts` for the `resolveIndicatorRouteSlugs` import would be cheap insurance.
+The predicate's second half is a dereference guard, not a rule, and the code says so. That is a fair
+description: `validateBreak`/`validateEvent` reject a confirmed entry with no date, so the branch is
+unreachable through `validate-config`.
 
 ---
 
-## D. Strict TDD
+## C. Mutation testing — the fix, and the claims made about it
+
+Six mutations. The tree was restored with `git checkout` after each and verified clean.
+
+| # | Mutation | Result |
+|---|---|---|
+| M1 | `isDatePending` → `return date == nil` (the pre-fix guard, exactly) | **Both new tests FAIL.** This is the RED the commit body does not transcribe, produced here |
+| M2 | Half-applied: breaks fixed, events left on `e.DateStart == nil` | **Both new tests FAIL** |
+| M3 | Half-applied: events fixed, breaks left on `b.Date == nil` | `…AProvisionalDateOnAnUnconfirmedEntryIsStillHeldBack` **FAILS**; the shipped-config test passes |
+| M4 | `isDatePending` → drop `|| date == nil` | **The entire Go suite stays green** — see WARNING-58 |
+| M5 | Drop `|| current.RetiredAt != nil` from **both** un-retire clauses | `TestReconcileBreaks_FullReconcileIsTransactionalIdempotentAndSoftRetires` FAILS |
+| M6 | Drop it from the **events** clause only (`editorial.go:397`) | **The entire Go suite stays green** — see SUGGESTION-60 |
+
+**A half-applied fix does fail**, as claimed — M2 and M3 both kill a test. M3 shows which one carries the
+guarantee for the breaks half: the class test, not the shipped-config test, because all four unconfirmed
+breaks in the shipped YAML happen to omit their dates. `BreakConfig` did carry the same latent defect and is
+fixed; the regression test that proves it asserts a break and an event in one call, exactly as claimed.
+
+### The real-config test's independence — the claim verified, and upheld
+
+`reconcile_test.go:553-561` derives its expectation from `DateStatus` alone:
+
+```go
+for _, b := range cfg.Breaks { if b.DateStatus == "unconfirmed" { wantBreaks = append(wantBreaks, b.ID) } }
+for _, e := range cfg.Events { if e.DateStatus == "unconfirmed" { wantEvents = append(wantEvents, e.ID) } }
+```
+
+Not the `unconfirmed OR nil` disjunction the implementation applies. It uses the **string literal**, not
+`config.DateStatusUnconfirmed`, so it is independent of the constant as well as of the predicate: a typo
+introduced into the constant would flip the implementation and not the expectation, and M1 confirms the test
+dies when the implementation and the declaration disagree. Count and identifiers are asserted separately, as
+claimed, and the identifiers are compared as sets with an explicit justification for order-insensitivity.
+**The writer's claim is accurate: this test states the rule, it does not restate the code.**
+
+One qualification, recorded as WARNING-58: it does not discriminate the predicate's *second* half.
+
+---
+
+## D. New findings, pass 9
+
+### WARNING-57 — The editorial authoring documentation still forbids the shape the fix deliberately blessed
+
+`9483d23` corrected three source comments and the two type doc comments that claimed an unconfirmed entry
+"MUST omit" its date. Two documents state the same retired rule and were not corrected — and they are the
+two an editor actually reads before writing an entry:
+
+- `config/rupturas.yaml:10-12`: *"una entrada cuya fecha efectiva NO está confirmada … **omite `date`** y
+  declara `date_status: unconfirmed` + `todo`"*.
+- `config/README.md:24-26`: *"carries `date_status: unconfirmed` + `todo` **instead of a guessed date**"* —
+  and this one covers `eventos.yaml`, where the shipped configuration does the opposite.
+
+Both contradict `types.go:63-68`, written by this same commit: *"A PROVISIONAL date alongside DateStatus
+below is allowed, and is usually the better entry."* The behaviour is correct and no reader is affected;
+what is wrong is that the guidance tells the next editor to write the weaker entry. The commit's own
+argument — that the guess plus the todo carries more information than an empty field — is the reason this
+matters rather than a nitpick.
+
+`config/README.md:54` and `config/reconocimientos.yaml:19` reference the same discipline by analogy and
+remain accurate.
+
+### WARNING-58 — The new test's doc comment overstates what the test discriminates
+
+`reconcile_test.go:530-535` says the expectation being derived from `DateStatus` alone *"keeps this from
+degenerating into a restatement of the implementation: were the guard to drop **either half** of its
+condition, the two would disagree here."*
+
+Measured (M4): dropping `|| date == nil` leaves that test green, the sibling class test green, and **the
+entire Go suite green**. Only the `DateStatus` half is discriminated. The nil half cannot be discriminated
+by any test running the shipped configuration, because `validate-config` makes the confirmed-with-no-date
+shape unreachable — which `isDatePending`'s own comment states correctly two files away.
+
+Not a defect: the branch is deliberately inert defence and is documented as such. It is recorded because it
+is the same species this change has been chasing for nine passes — a comment asserting a property nothing
+enforces — this time in the very test written to prevent that species. The accurate sentence is "were the
+guard to drop the status half".
+
+### WARNING-59 — The record fell one commit behind again, and one open item is now false at HEAD
+
+`9483d23` updated `verify-report.md` (sweeping in pass 8's report) and no other SDD artifact.
+
+- `apply-progress.md` ends at **slice 36 (`5af95c5`)**. Neither the record pass (`374eb80`) nor this
+  remediation is recorded as a slice, and there is no TDD Cycle Evidence row for it. The RED it lacks is
+  producible — I produced it as M1 — but it is not in the record.
+- `tasks.md` is 419/419 with no task rows for the remediation.
+- `design.md:1564-1598` still carries the defect as an **unchecked open item** whose body states, in the
+  present tense, that *"`app/internal/ingestion/reconcile.go:86` — the projection guard is `if e.DateStart
+  == nil`. It never reads `e.DateStatus`"* and that the entry *"reaches the published artifact"*. Both are
+  false at HEAD. The item's header scopes itself to `5af95c5`, which softens it, but it sits in a list of
+  live open questions and lists three candidate resolutions as *"none chosen here"* when one has been.
+- `design.md:705`'s parenthetical *"(reconcile already refuses nil dates)"* is now the wrong description of
+  the mechanism. The item itself correctly stays unchecked — the seven dates still need confirming.
+- `tasks.md:32.12` says *"still open at `5af95c5`"* and is self-consistent as a historical note.
+
+Recorded rather than escalated. Pass 7 escalated the equivalent to CRITICAL-46 at seventeen commits and
+14,631 lines with claims false at HEAD; this is one commit, with an unusually complete and — checked
+line by line against the code — accurate commit body. It does not block archive. It does mean archive must
+not freeze `design.md`'s open item as an unresolved product gap: it is resolved.
+
+### SUGGESTION-60 — The events half of the un-retire clause is untested, and this fix made it load-bearing
+
+`editorial.go:397` resurrects a soft-retired event when it returns to the configuration
+(`case current.ConfigDigest != in.ConfigDigest || current.RetiredAt != nil:` … `retired_at=NULL`).
+
+That clause is now the only path by which the three pending events can ever reach a reader, and the digest
+cannot help it: `eventDigest` (`reconcile.go:193-199`) covers id, group, name, both dates, note, scope and
+source URL — **not `date_status`**. Confirming `ngeu-primer-desembolso` means deleting `date_status` and
+`todo`, which leaves `config_digest` byte-identical. Without `|| current.RetiredAt != nil` the entry would
+stay retired forever while reconciliation reported zero changes.
+
+M5 shows the breaks half of that clause is covered. M6 shows the **events** half is not: the whole Go suite
+passes with it removed. No defect exists today — the clause is present and correct, and I verified the
+resulting behaviour by reading the update path. It is a coverage gap on the same seam, of the same shape as
+the one that produced CRITICAL-54: a correct guard with no test exercising the state the real configuration
+now sits in.
+
+### SUGGESTION-56 — adjudicated: **remains OPEN, correctly**
+
+`indicator-page` / "The homepage and the routes resolve the same list … AND no second derivation of the
+indicator list exists". Re-checked at HEAD: `homeListing.ts:32` still imports and delegates to
+`resolveIndicatorRouteSlugs`, and no test in `web/test/` reads `homeListing.ts` for that delegation —
+`resolveIndicatorRouteSlugs` appears only in `routes.test.ts` and `unit-agreement.test.ts`, which test the
+function, not the delegation.
+
+**This work should not have closed it.** `9483d23` touches five Go files, one Go test file and one SDD
+artifact; it changes nothing in `web/`, and nothing about the editorial-date defect bears on how the
+homepage derives its slug list. Closing it here would have been scope creep into an unrelated surface. It
+stays a suggestion, not a blocker: the behavioural half of the scenario is proven (deleting a slug from the
+artifact throws through both surfaces), only the structural non-existence claim is unasserted.
+
+---
+
+## E. The seam, probed a ninth time
+
+Seven of the previous eight passes found a defect on the pipeline/publish boundary; pass 7's clean result
+was not treated as a trend. What was checked at HEAD, beyond §B:
+
+| Probe | Result |
+|---|---|
+| Every reader of the `event` table | Two: `ListActiveEvents` (filters `retired_at IS NULL`) and `allEvents` (reconcile-internal). No unfiltered read on a publish path |
+| `event` table schema | Eleven columns, **no `date_status`** — `events_read.go`'s load-bearing claim confirmed against the live database |
+| The CSV half of `/data-derived` | Carries observations only (`period,value,status,source_status,version`); no event columns, zero `ngeu` occurrences |
+| Export → build → serve, end to end | Regenerated and rebuilt from scratch; zero occurrences at every stage; running stack agrees |
+| Golden anti-drift fixture | Unchanged and green (Vitest 799/799, `export --fixture` schema guard) |
+| Resurrection path (the fix's reverse direction) | Correct in the product; half-covered in the suite — SUGGESTION-60 |
+
+The seam is clean on the projection direction, and this is the first pass where that statement rests on
+mutation evidence rather than on observation alone.
+
+---
+
+## F. Strict TDD
 
 ### TDD Compliance
 | Check | Result | Details |
 |-------|--------|---------|
-| TDD Evidence reported | ✅ | Four tables now cover slices 20–36; the pre-existing tables cover 1–19. No slice is unrecorded |
+| TDD Evidence reported | ✅ | Tables cover slices 1–36. The `9483d23` remediation has no table — WARNING-59 |
 | All tasks have tests | ✅ | 419/419 tasks map to test files that exist |
-| RED confirmed (tests exist) | ✅ | Every test file named across all tables exists at `374eb80` |
-| GREEN confirmed (tests pass) | ✅ | Full declared chain exit 0; 799 Vitest, 191 Playwright, 22 Go packages |
-| Triangulation adequate | ✅ | e.g. `TestDecodeSeries_NullValorFailsClosedUnderEveryTipoDatoToken` (4 sub-cases); `homeListing.test.ts` asserts both the throw and its message content |
-| Safety Net for modified files | ✅ | Recorded per slice |
-| Evidence covers the current tree | ✅ | **CRITICAL-46 CLOSED** — the 17-commit gap is recorded |
-| RED evidence quality | ⚠️ | 6/17 slices carry none — WARNING-55 |
+| RED confirmed (tests exist) | ✅ | Every test file named across all tables exists at `9483d23` |
+| GREEN confirmed (tests pass) | ✅ | Full declared chain exit 0: 23 Go packages under `-race`, 799 Vitest, 191 Playwright |
+| Triangulation adequate | ✅ | The remediation adds two tests at different levels — a hand-built class fixture (break + event together) and the real embedded configuration |
+| Safety Net for modified files | ✅ | Full suite re-run; no pre-existing test was weakened or deleted (`reconcile_test.go` is +189/−0) |
+| Evidence covers the current tree | ⚠️ | One commit uncovered — WARNING-59 |
+| RED evidence quality | ⚠️ | 6/17 slices carry none — WARNING-55. For `9483d23` specifically the RED is absent from the record but **reproducible, and reproduced here** (M1) |
 
-**TDD Compliance**: 7/8 checks passed.
+**TDD Compliance**: 6/8 checks fully passed, 2 with recorded warnings.
 
 ### Test Layer Distribution
 | Layer | Tests | Files | Tools |
 |-------|-------|-------|-------|
-| Unit / integration (Go) | 22 packages green under `-race` | 137 | `go test -race` |
+| Unit / integration (Go) | 23 packages green under `-race` | 138 | `go test -race`, testcontainers-go |
 | Unit / container (Vitest) | 799 | 52 | vitest 4 |
 | E2E (Playwright) | 191 | 11 | @playwright/test + @axe-core/playwright |
 
-**Layer gap relevant to CRITICAL-54**: the editorial reconcile has unit coverage and container coverage,
-and no coverage at all against the real `config/*.yaml`. The defect lives exactly in that gap.
+**The layer gap pass 8 identified is closed.** The editorial reconcile now has a test that runs the real
+embedded `config/` tree against a real PostgreSQL. That is the layer the defect lived in.
 
 ### Assertion Quality
-Re-scanned `web/test`, `web/tests` and `app/`. Tautologies: **zero**. Assertions with no production-code
-call: **zero**. Smoke-test-only: **zero**. Mock-heavy files: **zero** (`vi.mock` is unused). Type-only
-assertions used alone: **none**. Ghost loops: the four known candidates are unchanged; three have sibling
-non-empty proofs and the fourth is SUGGESTION-49.
+Re-scanned the two test functions added by `9483d23` plus `web/test`, `web/tests` and `app/`.
+Tautologies: **zero**. Assertions with no production-code call: **zero**. Smoke-test-only: **zero**.
+Mock-heavy files: **zero** (`vi.mock` is unused). Type-only assertions used alone: **none**.
+
+On the new tests specifically: `…AProvisionalDateOnAnUnconfirmedEntryIsStillHeldBack` asserts empty
+`series_break`/`event` tables, which is an empty-collection assertion — but it has non-empty companions
+(`…ProjectsConfirmedEntriesAndSkipsUnconfirmedDates`, `…ReScopingAnEventIsAnInPlaceEditWithANewDigest`) with
+the same setup shape, and it pairs the emptiness with positive assertions on the pending id lists. Not a
+finding. The four known ghost-loop candidates are unchanged; three have sibling non-empty proofs and the
+fourth is SUGGESTION-49. The `for _, r := range breakRows` loops in the new shipped-config test are
+ghost-loop-shaped, but they are secondary assertions guarding a claim the primary set-equality assertion
+already carries, and `breakRows` is non-empty in this fixture (five confirmed breaks).
 
 **Assertion quality**: 0 CRITICAL, 0 WARNING.
 
@@ -367,21 +375,22 @@ non-empty proofs and the fourth is SUGGESTION-49.
 
 ---
 
-## E. Prior findings, re-adjudicated
+## G. Prior findings, re-adjudicated
 
 | ID | Summary | Status this pass | Evidence |
 |---|---|---|---|
 | CRITICAL-1 | Every "Exportar CSV" link 404s | **CLOSED** | Unchanged |
-| CRITICAL-2 | The blocking budget gate cannot fail | **CLOSED** | Unchanged since pass 7's real-artifact run |
+| CRITICAL-2 | The blocking budget gate cannot fail | **CLOSED** | Unchanged |
 | CRITICAL-3 | 37 inlined Spanish strings | **CLOSED** | Unchanged |
 | CRITICAL-4 | Export artifact carries no page-state | **CLOSED** | Unchanged |
 | CRITICAL-15 | Container publishes synthesised fixture as INE statistics | **CLOSED** | Unchanged |
 | CRITICAL-16 | Failed-ingestion publish path untested | **CLOSED** | Unchanged |
-| CRITICAL-23 | The change does not exist in the repository | **CLOSED** | Clean tree at `374eb80` |
-| CRITICAL-27 | Build silently drops a frozen slug | **CLOSED** | Re-verified; `routes.test.ts` + `homeListing.test.ts` both guard it |
+| CRITICAL-23 | The change does not exist in the repository | **CLOSED** | Clean tree at `9483d23` |
+| CRITICAL-27 | Build silently drops a frozen slug | **CLOSED** | Unchanged |
 | CRITICAL-28 | Publish loop open at four links | **CLOSED** | Unchanged |
-| CRITICAL-37 | Change cannot produce a deployable site | **CLOSED, both halves** | Unchanged |
-| **CRITICAL-46** | SDD record 17 commits / 14,631 lines behind | **CLOSED** | `374eb80`: tasks 235→419 counted, four new TDD tables covering slices 20–36, migration 0007 reasoning recorded, figures re-measured here and exact (§B.1) |
+| CRITICAL-37 | Change cannot produce a deployable site | **CLOSED, both halves** | Re-proven here: fresh export → fresh build → 7 pages → served |
+| CRITICAL-46 | SDD record 17 commits / 14,631 lines behind | **CLOSED** | Closed at pass 8; the new one-commit gap is WARNING-59, not a reopening |
+| **CRITICAL-54** | An entry the configuration declares unverified is published and shown to readers as fact | **CLOSED** | §B: not projected (fresh-DB test + live reconcile), soft-retired on the live DB, 0 hits in a fresh 10-document export, 0 hits in a fresh 7-page build, 0 hits on the running stack, backlog reports 7/7. Class-fixed across both registries; M1/M2/M3 prove the fix is load-bearing |
 | WARNING-29 | Run log claims a dispatch that did not happen | **CLOSED** | Unchanged |
 | WARNING-30 | INE nil-value crash class disclosed only in a commit message | **CLOSED** | Unchanged |
 | WARNING-31 | `SeverityBlockRequiresSignoff` names a mechanism that does not exist | **CLOSED** | Unchanged |
@@ -389,14 +398,15 @@ non-empty proofs and the fourth is SUGGESTION-49.
 | **WARNING-38** | One acknowledgement resolves more than one finding | **OPEN** | Unchanged; not reachable in shipped config |
 | **WARNING-39** | Registry's only anti-forgery control is a review gate with no second reviewer | **OPEN** | `.github/CODEOWNERS:17` still `@jorgealonsodev @TODO-second-config-reviewer` |
 | WARNING-40 | `apply-progress.md` records none of the recent commits | **CLOSED** | Escalated to CRITICAL-46 at pass 7, closed with it |
-| **WARNING-41** | "A failed rebuild raises an alert **immediately**" is substituted | **OPEN** | Re-verified here: `alerting.DispatchFailed` alerts on a failed *dispatch*. The only `workflow_run` in the repository is `deploy.yml:16`, a deploy trigger with a conclusion gate — not an alerting receiver. No conclusion poll exists |
+| **WARNING-41** | "A failed rebuild raises an alert **immediately**" is substituted | **OPEN** | Re-verified at HEAD: the only `workflow_run` in the repository is `deploy.yml:16`, a deploy trigger with a conclusion gate, not an alerting receiver. No conclusion poll exists. The requirement's normative sentence is met; the scenario's timing is not |
 | WARNING-44 | A frozen permalink's two download links 404 | **CLOSED** | Unchanged |
 | **WARNING-45** | The prune's ordering has no test | **OPEN** | Unchanged |
-| **WARNING-47** | Two reader-facing surfaces ship with no spec requirement | **CLOSED, both halves** | Homepage: ADDED requirement + 5 scenarios, all test-mapped. Footer: new 13th delta, 1 MODIFIED requirement + 2 new scenarios, all test-mapped. Baseline argument verified (§B.3) |
+| WARNING-47 | Two reader-facing surfaces ship with no spec requirement | **CLOSED, both halves** | Unchanged since pass 8 |
+| **WARNING-55** | Six of seventeen slices carry no red-state evidence, permanently | **OPEN** | Unchanged. Adjudicated non-blocking at pass 8; that adjudication stands |
 | SUGGESTION-19 | Workbench CSV href layout | **OPEN** | Unchanged |
 | SUGGESTION-20 | Spec silent on the dateless validation banner | **OPEN** | Unchanged |
 | SUGGESTION-21 | No custom-range e2e on a real route | **CLOSED** | Unchanged |
-| **SUGGESTION-22** | Workflows never observed on a runner | **OPEN** | Unchanged since pass 7 |
+| **SUGGESTION-22** | Workflows never observed on a runner | **OPEN** | Unchanged |
 | SUGGESTION-25 | Copy-scan regex blind spot | **OPEN** | Unchanged |
 | SUGGESTION-26 | Test output inside the source tree | **CLOSED** | Unchanged |
 | SUGGESTION-32 | `befa81f` commit body overstates | **OPEN** | Unchanged |
@@ -405,52 +415,84 @@ non-empty proofs and the fourth is SUGGESTION-49.
 | SUGGESTION-35 | Four-eyes documented, unenforced | **ESCALATED** | Tracked as WARNING-39 |
 | SUGGESTION-42 | Neighbouring-period residual narrower than disclosed | **OPEN** | Unchanged |
 | SUGGESTION-43 | `smoke-test.sh` usage omits `EXPORT_DIR`/`EXPORT_URL` | **OPEN** | Unchanged |
-| **SUGGESTION-48/50** | `index.astro` stale comment and byte count | **CLOSED** | Superseded in place by `374eb80`; re-measured 2,713 bytes, comment gone, six permalinks linked |
+| SUGGESTION-48/50 | `index.astro` stale comment and byte count | **CLOSED** | Unchanged |
 | SUGGESTION-49 | One ghost loop without its own non-empty guard | **OPEN** | Unchanged; safe in practice |
 | SUGGESTION-51 | A commit named "revert" adds a feature | **OPEN** | Historical; recorded |
 | SUGGESTION-52 | `event.source_url` wired end-to-end, populated by nothing | **OPEN** | Unchanged |
 | SUGGESTION-53 | Accessibility gates still measure the fixture, not the artifact | **OPEN** | Unchanged |
+| **SUGGESTION-56** | "No second derivation exists" is asserted by no test | **OPEN** | Re-checked at HEAD; correctly out of `9483d23`'s scope (§D) |
+| **WARNING-57** | Editorial authoring docs still forbid the shape the fix blessed | **NEW, OPEN** | §D |
+| **WARNING-58** | The new test's doc comment overstates what it discriminates | **NEW, OPEN** | §D, mutation M4 |
+| **WARNING-59** | Record one commit behind; one `design.md` open item false at HEAD | **NEW, OPEN** | §D |
+| **SUGGESTION-60** | The events half of the un-retire clause is untested | **NEW, OPEN** | §D, mutations M5/M6 |
 
 ---
 
-## F. Spec compliance — what moved this pass
+## H. Spec compliance — what moved this pass
 
 | Requirement | Scenario | Test / evidence | Result |
 |---|---|---|---|
-| `indicator-page` / The homepage lists all six indicators or the build fails | all 5 | `homeListing.test.ts`, `home.container.test.ts`, `routes.test.ts`, `indicator-page.container.test.ts:1016`, `home.spec.ts` | ✅ COMPLIANT *(new)* |
-| `source-attribution-licensing` / No blanket data-licence claim exists in the repository | all 3 | `site-footer.test.ts` (forbidden-string bans on text and markup; entry-point discovery with no skip list) | ✅ COMPLIANT *(new delta)* |
-| `editorial-config` / Unconfirmed editorial dates are operator-visible, never reader-visible | An unconfirmed entry is not projected and is not an error | `reconcile_test.go` passes on a nil-date fixture; the shipped configuration projects `ngeu-primer-desembolso` | ❌ FAILING *(was ✅)* |
-| " | Operators see the pending count | Stack reports 4+2=6; `fase0_closure_test.go` counts 7; spec says 7 | ❌ FAILING *(was ✅)* |
-| " | Readers see nothing about pending entries | No count, badge, warning or placeholder about pendingness is rendered | ✅ COMPLIANT |
-| `indicator-page` / Three separately toggleable annotation groups | Enabling a group renders only confirmed events | GIVEN/WHEN scoped to government dates and group (a); `gobierno-suarez-1976` correctly excluded | ✅ COMPLIANT |
+| `editorial-config` / Unconfirmed editorial dates are operator-visible, never reader-visible | An unconfirmed entry is not projected and is not an error | `reconcile_test.go` — `…AProvisionalDateOnAnUnconfirmedEntryIsStillHeldBack` and `…ShippedConfigPendingListsAreExactlyItsUnconfirmedEntries`, both passing under `-race`; live reconcile exit 0 | ✅ COMPLIANT *(was ❌)* |
+| " | Operators see the pending count | Shipped-config test asserts identifiers **and** count, measured 7; live run reports 4+3 naming `ngeu-primer-desembolso`; closure gate counts 7; spec says 7 | ✅ COMPLIANT *(was ❌)* |
+| " | Readers see nothing about pending entries | Fresh build: no count, badge, warning or placeholder about pendingness | ✅ COMPLIANT |
+| `indicator-page` / Three separately toggleable annotation groups | Enabling a group renders only confirmed events | Re-verified: 0 hits for the entry across all six pages in a fresh build and on the running stack | ✅ COMPLIANT |
+| `publishing-export` / breaks and events read path | Unconfirmed editorial dates excluded | `ListActiveEvents` + fresh 10-document export, 0 hits | ✅ COMPLIANT |
 | `pipeline-operations` / An ingestion not followed by a rebuild alerts operators | A failed rebuild raises an alert immediately | (none found) | ❌ UNTESTED |
 
-**Compliance summary**: 173/176 scenarios compliant, 77/79 requirements compliant.
+**Compliance summary**: 175/176 scenarios compliant, 78/79 requirements compliant.
 
 ---
 
-## G. Verdict
+## I. Verdict
 
-**FAIL.**
+**FAIL on evidence completeness. Zero CRITICAL findings, zero blockers, every declared command exit 0.**
 
-One blocker: **CRITICAL-54** — `ngeu-primer-desembolso` is declared `date_status: unconfirmed` and is
-nonetheless projected, published to all ten series documents, rendered into all six indicator pages, and
-displayed to a reader as a positioned annotation at a date the configuration itself calls unverified, while
-the operator backlog that exists to make this visible reports six of seven. A requirement in this change's
-own `editorial-config` delta forbids all three. Three shipped source comments assert it cannot happen.
+**The delivered product is clean. The change is not yet admissible for archive, and what blocks it is not a
+defect.**
 
-**CRITICAL-46 is closed and closed well.** The record now reaches HEAD, its figures re-measure exactly, its
-sharpest checkable claim is exact, and it declares its own evidence gaps rather than filling them. The
-WARNING-47 spec decision was taken, argued better than the finding that prompted it, and every one of its
-seven new scenarios maps to a test that exists and passed here.
+CRITICAL-54 is closed on the product, not on the record: the entry the configuration declares unverified is
+held back by that declaration, in both registries, through one predicate, and is absent from the database's
+active rows, from a freshly regenerated ten-document artifact, from a freshly built seven-page site, and
+from the running stack. The operator backlog reports seven where the YAML, the shipped closure gate and the
+spec scenario all say seven. A half-applied fix fails, measured. The real-configuration test derives its
+expectation from `DateStatus` alone and dies when the implementation and the declaration disagree — the
+writer's central claim, and it holds.
 
-**The disagreement aimed at pass 7 is upheld.** The record measured it correctly and named the wrong
-scenario; the finding survives the correction. Pass 7's report that the pipeline/publish seam was clean for
-the first time in seven passes was premature — it is now seven defects in eight passes on that seam.
+### What blocks archive
 
-**Not ready to archive.** What blocks it, precisely: `ngeu-primer-desembolso` must stop reaching readers as
-a confirmed fact — by confirming its date in `config/eventos.yaml` under four eyes, or by making
-`reconcile.go:86` read `DateStatus`, or by filtering on a carried `dateStatus` in the web layer — and the
-reconcile's pending path needs one test against the **real** configuration, because no fixture in the suite
-represents the unconfirmed-with-a-date state that caused this. Nothing else blocks. WARNING-55 and the
-carried warnings and suggestions are all archivable as recorded open items.
+Exactly one thing, and it is a documentation/coverage decision rather than a code defect:
+
+**`pipeline-operations` / "A failed rebuild raises an alert immediately" has no covering test.** Verified
+independently at HEAD, not carried from the earlier passes: the alerting package defines
+`KindDispatchFailed` (the dispatch *call* failed) and `KindPublishLatencyBreach` (the budget elapsed), and
+nothing anywhere observes the conclusion of a rebuild that was dispatched successfully and then failed. The
+only `workflow_run` in the repository is `deploy.yml:16`, a deploy trigger with a conclusion gate, not an
+alerting receiver. `schedule_rebuild_watchdog_test.go` covers the sibling *stalled* scenario, not this one.
+
+Two honest resolutions, both small, both in scope:
+
+1. **Amend the scenario.** The requirement's normative sentence — alert when a successful ingestion is not
+   followed by a completed rebuild inside the budget — is already implemented and tested. Only the
+   sub-scenario's word "immediately" outruns the implementation, and `pipeline-operations` is this change's
+   own delta, so narrowing that scenario to budget-bounded detection is a legitimate spec act, not a
+   weakening to fit the code. This is the resolution the architecture already argues for.
+2. **Implement the observer.** Poll or receive the dispatched run's conclusion and raise an alert on
+   failure, with a test. Larger, and it adds a GitHub API dependency to the pipeline for a condition the
+   watchdog already catches within thirty minutes.
+
+Choosing (1) closes the count at 79/79 and 176/176 and makes the change archive-ready with no code change.
+
+### What does not block archive
+
+- **WARNING-55** — a permanent, honestly declared Strict-TDD evidence shortfall in six historical slices.
+- **WARNING-57, WARNING-58, WARNING-59** — inaccurate or missing prose: two editorial documents and one test
+  comment that still describe a rule the code no longer applies, and an SDD record one commit behind. No
+  behaviour is affected by any of them.
+- **WARNING-38, 39, 45** and the carried suggestions — unchanged, recorded, non-blocking.
+- **SUGGESTION-56, SUGGESTION-60** — test-coverage recommendations. SUGGESTION-60 is worth doing before the
+  first pending editorial date is confirmed in production, but it guards against a regression that does not
+  exist today.
+
+The one thing archive must carry forward rather than close: `design.md:1564`'s open item is **resolved**,
+not outstanding, and the seven unconfirmed editorial dates at `design.md:705` remain a genuine editorial
+backlog awaiting a second reviewer — which is WARNING-39, and is not this change's to close.

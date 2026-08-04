@@ -704,6 +704,17 @@ assumes the control is live.
       states + ops alert (orchestrator decision recorded in D-2).
 - [ ] Seven unconfirmed editorial dates: annotation layers render only confirmed events (reconcile
       already refuses nil dates); confirm or exclude before slice 7 or ship the layer disclosed-incomplete.
+
+      **CORRECTION, 2026-08-05 (`9483d23`), to the parenthetical only — the item itself correctly stays
+      open, because the seven dates still need confirming.** "reconcile already refuses nil dates" was the
+      right description of the mechanism when it was written and is the wrong one now, and the difference
+      is exactly the defect verify-report pass 9 closed as CRITICAL-54. The guard is
+      `isDatePending(dateStatus, date)` (`app/internal/ingestion/reconcile.go:167-168`), called at `:74`
+      and `:87`: it refuses on the **declared status** — `date_status: unconfirmed` — and refuses a nil
+      date only as a dereference guard. An entry carrying a *provisional* date alongside an unconfirmed
+      status is held back by the status, which a nil-date test would have projected. Read the parenthetical
+      as "reconcile refuses entries the configuration declares unconfirmed". Left standing rather than
+      rewritten, per this file's supersede-don't-delete rule.
 - [x] **`adapters/xlsx` does not classify `Status` at all** (discovered during slice 2b, D-3's
       "`ingest.go`'s disclosed compatibility shim ... is now closed" paragraph). **Resolved, slice 2c**
       (corrective slice, `sdd-apply`): `xlsx.Decode` (`app/internal/adapters/xlsx/decode.go`) now sets
@@ -1561,7 +1572,13 @@ assumes the control is live.
       report (`ingest_cmd.go:506-508`) has no test; only `runExport`'s two are covered. `pruneOutcomeMessage`
       is shared, so the **rendering** is proven and the **wiring** is not — which is exactly the distinction
       the slice-18 entry's generalisable rule is about. Both are follow-ups, neither blocks archive.
-- [ ] **New (slice 32, `d5cfbed`) — an editorial entry with `date_status: unconfirmed` reaches the published
+- [x] **RESOLVED 2026-08-05 by `9483d23` — read the resolution at the end of this entry before the body.
+      Everything between here and it is written in the present tense and every present-tense claim in it is
+      FALSE at HEAD.** It is left standing rather than rewritten because how the defect was described is
+      what the fix had to answer, and because this change has already recorded that deleting a superseded
+      observation destroys the evidence for why the correction was the right one.
+
+      **New (slice 32, `d5cfbed`) — an editorial entry with `date_status: unconfirmed` reaches the published
       artifact, and two doc comments in shipped source say it cannot.** Disclosed in `d5cfbed`'s own commit
       body, carried into no record until now, and **re-verified at `5af95c5` for this entry rather than
       accepted second-hand**:
@@ -1597,6 +1614,40 @@ assumes the control is live.
       editorial status on a machine surface for the first time); or confirm the date in `eventos.yaml`,
       which is a four-eyes editorial act and not a code change. The third is the only one that loses no
       information.
+
+      ---
+
+      **RESOLUTION, 2026-08-05, commit `9483d23` — the FIRST of the three candidates was chosen, and the
+      three measured claims above are now false at HEAD. Adjudicated by verify-report pass 9 as
+      CRITICAL-54, CLOSED.**
+
+      | The body above claims, in the present tense | At HEAD (`9483d23`) |
+      |---|---|
+      | `reconcile.go:86` — the projection guard is `if e.DateStart == nil`. It never reads `e.DateStatus` | **False.** The guard is `isDatePending(e.DateStatus, e.DateStart)` at `reconcile.go:87`, and `isDatePending` (`:167-168`) is `dateStatus == config.DateStatusUnconfirmed \|\| date == nil`. The status is read first |
+      | `tasa-de-paro-epa.json`'s `events` array contains `ngeu-primer-desembolso` | **False.** Pass 9 re-exported from the live database and rebuilt the site: the entry appears in zero of the ten exported series documents and zero of the seven built pages, and is absent from the running stack at `127.0.0.1:8080`. Re-checked independently on 2026-08-05 — `grep -rl ngeu-primer-desembolso web/data-derived/series/` returns nothing |
+      | Two shipped doc comments state the opposite of the behaviour | **False.** `9483d23` corrected `reconcile.go:10-12`, `events_read.go:47-49` and the two `types.go` type doc comments; `types.go:63-68` now states that a provisional date alongside an unconfirmed status is allowed and is usually the better entry |
+      | `config/eventos.yaml:52-56` carries `date_start: 2021-08-01` **and** `date_status: unconfirmed` | **Still true**, and deliberately so. That shape is now blessed rather than tolerated — the guess plus the `todo` carries more information than an empty field |
+
+      **Chosen as a CLASS fix, not an instance fix**, which is the part worth keeping: the same predicate
+      governs both registries. `BreakConfig` carried the identical latent defect — its guard was
+      `b.Date == nil` — and was fixed in the same commit, before any shipped break had exercised it.
+      `DateStatus` is read in exactly three non-test places at HEAD: the two `isDatePending` call sites and
+      `validate.go`'s two switch statements, which now switch on the named `config.DateStatusUnconfirmed`
+      constant rather than a bare string literal.
+
+      **The "deliberately not adjudicated" paragraph above is discharged.** Pass 9 moved `editorial-config`
+      / "Unconfirmed editorial dates are operator-visible, never reader-visible" from ❌ to ✅ with both of
+      its failing scenarios, and marked `indicator-page` / "Enabling a group renders only confirmed events"
+      compliant on the same evidence. The next pass does not need to rediscover this.
+
+      **What the resolution did NOT close, recorded so archive does not read this entry as fully settled**:
+      the seven dates in `config/eventos.yaml` and `config/rupturas.yaml` are still unconfirmed. The
+      Open Question at the top of this list about those seven dates therefore correctly stays unticked —
+      only its parenthetical description of the mechanism was corrected (see the CORRECTION there).
+      Two residual coverage findings from pass 9 are carried in `apply-progress.md`'s slice 38 section
+      rather than reopened here: WARNING-58 (the nil half of the predicate is undiscriminable by any test
+      running the shipped configuration) and SUGGESTION-60 (the events half of the un-retire clause is
+      untested).
 
 - [ ] **New (slice 22, `52b7abe`) — `decimals` has drifted between the export artifact and the content
       catalog in three of six slugs, and was flagged rather than corrected.** Artifact vs content: 1/0, 3/2,

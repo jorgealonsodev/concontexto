@@ -8,12 +8,20 @@
 # de código rutinarios. Ver .github/CODEOWNERS y .github/BRANCH_PROTECTION.md.
 #
 # date_status/todo: una entrada cuya fecha efectiva NO está confirmada
-# contra la nota metodológica de la fuente omite `date` y declara
+# contra la nota metodológica de la fuente declara
 # `date_status: unconfirmed` + `todo` (documento a consultar). El
-# reconcile NUNCA proyecta una fecha adivinada a series_break -- una
-# fecha de ruptura equivocada corrompe silenciosamente cualquier
-# comparación que la cruce (principio P4). Ver
-# app/internal/ingestion/reconcile.go.
+# reconcile NUNCA proyecta a series_break una entrada así -- una fecha de
+# ruptura equivocada corrompe silenciosamente cualquier comparación que la
+# cruce (principio P4). Ver app/internal/ingestion/reconcile.go.
+#
+# `date` PUEDE acompañar a `date_status: unconfirmed` con un valor
+# provisional, y normalmente es la mejor entrada: la lectura provisional
+# junto al `todo` indica a quien edite después tanto el mejor dato actual
+# como qué documento hay que consultar para confirmarlo, mientras que un
+# campo vacío solo indica que alguien se detuvo. Lo que protege la serie
+# es el estado declarado, no que el campo esté vacío: mientras
+# `date_status` sea `unconfirmed`, el reconcile retiene la entrada aunque
+# lleve fecha. `validate-config` rechaza una entrada confirmada sin `date`.
 
 - id: epa-metodologia-2021
   kind: methodology

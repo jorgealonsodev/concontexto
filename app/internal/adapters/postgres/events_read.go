@@ -45,9 +45,20 @@ import (
 // with it.
 //
 // An unconfirmed (date_status="unconfirmed") entry never reaches this table
-// at all: ingestion.ReconcileEditorialConfig already declines to project one
-// (reconcile.go), recording its id in PendingEventIDs instead — so this
-// function never needs to skip one itself.
+// at all: ingestion.ReconcileEditorialConfig declines to project one on the
+// strength of that declared status alone (isDatePending in reconcile.go),
+// recording its id in PendingEventIDs instead — so this function never
+// needs to skip one itself.
+//
+// The status is the reason, and it is worth being precise about which one:
+// this table has no date_status column, so an entry that DID get projected
+// would be indistinguishable here from a confirmed one and this function
+// could not filter it out even if it tried. The guarantee has to hold
+// upstream or not at all, which is why it is stated as reconcile's job
+// rather than assumed from the shape of the row (CRITICAL-54: the upstream
+// guard once inferred the status from a nil date, an entry carrying a
+// provisional date slipped through, and everything below here — including
+// this function — passed it on without a way to notice).
 func ListActiveEvents(ctx context.Context, db DBTX, seriesID string) ([]Event, error) {
 	// Empty strings, not NULLs, when the chain is unknown: the predicate
 	// below compares scope_ref (NOT NULL) for equality, and no configured

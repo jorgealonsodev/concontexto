@@ -407,7 +407,7 @@ func validateBreak(b BreakConfig) []Violation {
 					"(a break's effective date must never be guessed — PRD principle P4)", b.ID),
 			})
 		}
-	case "unconfirmed":
+	case DateStatusUnconfirmed:
 		if b.Todo == "" {
 			out = append(out, Violation{
 				File: b.FilePath, Field: "todo",
@@ -615,7 +615,7 @@ func validateEvent(ev EventConfig) []Violation {
 				Message: fmt.Sprintf("event %q: date_start is required unless date_status is \"unconfirmed\"", ev.ID),
 			})
 		}
-	case "unconfirmed":
+	case DateStatusUnconfirmed:
 		if ev.Todo == "" {
 			out = append(out, Violation{
 				File: ev.FilePath, Field: "todo",

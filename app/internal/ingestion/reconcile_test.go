@@ -12,6 +12,8 @@ package ingestion_test
 import (
 	"context"
 	"io/fs"
+	"slices"
+	"sort"
 	"testing"
 	"time"
 
@@ -431,5 +433,192 @@ func TestReconcileEditorialConfig_ReScopingAnEventIsAnInPlaceEditWithANewDigest(
 	}
 	if final[0].SourceURL == nil || *final[0].SourceURL != cfg.Events[0].SourceURL {
 		t.Errorf("SourceURL = %v, want the corrected citation", final[0].SourceURL)
+	}
+}
+
+// TestReconcileEditorialConfig_AProvisionalDateOnAnUnconfirmedEntryIsStillHeldBack
+// is CRITICAL-54's regression proof, and it is written for the CLASS rather
+// than the one entry that exhibited it.
+//
+// The editorial YAML may legitimately carry a PROVISIONAL date alongside
+// date_status: unconfirmed — the date records the author's best current
+// reading and the todo records what must be consulted to confirm it, which
+// is strictly more useful to the next editor than an empty field, and
+// validate-config allows exactly that shape. What must never happen is that
+// the provisional date reaches series_break/event, because from the
+// database down (export artifact, chart annotation, reader) nothing carries
+// the "unconfirmed" qualifier: the date arrives looking exactly as
+// authoritative as a confirmed one.
+//
+// Both registries are asserted together on purpose. Breaks and events carry
+// the same Date/DateStatus/Todo triple and were guarded by the same
+// nil-date test, so a fix applied to one and not the other would leave the
+// defect alive in the half nobody happened to look at.
+func TestReconcileEditorialConfig_AProvisionalDateOnAnUnconfirmedEntryIsStillHeldBack(t *testing.T) {
+	ctx := context.Background()
+	tx := newTx(t)
+	if err := postgres.NewRunner(tx).Up(ctx); err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+
+	provisional := time.Date(2021, 8, 1, 0, 0, 0, 0, time.UTC)
+	cfg := config.Config{
+		Breaks: []config.BreakConfig{
+			{ID: "ruptura-con-fecha-provisional", Kind: "methodology",
+				Scope:      config.BreakScopeConfig{Kind: "dataset", Ref: "ine-epa"},
+				NoteMD:     "Ruptura cuya fecha efectiva sigue sin confirmar.",
+				Date:       &provisional,
+				DateStatus: "unconfirmed",
+				Todo:       "Confirmar la fecha efectiva en la nota metodológica de la fuente."},
+		},
+		Events: []config.EventConfig{
+			{ID: "evento-con-fecha-provisional", Group: "exogenous",
+				Name:       "Evento cuya fecha de inicio sigue sin confirmar",
+				NoteMD:     "Fecha pendiente de confirmar contra el calendario oficial.",
+				DateStart:  &provisional,
+				DateStatus: "unconfirmed",
+				Todo:       "Confirmar la fecha exacta en el calendario oficial."},
+		},
+	}
+
+	result, err := ingestion.ReconcileEditorialConfig(ctx, tx, cfg)
+	if err != nil {
+		t.Fatalf("ReconcileEditorialConfig: %v", err)
+	}
+
+	if got := result.PendingBreakIDs; len(got) != 1 || got[0] != "ruptura-con-fecha-provisional" {
+		t.Errorf("PendingBreakIDs = %v, want [ruptura-con-fecha-provisional] — a break declared unconfirmed is pending whatever date it happens to carry", got)
+	}
+	if got := result.PendingEventIDs; len(got) != 1 || got[0] != "evento-con-fecha-provisional" {
+		t.Errorf("PendingEventIDs = %v, want [evento-con-fecha-provisional] — an event declared unconfirmed is pending whatever date it happens to carry", got)
+	}
+	if result.Breaks.Inserted != 0 || result.Events.Inserted != 0 {
+		t.Errorf("counts = breaks:%+v events:%+v, want nothing inserted", result.Breaks, result.Events)
+	}
+
+	breakRows, err := postgres.ListSeriesBreaks(ctx, tx)
+	if err != nil {
+		t.Fatalf("ListSeriesBreaks: %v", err)
+	}
+	if len(breakRows) != 0 {
+		t.Errorf("series_break holds %d row(s) after reconciling only unconfirmed entries: %+v", len(breakRows), breakRows)
+	}
+	eventRows, err := postgres.ListEvents(ctx, tx)
+	if err != nil {
+		t.Fatalf("ListEvents: %v", err)
+	}
+	if len(eventRows) != 0 {
+		t.Errorf("event holds %d row(s) after reconciling only unconfirmed entries: %+v", len(eventRows), eventRows)
+	}
+}
+
+// TestReconcileEditorialConfig_ShippedConfigPendingListsAreExactlyItsUnconfirmedEntries
+// runs the REAL, EMBEDDED config/ tree through ReconcileEditorialConfig and
+// asserts the pending lists the operator is shown — count and identifiers —
+// against what the YAML itself declares.
+//
+// This test exists because the suite was structurally blind to CRITICAL-54.
+// Every other unconfirmed-entry test here builds its fixture in Go, and
+// every one of those fixtures happened to pair date_status: unconfirmed
+// with a nil date. A hand-built fixture cannot exhibit a state the real
+// configuration reaches unless somebody first thinks to write it, and
+// nobody had: the shipped eventos.yaml carried an unconfirmed entry WITH a
+// date for as long as the guard was wrong, and the whole suite stayed
+// green. Reconciling the real tree removes the need to predict the shape in
+// advance — whatever the editors actually write is what gets asserted.
+//
+// The expectation is derived from DateStatus ALONE, deliberately not from
+// the "unconfirmed OR no date" disjunction the reconcile applies. Stating
+// the rule the way an editor states it ("this entry says its date is not
+// confirmed") rather than the way the code happens to implement it keeps
+// this from degenerating into a restatement of the implementation: were the
+// guard to drop either half of its condition, the two would disagree here.
+func TestReconcileEditorialConfig_ShippedConfigPendingListsAreExactlyItsUnconfirmedEntries(t *testing.T) {
+	ctx := context.Background()
+	tx := newTx(t)
+	if err := postgres.NewRunner(tx).Up(ctx); err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+
+	sub, err := fs.Sub(configdata.FS, "config")
+	if err != nil {
+		t.Fatalf("fs.Sub: %v", err)
+	}
+	cfg, err := config.Load(sub)
+	if err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+
+	var wantBreaks, wantEvents []string
+	for _, b := range cfg.Breaks {
+		if b.DateStatus == "unconfirmed" {
+			wantBreaks = append(wantBreaks, b.ID)
+		}
+	}
+	for _, e := range cfg.Events {
+		if e.DateStatus == "unconfirmed" {
+			wantEvents = append(wantEvents, e.ID)
+		}
+	}
+
+	result, err := ingestion.ReconcileEditorialConfig(ctx, tx, *cfg)
+	if err != nil {
+		t.Fatalf("ReconcileEditorialConfig: %v", err)
+	}
+
+	assertSameIDs(t, "PendingBreakIDs", result.PendingBreakIDs, wantBreaks)
+	assertSameIDs(t, "PendingEventIDs", result.PendingEventIDs, wantEvents)
+
+	// The count is asserted as well as the identifiers because the spec
+	// asks for both, and because the two failed apart in CRITICAL-54: the
+	// operator was shown six pending entries while the configuration
+	// declared seven, and the missing one was invisible in the identifier
+	// list precisely because the count did not say one was absent.
+	if got, want := len(result.PendingBreakIDs)+len(result.PendingEventIDs), len(wantBreaks)+len(wantEvents); got != want {
+		t.Errorf("reconciliation reports %d pending entries, the configuration declares %d unconfirmed", got, want)
+	}
+	t.Logf("shipped configuration: %d pending breaks, %d pending events, %d total",
+		len(wantBreaks), len(wantEvents), len(wantBreaks)+len(wantEvents))
+
+	// The pending lists are what the operator READS; the tables are what
+	// the reader eventually sees. Asserting only the first would let a
+	// future change report an entry as pending and project it anyway.
+	pending := map[string]bool{}
+	for _, id := range append(append([]string{}, wantBreaks...), wantEvents...) {
+		pending[id] = true
+	}
+	breakRows, err := postgres.ListSeriesBreaks(ctx, tx)
+	if err != nil {
+		t.Fatalf("ListSeriesBreaks: %v", err)
+	}
+	for _, r := range breakRows {
+		if pending[r.BreakKey] {
+			t.Errorf("series_break holds a row for %q, an entry config/rupturas.yaml declares unconfirmed: %+v", r.BreakKey, r)
+		}
+	}
+	eventRows, err := postgres.ListEvents(ctx, tx)
+	if err != nil {
+		t.Fatalf("ListEvents: %v", err)
+	}
+	for _, r := range eventRows {
+		if pending[r.ID] {
+			t.Errorf("event holds a row for %q, an entry the editorial YAML declares unconfirmed: %+v", r.ID, r)
+		}
+	}
+}
+
+// assertSameIDs compares two id lists as SETS: the reconcile builds its
+// pending lists in configuration order, which is an implementation detail
+// no consumer depends on, and an order-sensitive comparison here would fail
+// on a harmless reordering of the YAML while saying nothing about the
+// invariant that matters.
+func assertSameIDs(t *testing.T, label string, got, want []string) {
+	t.Helper()
+	gotSorted := append([]string{}, got...)
+	wantSorted := append([]string{}, want...)
+	sort.Strings(gotSorted)
+	sort.Strings(wantSorted)
+	if !slices.Equal(gotSorted, wantSorted) {
+		t.Errorf("%s = %v, want %v", label, gotSorted, wantSorted)
 	}
 }

@@ -54,26 +54,37 @@ type BreakConfig struct {
 	NoteMD    string           `yaml:"note_md"`
 	SourceURL string           `yaml:"source_url,omitempty"`
 
-	// Date is the break's effective calendar date. It is a pointer
-	// because an entry whose EXISTENCE is confirmed but whose EFFECTIVE
-	// DATE is not yet confirmed against the source's own methodological
-	// note MUST omit it rather than carry a guessed value (see
-	// DateStatus below) — a wrong break date silently corrupts every
+	// Date is the break's effective calendar date. It is a pointer because
+	// an entry whose EXISTENCE is confirmed but whose EFFECTIVE DATE is
+	// not yet confirmed against the source's own methodological note may
+	// leave it unset — a wrong break date silently corrupts every
 	// comparison across it (PRD's own stated worst failure mode for this
 	// portal, principle P4).
+	//
+	// A PROVISIONAL date alongside DateStatus below is allowed, and is
+	// usually the better entry: the guess plus the Todo tells the next
+	// editor what to check and what the current best reading is, where an
+	// empty field tells them only that somebody stopped. What makes it safe
+	// is DateStatus, not the emptiness of this field — see DateStatus.
 	Date *time.Time `yaml:"date,omitempty"`
 
 	// DateStatus is "" (confirmed — the default; Date MUST be set) or
-	// "unconfirmed" (Date MAY be omitted; Todo MUST name the document to
-	// consult). validate-config rejects any other value and rejects a
-	// confirmed entry with no Date.
+	// DateStatusUnconfirmed (Todo MUST name the document to consult; Date
+	// may be set to a provisional value or left unset). validate-config
+	// rejects any other value and rejects a confirmed entry with no Date.
+	//
+	// THIS FIELD, NOT A NIL Date, IS WHAT KEEPS AN UNGUARANTEED DATE OUT OF
+	// THE DATABASE. ingestion.ReconcileEditorialConfig reads it directly
+	// (isDatePending); nothing downstream of series_break carries the
+	// qualifier, so a provisional date that got projected would look
+	// exactly as authoritative as a confirmed one.
 	DateStatus string `yaml:"date_status,omitempty"`
 
-	// Todo is required when DateStatus is "unconfirmed": it names
+	// Todo is required when DateStatus is DateStatusUnconfirmed: it names
 	// exactly which source document must be consulted to confirm the
 	// effective date. ReconcileEditorialConfig never projects an
-	// unconfirmed entry's guessed date into series_break; it reconciles
-	// the entry as pending-confirmation instead (ingestion package).
+	// unconfirmed entry into series_break; it reconciles the entry as
+	// pending-confirmation instead (ingestion package).
 	Todo string `yaml:"todo,omitempty"`
 
 	// FilePath is set by the loader, same rationale as SourceConfig.FilePath.
@@ -137,9 +148,11 @@ type EventConfig struct {
 	DateStart *time.Time `yaml:"date_start,omitempty"`
 	DateEnd   *time.Time `yaml:"date_end,omitempty"`
 
-	// DateStatus/Todo mirror BreakConfig's: an event whose date is not
-	// yet confirmed against its own source must say so explicitly rather
-	// than carry a guessed value.
+	// DateStatus/Todo mirror BreakConfig's, field for field and rule for
+	// rule: an event whose date is not yet confirmed against its own source
+	// must SAY SO here, and saying so is what holds it back from the event
+	// table — a provisional DateStart alongside it is allowed and does not
+	// weaken that.
 	DateStatus string `yaml:"date_status,omitempty"`
 	Todo       string `yaml:"todo,omitempty"`
 
@@ -178,6 +191,18 @@ const (
 	EventScopeDataset = "dataset"
 	EventScopeSource  = "source"
 )
+
+// DateStatusUnconfirmed is the one non-empty value BreakConfig.DateStatus
+// and EventConfig.DateStatus may take: the editor declaring, in the YAML,
+// that this entry's effective date is not yet confirmed against its source
+// document.
+//
+// Named for the same reason the scope kinds above are, and with a sharper
+// edge. This literal is what validate-config accepts and what the reconcile
+// tests before deciding whether to project a row; a typo in either place
+// does not fail loudly, it silently reclassifies an unconfirmed entry as
+// confirmed and lets a guessed date reach the database.
+const DateStatusUnconfirmed = "unconfirmed"
 
 // eventGroups is every group an entry may declare. `governments` is never
 // written by hand (the loader assigns it from the file), but it is listed

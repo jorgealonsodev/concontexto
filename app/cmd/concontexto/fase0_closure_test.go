@@ -234,9 +234,11 @@ func TestFase0ClosureGate(t *testing.T) {
 		t.Logf("registry has %d confirmed-date and %d unconfirmed-date entries", confirmed, unconfirmed)
 		if unconfirmed > 0 {
 			t.Logf("INCOMPLETE, not failing: %d of %d entries carry date_status=unconfirmed. "+
-				"ReconcileEditorialConfig never projects a nil date into the database "+
-				"(TestReconcileEditorialConfig_ProjectsConfirmedEntriesAndSkipsUnconfirmedDates, "+
-				"app/internal/ingestion), so nothing wrong reaches series_break/event -- but the "+
+				"ReconcileEditorialConfig holds back every entry carrying that status, whether or "+
+				"not it also carries a provisional date, and the count this loop computes is the "+
+				"same one it reports as pending -- asserted against the real embedded config by "+
+				"TestReconcileEditorialConfig_ShippedConfigPendingListsAreExactlyItsUnconfirmedEntries "+
+				"(app/internal/ingestion). So nothing wrong reaches series_break/event -- but the "+
 				"registry itself is not yet fully populated pending those confirmations. Milestone "+
 				"0.5 is genuinely incomplete on this count, not unconditionally closed.",
 				unconfirmed, confirmed+unconfirmed)

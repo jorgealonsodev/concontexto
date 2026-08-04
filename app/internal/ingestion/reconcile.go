@@ -7,16 +7,17 @@ package ingestion
 // to postgres.ReconcileBreaks/ReconcileEvents (see that file's package
 // doc comment for the insert/update-in-place/soft-retire discipline).
 //
-// A break or event whose DateStatus is "unconfirmed" (Date/DateStart is
-// nil) is NEVER projected into series_break/event: this function records
-// its id in PendingBreakIDs/PendingEventIDs instead of guessing a date.
-// A wrong break date silently corrupts every comparison across it — the
-// portal's own worst failure mode — so an entry whose effective date is
-// not yet confirmed against its source's methodological note stays
-// documented in rupturas.yaml/eventos.yaml, visible as "pending", and
-// reconciled once its date is confirmed and the YAML is edited
-// accordingly (which itself goes through the normal in-place-update path,
-// task 7.4/7.5, once Date stops being nil).
+// A break or event whose DateStatus is "unconfirmed" is NEVER projected
+// into series_break/event, WHETHER OR NOT it carries a date: this function
+// records its id in PendingBreakIDs/PendingEventIDs instead (see
+// isDatePending, which is the single place that decision is made for both
+// registries). A wrong break date silently corrupts every comparison
+// across it — the portal's own worst failure mode — so an entry whose
+// effective date is not yet confirmed against its source's methodological
+// note stays documented in rupturas.yaml/eventos.yaml, visible as
+// "pending", and reconciled once the editor removes date_status and the
+// YAML is edited accordingly (which itself goes through the normal
+// in-place-update path, task 7.4/7.5).
 
 import (
 	"context"
@@ -70,7 +71,7 @@ func ReconcileEditorialConfig(ctx context.Context, db postgres.TxBeginner, cfg c
 
 	var breakInputs []postgres.SeriesBreakInput
 	for _, b := range cfg.Breaks {
-		if b.Date == nil {
+		if isDatePending(b.DateStatus, b.Date) {
 			result.PendingBreakIDs = append(result.PendingBreakIDs, b.ID)
 			continue
 		}
@@ -83,7 +84,7 @@ func ReconcileEditorialConfig(ctx context.Context, db postgres.TxBeginner, cfg c
 
 	var eventInputs []postgres.EventInput
 	for _, e := range cfg.Events {
-		if e.DateStart == nil {
+		if isDatePending(e.DateStatus, e.DateStart) {
 			result.PendingEventIDs = append(result.PendingEventIDs, e.ID)
 			continue
 		}
@@ -139,6 +140,32 @@ func ReconcileEditorialConfig(ctx context.Context, db postgres.TxBeginner, cfg c
 	result.Acknowledgements = counts.Acknowledgements
 
 	return result, nil
+}
+
+// isDatePending decides, for a break and for an event alike, whether this
+// run must hold the entry back instead of projecting it.
+//
+// It reads DateStatus FIRST, and that ordering is the whole point. The two
+// guards this replaced tested `date == nil` and treated it as a proxy for
+// "unconfirmed", on the assumption that an entry declaring its date
+// unconfirmed would leave the field empty. Nothing enforced that
+// assumption: validate-config requires a todo alongside date_status:
+// unconfirmed but has never required the date to be absent, and an editor
+// recording a best-guess month plus the document that would confirm it is
+// writing BETTER configuration than one who leaves the field blank — the
+// guess and the todo together tell the next editor what to check, where an
+// empty field tells them only that somebody stopped. So the shape is
+// legitimate, it occurs in the shipped eventos.yaml, and the proxy silently
+// disagreed with the declaration for exactly those entries: the guess was
+// projected, exported and drawn on the chart with nothing anywhere marking
+// it as a guess (CRITICAL-54).
+//
+// The nil check stays as the second half, guarding the dereference at the
+// call site rather than restating the rule. A confirmed entry with no date
+// cannot get past validate-config; if one ever does, skipping it keeps that
+// bypass inert instead of turning it into a panic.
+func isDatePending(dateStatus string, date *time.Time) bool {
+	return dateStatus == config.DateStatusUnconfirmed || date == nil
 }
 
 // breakDigest/eventDigest compute the per-entry SHA-256 config_digest

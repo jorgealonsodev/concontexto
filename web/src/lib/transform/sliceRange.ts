@@ -18,9 +18,24 @@ export type RangePreset = (typeof RANGE_PRESETS)[number];
  * only-sometimes-meaningful pair of bounds alongside it. */
 export const CUSTOM_RANGE = "custom";
 
-/** Everything the chart can currently be ranged BY: one of the fixed presets
- * or the custom `[from, to]` selection. */
-export type RangeSelection = RangePreset | typeof CUSTOM_RANGE;
+/** One government's own term (indicator-page spec, "Annotation layers per PRD
+ * §6.1.1(a)" — the `governments` event group). Kept out of `RANGE_PRESETS` for
+ * exactly the reason `CUSTOM_RANGE` is: it carries a payload the enum members
+ * do not — the selected government's editorial event id — and that id has to
+ * travel with the selection through the component's state and through the
+ * permalink.
+ *
+ * It is a THIRD kind rather than a variant of `CUSTOM_RANGE` because its
+ * bounds are not the reader's: they are derived from the editorial registry's
+ * succession (`lib/transform/governmentTerms`), which is an inference the
+ * product has to keep distinguishable from a range a reader typed. It reuses
+ * `sliceCustomRange` to do the actual slicing, so there is one slicing
+ * primitive here, not two. */
+export const GOVERNMENT_RANGE = "government";
+
+/** Everything the chart can currently be ranged BY: one of the fixed presets,
+ * the custom `[from, to]` selection, or one government's derived term. */
+export type RangeSelection = RangePreset | typeof CUSTOM_RANGE | typeof GOVERNMENT_RANGE;
 
 export interface RangeTransformPoint {
   period: string;

@@ -123,3 +123,102 @@ describe("encodeChartState / decodeChartState — the custom range", () => {
     expect(encodeChartState({ range: "full", transform: "raw", custom: null })).toBe("");
   });
 });
+
+// The government range (indicator-page spec, "Annotation layers per PRD
+// §6.1.1(a)" — the `governments` event group, read together with
+// series-transformations spec's "The selected preset MUST be encoded in the
+// permalink").
+//
+// A government selection carries a payload exactly as the custom range does —
+// but ONE identifier, not a pair of bounds, and that identifier is the
+// editorial registry's own event id (`gobierno-rajoy-2011`). The id is the
+// right thing to encode rather than the derived `[from, to]` window, because
+// the window is INFERRED from the succession: encoding the window would freeze
+// today's inference into every shared link, so a later registry correction (a
+// confirmed end date, a government finally recorded) would leave old links
+// pointing at a span nobody would derive again. The id survives that
+// correction; the window is re-derived on every load.
+//
+// It is also a machine surface, and stays one: the raw config id, never the
+// reader-facing name and never a formatted year range.
+describe("encodeChartState / decodeChartState — the government range", () => {
+  const AVAILABLE = ["full", "5y", "custom", "government"] as const;
+
+  it("round-trips a government selection by its editorial id", () => {
+    const search = encodeChartState({ range: "government", transform: "raw", government: "gobierno-rajoy-2011" });
+    expect(search).toContain("range=government");
+    expect(search).toContain("government=gobierno-rajoy-2011");
+    expect(decodeChartState(search, AVAILABLE, ["raw", "yoy"])).toEqual({
+      range: "government",
+      transform: "raw",
+      government: "gobierno-rajoy-2011",
+    });
+  });
+
+  it("round-trips a government selection alongside an active transformation", () => {
+    const search = encodeChartState({ range: "government", transform: "yoy", government: "gobierno-sanchez-2018" });
+    expect(decodeChartState(search, AVAILABLE, ["raw", "yoy"])).toEqual({
+      range: "government",
+      transform: "yoy",
+      government: "gobierno-sanchez-2018",
+    });
+  });
+
+  it("encodes the id verbatim — a permalink parameter is a machine surface, never display copy", () => {
+    const search = encodeChartState({ range: "government", transform: "raw", government: "gobierno-gonzalez-1982" });
+    // The reader-facing rendering of this same selection is "Felipe González
+    // (1982–1996)". None of that may leak into the parameter that is parsed
+    // back, exactly as the custom range encodes "2010-Q1" and not "T1 2010".
+    expect(search).not.toContain("Felipe");
+    expect(search).not.toContain("1982%E2%80%931996");
+    expect(new URLSearchParams(search.slice(1)).get("government")).toBe("gobierno-gonzalez-1982");
+  });
+
+  it("never emits a government id for any other range — it would describe nothing", () => {
+    const search = encodeChartState({ range: "5y", transform: "raw", government: "gobierno-rajoy-2011" });
+    expect(search).toContain("range=5y");
+    expect(search).not.toContain("government=");
+  });
+
+  it("degrades range=government with no id to the default range, on both sides", () => {
+    expect(encodeChartState({ range: "government", transform: "raw", government: null })).toBe("");
+    expect(decodeChartState("?range=government", AVAILABLE, ["raw"])).toEqual({ range: "full", transform: "raw" });
+  });
+
+  it("ignores range=government entirely when the caller offers no government range", () => {
+    // Same gate the fixed presets and the custom range already pass through:
+    // a series whose span overlaps no selectable government offers no
+    // government control, so a URL cannot select one.
+    expect(decodeChartState("?range=government&government=gobierno-rajoy-2011", ["full", "5y"], ["raw"])).toEqual({
+      range: "full",
+      transform: "raw",
+    });
+  });
+
+  it("passes an unknown id through verbatim for the island to judge — parsing is not validation", () => {
+    // This module has no access to the series, so it cannot know which
+    // governments overlap it. `availableGovernmentTerms` is the single place
+    // that judges; the island degrades to the full range when it refuses.
+    expect(decodeChartState("?range=government&government=banana", AVAILABLE, ["raw"])).toEqual({
+      range: "government",
+      transform: "raw",
+      government: "banana",
+    });
+  });
+
+  it("keeps the custom range and the government range from contaminating each other", () => {
+    const search = encodeChartState({
+      range: "government",
+      transform: "raw",
+      government: "gobierno-rajoy-2011",
+      custom: { from: "2010-Q1", to: "2015-Q4" },
+    });
+    expect(search).not.toContain("from=");
+    expect(search).not.toContain("to=");
+    expect(decodeChartState("?range=custom&from=2010-Q1&to=2015-Q4&government=gobierno-rajoy-2011", AVAILABLE, ["raw"])).toEqual({
+      range: "custom",
+      transform: "raw",
+      custom: { from: "2010-Q1", to: "2015-Q4" },
+    });
+  });
+});

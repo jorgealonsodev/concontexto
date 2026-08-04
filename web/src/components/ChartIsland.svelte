@@ -35,6 +35,7 @@
   import { computePerCapita } from "../lib/transform/perCapita";
   import {
     CUSTOM_RANGE,
+    GOVERNMENT_RANGE,
     availablePresets,
     periodStartCalendarDate,
     resolveCustomRange,
@@ -44,6 +45,11 @@
     type RangePreset,
     type RangeSelection,
   } from "../lib/transform/sliceRange";
+  import {
+    availableGovernmentTerms,
+    deriveGovernmentTerms,
+    type GovernmentTerm,
+  } from "../lib/transform/governmentTerms";
   import { nearestPointIndexForX } from "../lib/chart/hitTest";
   import { nextFocusIndex, type ChartNavKey } from "../lib/chart/focusIndex";
   import { reduceTransform, type TransformKind, type ToggleableTransform } from "../lib/chart/toggleState";
@@ -179,6 +185,15 @@
   let customRange: { from: string; to: string } | null = $state(null);
   let customClamped = $state(false);
   let customError: CustomRangeRejection | null = $state(null);
+  // ---- Government range (indicator-page spec, "Annotation layers per PRD
+  // §6.1.1(a)"). ONE piece of state, unlike the custom range's four: the
+  // selected government's editorial event id, or "" for no government filter
+  // (the `<select>`'s neutral option). There is no draft/committed split
+  // because there is nothing to refuse — the options offered are exactly the
+  // terms that genuinely narrow this series, computed before the control is
+  // rendered (`availableGovernmentTerms`), so a selection cannot fail the way
+  // a typed range can.
+  let governmentSelection = $state("");
   // The picker is rendered only once this flips (see the `onMount` below and
   // `chart-no-js.spec.ts` for the full rationale): with JavaScript disabled a
   // free-form range cannot work at all on a statically built page, so it must
@@ -246,24 +261,64 @@
    * the custom range's own version of the presets' availability rule. */
   const customRangeAvailable = $derived(points.length > 1);
   const customActive = $derived(activeRange === CUSTOM_RANGE && customRange !== null);
+
+  // ---- Government terms ----
+  //
+  // Derived from the SAME `annotations` prop the chips below already render,
+  // so the control and the chips can never disagree about which governments
+  // this artifact carries. `deriveGovernmentTerms` owns the succession
+  // inference and marks it (see that module's header); this component owns
+  // only the disclosure of it.
+  //
+  // Fed `rawPeriods`, never `viewPoints`: a government's term is a statement
+  // about the series' history, so toggling a transformation must not silently
+  // redefine which governments overlap it — exactly as for the fixed presets
+  // and the custom range.
+  const governmentTerms = $derived(deriveGovernmentTerms(annotations, frequency));
+  const availableTerms = $derived(availableGovernmentTerms(governmentTerms, rawPeriods, frequency));
+  /** The term currently in force, or null. A selection that names a term this
+   * series does not offer (an old permalink, a hand-edited URL, an artifact
+   * whose registry changed under a cached page) resolves to null and the view
+   * falls back to the full range — the same silent, truthful degradation an
+   * unrecognised preset already gets. */
+  const activeTerm = $derived<GovernmentTerm | null>(
+    activeRange === GOVERNMENT_RANGE && governmentSelection
+      ? availableTerms.find((term) => term.id === governmentSelection) ?? null
+      : null,
+  );
+  const governmentActive = $derived(activeTerm !== null);
   /** The preset in force when no custom range is. A preset that does not
    * apply to this series' span (e.g. reached via an old permalink) falls back
    * to "full", unchanged from before this slice. */
   const effectivePreset = $derived<RangePreset>(
     activeRange !== CUSTOM_RANGE && (presets as string[]).includes(activeRange) ? (activeRange as RangePreset) : "full",
   );
-  const effectiveRange = $derived<RangeSelection>(customActive ? CUSTOM_RANGE : effectivePreset);
+  const effectiveRange = $derived<RangeSelection>(
+    customActive ? CUSTOM_RANGE : governmentActive ? GOVERNMENT_RANGE : effectivePreset,
+  );
   /** Every range selection this component is currently offering — the gate
    * `decodeChartState` applies to the permalink, so a URL can never select a
-   * range no control on the page could have produced. */
-  const rangeSelections = $derived<RangeSelection[]>(
-    customRangeAvailable ? [...presets, CUSTOM_RANGE] : [...presets],
-  );
+   * range no control on the page could have produced. `GOVERNMENT_RANGE` joins
+   * it only when at least one term genuinely narrows this series, which is
+   * what makes `?range=government` inert on a page carrying no such control. */
+  const rangeSelections = $derived<RangeSelection[]>([
+    ...presets,
+    ...(customRangeAvailable ? [CUSTOM_RANGE] : []),
+    ...(availableTerms.length > 0 ? [GOVERNMENT_RANGE] : []),
+  ]);
 
   const rangedPoints = $derived(
     customActive && customRange
       ? sliceCustomRange(viewPoints, frequency, customRange.from, customRange.to)
-      : sliceRange(viewPoints, frequency, effectivePreset),
+      : activeTerm
+        ? // The SAME slicing primitive the custom range uses, deliberately:
+          // a government term is a `[from, to]` window like any other once it
+          // has been derived, and a second slicing path would be a second
+          // place for the two to disagree. An OPEN term (the sitting
+          // government) is sliced to the series' own last period — the honest
+          // reading of "no end recorded", and not an invented end date.
+          sliceCustomRange(viewPoints, frequency, activeTerm.startPeriod, activeTerm.endPeriod ?? latestPeriod)
+        : sliceRange(viewPoints, frequency, effectivePreset),
   );
   const rangedPeriods = $derived(rangedPoints.map((p) => p.period));
 
@@ -278,6 +333,48 @@
   const customFromId = $derived(`custom-range-from-${idBase}`);
   const customToId = $derived(`custom-range-to-${idBase}`);
   const customStatusId = $derived(`custom-range-status-${idBase}`);
+  const governmentSelectId = $derived(`government-range-${idBase}`);
+  const governmentStatusId = $derived(`government-range-status-${idBase}`);
+
+  /** One option's visible label: the president's name (registry data, printed
+   * verbatim — never translated, never reworded) plus the term's own years, so
+   * a reader who does not remember when Aznar governed can still choose.
+   *
+   * The years describe the TERM, not the slice: Aznar's option reads
+   * "1996–2004" even on a series beginning in 2002, because the option names a
+   * government and the status line below names what was actually rendered. */
+  function governmentOptionLabel(term: GovernmentTerm): string {
+    const startYear = term.startDate.slice(0, 4);
+    // An open term has no closing year to print, and printing the current one
+    // would assert an end that has not happened.
+    if (term.endPeriod === null) return es.chart.government.openOptionLabel(term.name, startYear);
+    // Every period label — "2018-Q1", "2018-05", "2018" — begins with its
+    // four-digit year, which is the only part this label needs.
+    return es.chart.government.optionLabel(term.name, startYear, term.endPeriod.slice(0, 4));
+  }
+
+  /** The government control's own status line: what is on screen, plus — when
+   * the term's end was INFERRED rather than configured — the sentence saying
+   * so. The disclosure is not optional decoration: no government in the
+   * editorial registry carries an end date, so without it every closed term
+   * would present a derived boundary as a recorded one. */
+  const governmentStatus = $derived.by((): string => {
+    if (!activeTerm || rangedPoints.length === 0) return "";
+    // Prose register, like every other sentence in this live region.
+    const from = formatPeriodProse(rangedPoints[0].period);
+    const to = formatPeriodProse(rangedPoints[rangedPoints.length - 1].period);
+    const applied = es.chart.government.appliedNote(activeTerm.name, from, to);
+    const endNote =
+      activeTerm.endKind === "succession"
+        ? es.chart.government.derivedEndNote
+        : activeTerm.endKind === "open"
+          ? es.chart.government.openEndNote
+          : // "configured": the registry states the end, so there is no
+            // inference to disclose. Unreachable today (no entry carries
+            // `date_end`) and deliberately silent rather than defensive.
+            "";
+    return endNote ? `${applied} ${endNote}` : applied;
+  });
 
   /** The single line of text under the picker: the refusal reason, or the
    * disclosure of what was actually applied. Reports the span REALLY
@@ -476,6 +573,21 @@
     // themselves are kept, so the reader can return to their own range by
     // pressing the commit control again without re-typing it.
     customError = null;
+    // The government select, however, is CLEARED rather than merely
+    // deactivated: it is a control that displays its own state, so leaving a
+    // president's name showing while the chart draws a preset would state
+    // something false about the view. (The date inputs above are draft fields,
+    // not a statement about what is rendered, which is why they are kept.)
+    governmentSelection = "";
+  }
+
+  /** Selects one government's derived term, or — for the neutral option —
+   * clears the filter back to the full series. "Todos los gobiernos" means
+   * every period, so the full range is what it selects. */
+  function selectGovernment(id: string) {
+    customError = null;
+    governmentSelection = id;
+    activeRange = id === "" ? "full" : GOVERNMENT_RANGE;
   }
 
   /** Commits whatever is currently in the two date inputs, via the single
@@ -500,6 +612,9 @@
     customRange = { from: resolution.from, to: resolution.to };
     customClamped = resolution.clamped;
     activeRange = CUSTOM_RANGE;
+    // Same reason as in `selectRange`: the government select states what the
+    // chart is showing, and the chart is no longer showing a government's term.
+    governmentSelection = "";
   }
   function toggleAnnotationGroup(group: AnnotationGroup) {
     openGroups = { ...openGroups, [group]: !openGroups[group] };
@@ -564,6 +679,21 @@
       } else {
         activeRange = "full";
       }
+    } else if (decoded.range === GOVERNMENT_RANGE && decoded.government) {
+      // The id arrives verbatim from the query string and is judged HERE,
+      // against this series' own available terms — a government that does not
+      // overlap this series (or one the registry no longer carries) is not
+      // selectable by URL any more than it is by control. Degrades silently to
+      // the full series, for the same reason the custom range does: there is no
+      // reader gesture to attach an error to, and the full series is a truthful
+      // view rather than an empty one.
+      const term = availableTerms.find((t) => t.id === decoded.government);
+      if (term) {
+        governmentSelection = term.id;
+        activeRange = GOVERNMENT_RANGE;
+      } else {
+        activeRange = "full";
+      }
     } else {
       activeRange = decoded.range;
     }
@@ -580,6 +710,12 @@
       // answers "why is this narrower than what you asked for", a question
       // only the reader who typed it ever asked.
       custom: customActive ? customRange : null,
+      // The government's ID, never its derived window: the window is an
+      // inference this product re-derives on every load, so a link that froze
+      // today's inference would quietly stop agreeing with the registry the
+      // day the registry gains a confirmed end date. See
+      // `lib/chart/permalink.ts`.
+      government: governmentActive ? governmentSelection : null,
     });
     const url = `${window.location.pathname}${search}${window.location.hash}`;
     window.history.replaceState(null, "", url);
@@ -764,6 +900,70 @@
         data-testid="custom-range-status"
       >
         {customRangeStatus}
+      </p>
+    {/if}
+
+    <!-- The government range (indicator-page spec, "Annotation layers per PRD
+         §6.1.1(a)"): the one range this product offers that a reader cannot
+         express with the controls above, because its bounds are not on the
+         page — they are in the editorial registry, and its end is derived
+         from the succession.
+
+         `hydrated &&`, for the same reason the custom picker carries it: a
+         `<select>` that redraws a client-side chart cannot work on a
+         statically built page with no JavaScript, and a control that cannot
+         work must be ABSENT rather than rendered as though it works (the
+         spec's own "absent, not disabled" discipline for a preset that
+         cannot apply). `island-ssr.test.ts` and the no-JS browser context
+         both gate that absence.
+
+         `availableTerms.length > 0` is the second gate: a series overlapping
+         no government — or only one whose term covers the whole of it —
+         offers no control at all rather than an empty or decorative one
+         (`availableGovernmentTerms`).
+
+         A `<select>` rather than the button row the presets use: up to six
+         options carrying full presidential names would occupy more of a
+         375 px phone than the chart they filter, and the choice is a single
+         mutually-exclusive pick from a closed list — which is what a native
+         select is. It inherits keyboard support, screen-reader semantics and
+         the platform's own picker for free. -->
+    {#if hydrated && availableTerms.length > 0}
+      <div class="flex flex-col gap-1" data-testid="chart-government-range">
+        <label class="text-caption text-ink-muted" for={governmentSelectId} data-testid="government-select-label">
+          {es.chart.government.selectLabel}
+        </label>
+        <select
+          id={governmentSelectId}
+          class="min-h-11 rounded-control border border-ink bg-surface px-3 py-2 text-body text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          class:border-accent={governmentActive}
+          class:text-accent={governmentActive}
+          aria-describedby={governmentStatusId}
+          data-testid="government-select"
+          bind:value={governmentSelection}
+          onchange={(e) => selectGovernment(e.currentTarget.value)}
+        >
+          <option value="">{es.chart.government.allOption}</option>
+          {#each availableTerms as term (term.id)}
+            <option value={term.id}>{governmentOptionLabel(term)}</option>
+          {/each}
+        </select>
+      </div>
+      <!-- One polite live region, exactly like the custom range's: it states
+           the span actually rendered AND — because no government in the
+           registry carries an end date — that the end of a closed term is
+           derived from the next investiture rather than recorded. That
+           sentence is the whole reason this line exists; a filter that
+           silently presented an inferred boundary as a configured one would
+           be the P4 failure this project's `date_status: unconfirmed`
+           machinery exists to prevent. -->
+      <p
+        id={governmentStatusId}
+        class="text-caption text-ink-muted"
+        aria-live="polite"
+        data-testid="government-range-status"
+      >
+        {governmentStatus}
       </p>
     {/if}
 

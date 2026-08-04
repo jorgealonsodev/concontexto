@@ -65,5 +65,40 @@ test.describe("Indicator pages — no-JavaScript baseline", () => {
         await expect(page.locator("body")).not.toContainText("Error");
       },
     );
+
+    // The two hydration-only range controls, held to the spec's "absent, not
+    // disabled" discipline rather than merely to "does not crash".
+    //
+    // The government select cannot work on a statically built page with no
+    // JavaScript — there is no server to ask for a re-slice — so rendering it
+    // would put a control in front of a reader that looks exactly like the
+    // working ones beside it and silently does nothing when used. The custom
+    // range picker is asserted in the same test because it is the same rule
+    // and the same failure.
+    //
+    // DISCLOSED, unchanged from `chart-no-js.spec.ts`: the five fixed preset
+    // BUTTONS remain server-rendered and equally inert without JavaScript.
+    // That predates both controls and is recorded rather than swept in.
+    test(
+      `/indicador/${slug}: the government range control is absent — not present-but-dead — with JavaScript disabled`,
+      { tag: ["@indicator-page", "@a11y", "@no-js", "@government-range"] },
+      async ({ page }) => {
+        const indicator = new IndicatorPage(page, slug);
+        await indicator.goto();
+
+        // The island's server-rendered markup really is here...
+        await expect(indicator.chartSection.locator('[data-testid="accessible-data-table"]')).toBeVisible();
+        // ...and neither hydration-only control is.
+        await expect(indicator.governmentRange).toHaveCount(0);
+        await expect(indicator.governmentSelect).toHaveCount(0);
+        await expect(indicator.chartSection.locator("select")).toHaveCount(0);
+        await expect(indicator.customRangeApply).toHaveCount(0);
+
+        // The governments themselves are NOT withheld from a no-JavaScript
+        // reader: the editorial annotation layer is static markup and stays.
+        // Only the interactive filter over it is absent.
+        await expect(indicator.chartSection.getByTestId("annotation-group-governments")).toBeVisible();
+      },
+    );
   }
 });

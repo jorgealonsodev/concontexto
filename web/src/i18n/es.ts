@@ -77,6 +77,49 @@ export const es = {
         "no-observations": "La serie no tiene ningún dato en el intervalo indicado.",
       } as const,
     },
+    /** The government range (indicator-page spec, "Annotation layers per PRD
+     * §6.1.1(a)" — the `governments` event group, offered as a range control
+     * rather than only as a chip). Its own key, beside `customRange` and for
+     * the same reason: `range` above is a pure preset-key → label map, and a
+     * government selection is not a preset key — it is a small form (one
+     * select, one status line) whose options are DATA, not vocabulary. The
+     * president's name is never translated or rephrased here: it arrives from
+     * `config/gobiernos.yaml` and is printed verbatim.
+     *
+     * ALL NEW READER-FACING COPY — flagged for editorial sign-off, per this
+     * project's established convention. Register matched to the rest of this
+     * module: impersonal, no second person, every message a statement of fact
+     * about the series rather than an instruction.
+     *
+     * `derivedEndNote` and `openEndNote` are the two that matter most, and
+     * they are not decoration. No government in the registry carries an end
+     * date, so the end of every closed term is INFERRED from the next
+     * government's investiture (`lib/transform/governmentTerms`). This project
+     * does not present an inference as a configured fact — `date_status:
+     * unconfirmed` exists precisely to stop that — so the sentence that says
+     * so travels with the view it produced, in the same polite live region
+     * that already discloses a clamped custom range. */
+    government: {
+      selectLabel: "Gobierno",
+      /** The neutral option: no government filter. Names the whole set rather
+       * than saying "ninguno", because choosing it shows every period, not no
+       * period. */
+      allOption: "Todos los gobiernos",
+      optionLabel: (name: string, startYear: string, endYear: string) => `${name} (${startYear}–${endYear})`,
+      /** The sitting government: no closing year exists, so none is printed. */
+      openOptionLabel: (name: string, startYear: string) => `${name} (desde ${startYear})`,
+      /** Reports the span REALLY rendered — the first and last plotted period
+       * — not the term's own bounds, which can extend beyond the series at
+       * either end. Same rule the custom range's disclosure already follows:
+       * the honest statement is the one about what is on screen. */
+      appliedNote: (name: string, from: string, to: string) => `Gobierno de ${name}: se muestra de ${from} a ${to}.`,
+      derivedEndNote:
+        "El registro editorial no recoge la fecha de fin de este gobierno: el final del intervalo se deduce de la " +
+        "toma de posesión del gobierno siguiente.",
+      openEndNote:
+        "El registro editorial no recoge la fecha de fin de este gobierno: se muestra hasta el último dato " +
+        "disponible de la serie.",
+    },
     transforms: {
       raw: "Serie original",
       yoy: "Variación interanual",

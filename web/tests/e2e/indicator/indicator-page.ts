@@ -29,6 +29,13 @@ export class IndicatorPage extends BasePage {
   readonly customRangeTo: Locator;
   readonly customRangeApply: Locator;
   readonly customRangeStatus: Locator;
+  /** The government range control (indicator-page spec, "Annotation layers per
+   * PRD §6.1.1(a)"). Rendered only after hydration, and only when at least one
+   * government's term genuinely narrows this series — a `<select>` whose
+   * options are the editorial registry's own event ids. */
+  readonly governmentRange: Locator;
+  readonly governmentSelect: Locator;
+  readonly governmentStatus: Locator;
   readonly yoyVariation: Locator;
   /** The link back to `/` (milestone 1.2). Rendered by `IndicatorPage.astro`,
    * so all six routes carry it. */
@@ -58,6 +65,9 @@ export class IndicatorPage extends BasePage {
     this.customRangeTo = this.chartSection.getByTestId("custom-range-to");
     this.customRangeApply = this.chartSection.getByTestId("custom-range-apply");
     this.customRangeStatus = this.chartSection.getByTestId("custom-range-status");
+    this.governmentRange = this.chartSection.getByTestId("chart-government-range");
+    this.governmentSelect = this.chartSection.getByTestId("government-select");
+    this.governmentStatus = this.chartSection.getByTestId("government-range-status");
     this.yoyVariation = page.getByTestId("page-yoy-variation");
     this.backToHome = page.getByTestId("back-to-home");
     this.header = page.getByTestId("page-header");
@@ -91,8 +101,13 @@ export class IndicatorPage extends BasePage {
 
   /** Every focusable/clickable interactive control on the whole page — same
    * convention as `WorkbenchPage.interactiveControls()`, including the same
-   * `input` rule and the same `.sr-only` carve-out (documented there). */
+   * `input` rule and the same `.sr-only` carve-out (documented there).
+   *
+   * `select` was added with the government range control, for exactly the
+   * reason `input` was added with the custom range picker: the sweep measures
+   * what it lists, so a control type absent from this selector ships
+   * unmeasured. It is the first `<select>` in this product. */
   interactiveControls(): Locator {
-    return this.page.locator('a, button, summary, input:not(.sr-only), [tabindex="0"]');
+    return this.page.locator('a, button, summary, select, input:not(.sr-only), [tabindex="0"]');
   }
 }

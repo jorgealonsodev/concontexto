@@ -50,6 +50,10 @@ export class WorkbenchPage extends BasePage {
    * this selector already measures. Measuring the 1x1 px checkbox itself
    * would fail a control that is, in the reader's hands, 44 px tall. */
   interactiveControls(): Locator {
-    return this.page.locator('a, button, summary, input:not(.sr-only), [tabindex="0"]');
+    // `select` joined the list with the government range control (the first
+    // `<select>` in this product): the sweep measures exactly what it lists,
+    // so an unlisted control type ships unmeasured — the same gap `input`
+    // filled when the custom range picker arrived.
+    return this.page.locator('a, button, summary, select, input:not(.sr-only), [tabindex="0"]');
   }
 }

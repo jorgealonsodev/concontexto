@@ -42,11 +42,14 @@ for (const slug of SLUGS) {
           const indicator = new IndicatorPage(page, slug);
           await indicator.goto();
           // Audit the HYDRATED page: the custom-range picker (two labelled
-          // date inputs, a commit button and a polite live region) exists
-          // only after hydration, so an audit that ran before it would
-          // report zero violations over markup that was never there.
+          // date inputs, a commit button and a polite live region) and the
+          // government range control (a labelled select and a second live
+          // region) exist only after hydration, so an audit that ran before
+          // them would report zero violations over markup that was never
+          // there.
           await indicator.waitForChartHydrated();
           await indicator.customRangeApply.waitFor();
+          await indicator.governmentSelect.waitFor();
           if (theme === "dark") {
             await page.evaluate(() => document.documentElement.setAttribute("data-theme", "dark"));
           }
@@ -196,6 +199,136 @@ for (const slug of SLUGS) {
       },
     );
 
+    // The government range (indicator-page spec, "Annotation layers per PRD
+    // §6.1.1(a)" — the `governments` event group; series-transformations
+    // spec, "The selected preset MUST be encoded in the permalink").
+    //
+    // This is the one range control whose bounds are NOT on the page: they
+    // come from `config/gobiernos.yaml` via the artifact's `events`, and the
+    // end of every closed term is INFERRED from the next investiture, since no
+    // government in that registry carries an end date. So this test checks
+    // three things a narrower one would miss: that the slice is real, that the
+    // inference is DISCLOSED to the reader, and that the chart, the data table
+    // and the generated description all describe the same slice.
+    test(
+      "selecting a government narrows the chart to its term, discloses the derived end, and the table and description agree",
+      { tag: ["@indicator-page", "@government-range"] },
+      async ({ page }) => {
+        const indicator = new IndicatorPage(page, slug);
+        await indicator.goto();
+        await indicator.waitForChartHydrated();
+        await indicator.governmentSelect.waitFor();
+
+        const fullCount = await indicator.points.count();
+        const optionValues = await indicator.governmentSelect
+          .locator("option")
+          .evaluateAll((nodes) => nodes.map((n) => (n as HTMLOptionElement).value));
+        // The neutral option plus at least one government. All six series
+        // span 2018, so the sitting government is always among them.
+        expect(optionValues[0], `${slug}: the first option must be the neutral one`).toBe("");
+        expect(optionValues.length, `${slug}: no government terms offered`).toBeGreaterThan(1);
+
+        // The LAST option is the sitting government — the one whose term is
+        // open-ended, and therefore the one whose disclosure is the "no end
+        // recorded" sentence rather than the "derived from the successor" one.
+        const sitting = optionValues[optionValues.length - 1];
+        await indicator.governmentSelect.selectOption(sitting);
+
+        await expect
+          .poll(async () => indicator.points.count(), { message: `${slug}: "${sitting}" did not narrow the chart` })
+          .toBeLessThan(fullCount);
+        const narrowedCount = await indicator.points.count();
+        expect(narrowedCount, `${slug}: the government range emptied the chart`).toBeGreaterThan(0);
+
+        // The ID travels in the permalink, never the president's name and
+        // never the derived window — the parameter is parsed back.
+        await expect(page).toHaveURL(new RegExp(`range=government&government=${sitting}`));
+        await expect(page).not.toHaveURL(/from=/);
+
+        // The disclosure. The registry records no end date for a sitting
+        // government, and the page says so rather than implying the chart's
+        // last observation is a term boundary.
+        await expect(indicator.governmentStatus).toContainText("Gobierno de");
+        await expect(indicator.governmentStatus).toContainText("no recoge la fecha de fin");
+
+        // Agreement, in all three renderings of the same slice.
+        const periods = await indicator.points.evaluateAll((nodes) =>
+          nodes.map((n) => n.getAttribute("aria-label")?.split(":")[0] ?? ""),
+        );
+        const first = periods[0];
+        const last = periods[periods.length - 1];
+        const description = indicator.chartSection.getByTestId("chart-description");
+        await expect(description).toContainText(first);
+        await expect(description).toContainText(last);
+        // The status line names the SAME rendered span the chart draws.
+        await expect(indicator.governmentStatus).toContainText(first);
+        await expect(indicator.governmentStatus).toContainText(last);
+        // ...and the table holds one row per rendered observation. A row can
+        // exist for a null value with no point button beside it, so the table
+        // is allowed to be longer — never shorter, and never the full series.
+        const rows = indicator.chartSection.locator('[data-testid="accessible-data-table"] tbody tr');
+        const rowCount = await rows.count();
+        expect(rowCount, `${slug}: the table did not follow the chart`).toBeGreaterThanOrEqual(narrowedCount);
+        expect(rowCount, `${slug}: the table still shows the full series`).toBeLessThan(fullCount);
+
+        // The permalink round-trip: the same view, the same selection.
+        await page.reload();
+        const reloaded = new IndicatorPage(page, slug);
+        await reloaded.waitForChartHydrated();
+        await reloaded.governmentSelect.waitFor();
+        await expect
+          .poll(async () => reloaded.points.count(), { message: `${slug}: the government permalink did not reproduce` })
+          .toBe(narrowedCount);
+        await expect(reloaded.governmentSelect).toHaveValue(sitting);
+        await expect(reloaded.governmentStatus).toContainText("Gobierno de");
+      },
+    );
+
+    // "Absent, not present-and-empty" — mutation-checked by exercising EVERY
+    // option the control offers rather than by asserting the rule in the
+    // abstract. Two ways to fail: an offered government that renders an empty
+    // chart (the rule the fixed presets state), and an offered government that
+    // renders the whole series (a duplicate of "Todo el periodo", which is the
+    // REASON the presets give for absence). A term that fell outside this
+    // series entirely would trip the first; the sitting government over a
+    // three-observation series would trip the second.
+    test(
+      "every offered government genuinely narrows the chart, and no government that cannot is offered",
+      { tag: ["@indicator-page", "@government-range"] },
+      async ({ page }) => {
+        const indicator = new IndicatorPage(page, slug);
+        await indicator.goto();
+        await indicator.waitForChartHydrated();
+        await indicator.governmentSelect.waitFor();
+
+        const fullCount = await indicator.points.count();
+        const values = (
+          await indicator.governmentSelect
+            .locator("option")
+            .evaluateAll((nodes) => nodes.map((n) => (n as HTMLOptionElement).value))
+        ).filter((value) => value !== "");
+
+        const broken: string[] = [];
+        for (const value of values) {
+          await indicator.governmentSelect.selectOption(value);
+          await expect(page).toHaveURL(new RegExp(`government=${value}`));
+          const count = await indicator.points.count();
+          if (count === 0) broken.push(`${value} (empty)`);
+          if (count === fullCount) broken.push(`${value} (identical to the full series)`);
+        }
+        expect(broken, `${slug}: offered governments that cannot narrow anything: ${broken.join(", ")}`).toEqual([]);
+
+        // And the neutral option really does restore the full series, so the
+        // filter can be undone without reloading the page.
+        await indicator.governmentSelect.selectOption("");
+        await expect
+          .poll(async () => indicator.points.count(), { message: `${slug}: clearing the filter did not restore the series` })
+          .toBe(fullCount);
+        await expect(page).not.toHaveURL(/government=/);
+        await expect(indicator.governmentStatus).toHaveText("");
+      },
+    );
+
     test(
       "every interactive control measures at least 44x44 CSS px at a 375px viewport",
       { tag: ["@indicator-page", "@touch-target"] },
@@ -203,11 +336,13 @@ for (const slug of SLUGS) {
         await page.setViewportSize({ width: 375, height: 900 });
         const indicator = new IndicatorPage(page, slug);
         await indicator.goto();
-        // The custom-range picker is hydration-only markup (it cannot work
-        // without JavaScript), so the sweep must wait for it or it would
-        // pass by not looking at the two date inputs and the commit button.
+        // The custom-range picker and the government select are both
+        // hydration-only markup (neither can work without JavaScript), so the
+        // sweep must wait for them or it would pass by not looking at the two
+        // date inputs, the commit button and the select.
         await indicator.waitForChartHydrated();
         await indicator.customRangeApply.waitFor();
+        await indicator.governmentSelect.waitFor();
 
         const controls = indicator.interactiveControls();
         const count = await controls.count();

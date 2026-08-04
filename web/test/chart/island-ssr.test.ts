@@ -164,6 +164,53 @@ describe("ChartIsland — island-parity golden test (task 8.12)", () => {
     expect(body).toContain('data-testid="accessible-data-table"');
   });
 
+  // The government range control, held to exactly the same standard as the
+  // custom-range picker above and for exactly the same reason: it is a
+  // hydration-only control on a statically built page, so shipping it in the
+  // server-rendered markup would put a `<select>` in front of a
+  // no-JavaScript reader that looks like every working control beside it and
+  // changes nothing when used. Absent, not present-but-dead — the discipline
+  // the spec states for a preset that cannot apply ("absent, not disabled").
+  //
+  // The props below are chosen so the control genuinely WOULD render once
+  // hydrated — the 2010-2022 span overlaps all three government terms, and
+  // none of them covers the whole of it — so this test cannot pass merely by
+  // the control having nothing to offer. Written alongside rather than
+  // red-first (the control cannot be absent from markup that does not exist
+  // yet) and mutation-checked instead: removing the island's `hydrated`
+  // guard fails it.
+  it("server-renders no government range control — it cannot work without JavaScript, so it must not appear to", () => {
+    const { body } = render(ChartIsland, {
+      props: {
+        slug: "tasa-de-paro-epa",
+        name: "Tasa de paro",
+        unit: "% población activa",
+        frequency: "Q" as const,
+        points: [
+          { period: "2010-Q1", value: 20.1, status: "D" as const },
+          { period: "2013-Q1", value: 26.9, status: "D" as const },
+          { period: "2016-Q1", value: 21.0, status: "D" as const },
+          { period: "2019-Q1", value: 14.7, status: "D" as const },
+          { period: "2022-Q1", value: 13.6, status: "D" as const },
+        ],
+        annotations: [
+          { id: "gobierno-zapatero-2004", group: "governments" as const, name: "José Luis Rodríguez Zapatero", dateStart: "2004-04-17", dateEnd: null, href: null },
+          { id: "gobierno-rajoy-2011", group: "governments" as const, name: "Mariano Rajoy", dateStart: "2011-12-21", dateEnd: null, href: null },
+          { id: "gobierno-sanchez-2018", group: "governments" as const, name: "Pedro Sánchez", dateStart: "2018-06-02", dateEnd: null, href: null },
+        ],
+        transforms: { yoy: "optional", qoq: "optional", perCapita: false },
+      },
+    });
+    expect(body).not.toContain('data-testid="chart-government-range"');
+    expect(body).not.toContain('data-testid="government-select"');
+    expect(body).not.toContain("<select");
+    // The governments themselves ARE still server-rendered as annotation
+    // chips — this is a targeted omission of an inert CONTROL, not the island
+    // withholding the editorial layer from a no-JavaScript reader.
+    expect(body).toContain('data-testid="annotation-group-governments"');
+    expect(body).toContain('data-testid="accessible-data-table"');
+  });
+
   it("renders zero fetch/XHR-issuing markup and the whole component composes only from delivered props (series-transformations spec, no network request)", () => {
     const { body } = render(ChartIsland, {
       props: {

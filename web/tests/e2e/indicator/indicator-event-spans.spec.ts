@@ -45,8 +45,15 @@ test.describe("Indicator page — editorial event spans", () => {
       await expect(indicator.eventSpansNarrow).toHaveCount(2);
       // One per drawing, wide and narrow — a second variant is a second chance
       // to lose a layer.
+      // Scoped to the RAIL GROUPS by their exact test ids, not to every node
+      // carrying the event's id: the rail's own on-drawing label carries that
+      // id too, so an unscoped locator would count each mark and its name as
+      // two marks and quietly turn this "one per drawing" claim into four.
       await expect(
-        indicator.chartSection.locator('[data-event-id="pandemia-2020-2021"]'),
+        indicator.chartSection.locator(
+          '[data-testid="chart-event-span"][data-event-id="pandemia-2020-2021"], ' +
+            '[data-testid="chart-event-span-narrow"][data-event-id="pandemia-2020-2021"]',
+        ),
       ).toHaveCount(2);
       await expect(
         indicator.chartSection.locator('[data-event-id="shock-energetico-2022"]'),
@@ -84,6 +91,9 @@ test.describe("Indicator page — editorial event spans", () => {
       await indicator.goto();
       await indicator.waitForChartHydrated();
       await indicator.annotationToggle("exogenous").click();
+      // The government rules are gated on their own group, and this test
+      // compares the rail against one of them, so both selections are made.
+      await indicator.annotationToggle("governments").click();
 
       const rail = indicator.chartSection.locator(
         '[data-testid="chart-event-span"][data-event-id="pandemia-2020-2021"] .chart-event-span__rail',

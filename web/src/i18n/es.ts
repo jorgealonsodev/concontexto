@@ -123,24 +123,32 @@ export const es = {
        * flagged for editorial sign-off like every other string in this
        * module). ────────────────────────────────────────────────────────────
        *
-       * `markerTitle` is the marker's `<title>`: a pointer reader hovering one
-       * of the vertical rules learns which change of government it is without
-       * six names being printed across the drawing (they do not fit — the
-       * narrow box is 560 units wide and two of the six investitures are
-       * fourteen months apart). The YEAR and not the full date, deliberately,
-       * because that is exactly how `AnnotationChip` already labels a
-       * government: one event, one label, in both places it appears.
+       * `markerTitle` is the marker's `<title>`. The rule now prints the
+       * president's name ON the drawing, turned onto its side beside it, so
+       * this string is no longer the only way a pointer reader can identify
+       * it — it survives because it adds the YEAR, which the on-drawing label
+       * deliberately leaves out: the x axis under the mark is already a
+       * calendar and the chip below already prints the year, so spending the
+       * label's scarce room beside a rule on it would buy nothing. The YEAR
+       * and not the full date, still, because that is exactly how
+       * `AnnotationChip` already labels a government: one event, one label, in
+       * every place it appears.
        *
        * `markerLegendLabel` is what teaches the code. An unexplained vertical
        * rule is a decoration; the legend entry beside "Definitivo" and
-       * "Provisional" is what makes it a mark with a meaning.
+       * "Provisional" is what makes it a mark with a meaning — and it says
+       * what the marks have IN COMMON, which no per-mark name can.
        *
-       * `changesNote` is the same information as prose, appended to the
-       * chart's generated description — the paragraph the SVG already points
-       * at with `aria-describedby`. The markers themselves are invisible to a
-       * screen reader (the drawing is a single `role="img"`, which prunes its
-       * own children from the accessibility tree), so without this sentence
-       * the feature would exist for sighted readers only.
+       * `changesNote` is the same information as prose, in a polite live
+       * region beside the chart (it moved out of the chart's description
+       * paragraph when the markers became selection-gated: it now states
+       * transient selection state rather than a permanent property of the
+       * series). The labels are painted inside a single `role="img"`, which
+       * prunes its own children from the accessibility tree, so a screen reader
+       * reaches not one glyph of them; without this sentence the feature would
+       * exist for sighted readers only. It is also the complete list when a
+       * name was too long to be drawn whole on the plot, which is refused
+       * rather than truncated.
        *
        * "REGISTRADOS en el periodo representado" is doing real work: it says
        * these are the changes the editorial registry records inside the span
@@ -169,11 +177,15 @@ export const es = {
      * never translated or rephrased: it arrives from `config/eventos.yaml` and
      * is printed verbatim.
      *
-     * `railTitle` is the rail's `<title>`: a pointer reader hovering one of
-     * the horizontal rails learns which event it bounds without the names
-     * being printed across a 560-unit-wide drawing. It is NOT the
-     * accessibility answer — the drawing is a single `role="img"`, which
-     * prunes its own descendants — which is what `projectedNote` below is for.
+     * `railTitle` is the rail's `<title>`. A rail now prints its event's name
+     * beside it whenever that name fits — "Crisis financiera global y crisis de
+     * deuda soberana europea" is 58 glyphs, which fits the 960-unit drawing and
+     * cannot fit the 560-unit one at any size this chart sets type in, and is
+     * refused there rather than cut. So this string is both the rail's PERIOD
+     * RANGE (which no label carries) and the only identification left on a
+     * phone. It is NOT the accessibility answer — the drawing is a single
+     * `role="img"`, which prunes its own descendants — which is what
+     * `projectedNote` below is for.
      *
      * `projectedNote` IS THE CONSTRAINED ONE. "que el registro editorial acota
      * con fecha de inicio y de fin" is not padding: `shock-energetico-2022`

@@ -126,13 +126,20 @@ export function describeSeries(input: DescribeSeriesInput): string {
  * description paragraph — the exact node the drawing already names in
  * `aria-describedby`.
  *
- * WHY IT IS ALSO THE VISIBLE LEGEND. Six presidential names cannot be printed
- * on the drawing: the wide box is 960 units and the narrow one 560, and two of
- * the six investitures are fourteen months apart — their labels would overlap
- * before the third was drawn. So the names live in prose, in chronological
- * order, which is the same left-to-right order the rules appear in. One
- * sentence serves both readers rather than a visible list plus a hidden
- * duplicate that could drift from it.
+ * WHY IT SURVIVED THE ON-DRAWING LABELS. Each rule now carries its own name,
+ * turned onto its side beside it (`lib/chart/annotationLabels.ts`), so this
+ * sentence is no longer the only place a sighted reader can learn who took
+ * office. It stays for two reasons that the labels do not answer.
+ *
+ * The first is decisive: the labels are painted inside a single `role="img"`,
+ * so a screen-reader reader reaches not one word of them, exactly as they never
+ * reached the `<title>`s. The second is that the drawing does not promise to
+ * label everything. A name that cannot be drawn WHOLE and INSIDE the plot area
+ * is refused rather than truncated, which is the honest answer and also a
+ * silent one unless something else names it — and this sentence names every
+ * marked change, in chronological order, which is the same left-to-right order
+ * the rules appear in. One sentence serves both readers rather than a visible
+ * list plus a hidden duplicate that could drift from it.
  *
  * WHAT IT DELIBERATELY DOES NOT CLAIM. `es.chart.government.changesNote` says
  * these are the changes REGISTERED inside the period on screen. It does not
@@ -158,11 +165,13 @@ export function describeGovernmentChanges(changes: readonly GovernmentChange[]):
  * reachable by a pointer and by nothing else. A visual annotation a
  * screen-reader reader cannot reach is a half-built feature.
  *
- * WHY IT IS ALSO THE VISIBLE LEGEND. The event names are long — "Crisis
- * financiera global y crisis de deuda soberana europea" is 54 glyphs against a
- * 560-unit-wide narrow drawing — so they cannot be printed on the chart at all.
- * They live in prose, oldest first, which is the same left-to-right order the
- * rails appear in.
+ * WHY IT IS ALSO, STILL, THE VISIBLE LEGEND. A rail carries its own name beside
+ * it when that name fits — and "Crisis financiera global y crisis de deuda
+ * soberana europea" is 58 glyphs, which fits the wide drawing and cannot fit
+ * the 560-unit narrow one at any size this chart sets type in. It is therefore
+ * refused there rather than cut, so this sentence is the only place a phone
+ * reader can learn what that rail bounds. It lists every projected event,
+ * oldest first, which is the same left-to-right order the rails appear in.
  *
  * WHY IT IS RENDERED INTO A LIVE REGION and the government sentence is not:
  * this one changes under the reader's own hand. Opening or closing an

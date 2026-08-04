@@ -138,4 +138,24 @@ export const DECLARED_PAIRINGS: readonly ContrastPairing[] = [
   // 1.4.11, in both themes and against both surfaces a chart can sit on.
   { name: "event-span rail on page background", fg: "event-span", bg: "bg", level: CONTRAST_LEVEL.GRAPHIC },
   { name: "event-span rail on surface", fg: "event-span", bg: "surface", level: CONTRAST_LEVEL.GRAPHIC },
+  // The on-drawing annotation LABELS — the names now painted beside each rule
+  // and each rail so a mark says what it is without the reader hovering it.
+  //
+  // A NEW PAIRING CLASS, not a re-declaration of the four rules above, and the
+  // difference is the threshold. Those four measure a non-text GRAPHIC, which
+  // WCAG 1.4.11 puts at 3:1. These measure real text at the drawing's own small
+  // sizes, so they are held to the 4.5:1 of body text — the stricter of the two
+  // bars, and the right one for something a reader has to read rather than
+  // merely notice. Both surfaces because a chart sits on the page background on
+  // an indicator route and on a card in the workbench showcase, and both themes
+  // because the dark tokens are authored rather than derived.
+  { name: "government-marker label text on page background", fg: "ink", bg: "bg", level: CONTRAST_LEVEL.BODY_TEXT },
+  { name: "government-marker label text on surface", fg: "ink", bg: "surface", level: CONTRAST_LEVEL.BODY_TEXT },
+  // The rail's own colour, so the words and the mark they name are one object.
+  // This is the pairing that had to be checked before the decision was made
+  // rather than after: rose on the page background measures 6.65:1 in the light
+  // theme and 8.07:1 in the dark one, so the label can keep its layer's colour
+  // instead of falling back to ink and losing the tie to its rail.
+  { name: "event-span label text on page background", fg: "event-span", bg: "bg", level: CONTRAST_LEVEL.BODY_TEXT },
+  { name: "event-span label text on surface", fg: "event-span", bg: "surface", level: CONTRAST_LEVEL.BODY_TEXT },
 ];

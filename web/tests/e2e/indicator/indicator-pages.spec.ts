@@ -202,22 +202,29 @@ for (const slug of SLUGS) {
     // The change-of-government markers, on the real built pages (PRD
     // §6.1.1(a)'s `governments` group, drawn ON the chart).
     //
-    // Three things a narrower test would miss, and all three are ways the
-    // marker could be a lie rather than an aid:
-    //   1. it is SOLID — the dashed stroke is the reserved provisional
+    // Four things a narrower test would miss, and all four are ways the marker
+    // could be a lie rather than an aid:
+    //   1. it is not drawn until the reader asks for it — the `governments`
+    //      group starts closed, and a layer that ignored its own toggle was
+    //      exactly what this used to be;
+    //   2. it is SOLID — the dashed stroke is the reserved provisional
     //      semantic and must not be borrowed here;
-    //   2. both drawings carry it, so a phone reader is not shown a different
+    //   3. both drawings carry it, so a phone reader is not shown a different
     //      chart from a desktop reader;
-    //   3. the drawing and the generated sentence agree, because that sentence
+    //   4. the drawing and the generated sentence agree, because that sentence
     //      is the only route a screen-reader reader has to this layer (the
     //      drawing is one `role="img"`, which prunes its own children).
     test(
-      "draws a solid change-of-government marker in both drawings, and the description names exactly what is drawn",
+      "draws a solid change-of-government marker in both drawings once the group is opened, and the sentence names exactly what is drawn",
       { tag: ["@indicator-page", "@government-marker"] },
       async ({ page }) => {
         const indicator = new IndicatorPage(page, slug);
         await indicator.goto();
         await indicator.waitForChartHydrated();
+
+        // Nothing at all until the reader selects it.
+        expect(await indicator.governmentMarkers.count(), `${slug}: a marker was drawn unasked`).toBe(0);
+        await indicator.annotationToggle("governments").click();
 
         const wide = await indicator.governmentMarkers.count();
         const narrow = await indicator.governmentMarkersNarrow.count();
@@ -235,17 +242,23 @@ for (const slug of SLUGS) {
           .evaluateAll((nodes) => nodes.map((n) => n.getAttribute("stroke-dasharray")));
         expect(dashes.every((d) => d === null), `${slug}: a marker borrowed the provisional dash`).toBe(true);
 
-        // The legend teaches the code, and the sentence names the events.
+        // The legend teaches the code, and the sentence names the events. The
+        // sentence lives in its own polite live region rather than in the
+        // chart's static description, because it now appears and disappears
+        // under the reader's own hand.
         await expect(indicator.legendGovernment).toBeVisible();
-        const description = indicator.chartSection.getByTestId("chart-description");
-        await expect(description).toContainText("cambios de gobierno registrados");
+        await expect(indicator.governmentNote).toContainText("cambios de gobierno registrados");
 
         // Agreement between the drawing and the words: one marker per name in
         // the sentence. The sentence lists "Nombre (AAAA)" items, so the years
         // in parentheses are countable.
-        const text = (await description.textContent()) ?? "";
-        const listed = text.slice(text.indexOf("cambios de gobierno registrados")).match(/\(\d{4}\)/g) ?? [];
-        expect(listed.length, `${slug}: the description names ${listed.length} changes but the chart draws ${wide}`).toBe(wide);
+        const text = (await indicator.governmentNote.textContent()) ?? "";
+        const listed = text.match(/\(\d{4}\)/g) ?? [];
+        expect(listed.length, `${slug}: the sentence names ${listed.length} changes but the chart draws ${wide}`).toBe(wide);
+
+        // ...and every one of them says whose investiture it is, ON the
+        // drawing. `indicator-annotation-labels.spec.ts` measures where.
+        await expect(indicator.governmentLabels).toHaveCount(wide);
       },
     );
 
@@ -268,6 +281,9 @@ for (const slug of SLUGS) {
         await indicator.goto();
         await indicator.waitForChartHydrated();
         await indicator.governmentSelect.waitFor();
+        // The markers are gated on the group toggle, so this range interaction
+        // has to be asked for before it can be observed.
+        await indicator.annotationToggle("governments").click();
 
         const fullMarkers = await indicator.governmentMarkers.count();
         const optionValues = await indicator.governmentSelect
@@ -285,12 +301,11 @@ for (const slug of SLUGS) {
         // Whatever survived, the words and the drawing still agree — the
         // invariant that makes the sentence a description rather than a
         // caption written once and left behind.
-        const description = indicator.chartSection.getByTestId("chart-description");
         if (narrowedMarkers === 0) {
-          await expect(description).not.toContainText("cambios de gobierno registrados");
+          await expect(indicator.governmentNote).not.toContainText("cambios de gobierno registrados");
           await expect(indicator.legendGovernment).toHaveCount(0);
         } else {
-          await expect(description).toContainText("cambios de gobierno registrados");
+          await expect(indicator.governmentNote).toContainText("cambios de gobierno registrados");
           await expect(indicator.legendGovernment).toBeVisible();
           // ...and it sits on the term's own first observation, which is the
           // plot area's left edge — the same x the axis line starts at.

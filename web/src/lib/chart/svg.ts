@@ -32,6 +32,12 @@ import {
 } from "./geometry";
 import { buildEventSpanRails, type EventSpanAnnotation } from "./eventSpans";
 import { buildGovernmentMarkers, type GovernmentChangeAnnotation } from "./governmentMarkers";
+import {
+  NARROW_ANNOTATION_LABEL_FONT_SIZE,
+  WIDE_ANNOTATION_LABEL_FONT_SIZE,
+  placeAnnotationLabels,
+  type PlacedAnnotationLabel,
+} from "./annotationLabels";
 import { formatPeriodProse } from "../format/period";
 import type { Frequency } from "./periods";
 // The marker's `<title>` is read by a person, so its words live where every
@@ -48,11 +54,21 @@ export interface ChartBreakInput {
 export interface RenderChartSVGInput {
   points: ChartPoint[];
   breaks: ChartBreakInput[];
-  /** The editorial registry's `governments` entries, unfiltered — which of
-   * them may honestly be marked is `buildGovernmentMarkers`' decision, made
-   * once, inside the renderer both consumers share. Omitted (or empty), the
-   * drawing carries no marker and is byte-identical to what it was before
-   * this layer existed. */
+  /** The editorial registry's `governments` entries, ALREADY filtered to the
+   * annotation groups the reader has chosen to see — exactly the contract
+   * `eventSpans` below has always had, and no longer the "pass everything,
+   * always draw" one this input started with.
+   *
+   * WHY IT CHANGED. The marker used to be drawn on every chart unconditionally,
+   * which made it the one annotation layer a reader could not turn off. The
+   * `governments` group already has a visible toggle beside the chart — the
+   * same control that shows and hides its chips — so the drawing now answers
+   * that control instead of ignoring it. Nothing is drawn unless it is
+   * selected.
+   *
+   * WHICH of the entries handed in may honestly be marked is still
+   * `buildGovernmentMarkers`' single decision, made once, inside the renderer
+   * both consumers share. Omitted (or empty), the drawing carries no marker. */
   governmentChanges?: GovernmentChangeAnnotation[];
   /** The editorial events whose PERIOD may be projected onto the plot — the
    * chart's fourth annotation treatment.
@@ -92,6 +108,15 @@ export interface RenderChartSVGInput {
   /** Ceiling on x-axis ticks. `buildXTicks` may still append one more to
    * guarantee the final period is labelled. */
   maxXTicks?: number;
+  /** Type size for the on-drawing annotation labels, in user units.
+   *
+   * Its own input rather than a multiple of `tickFontSize`, because the two
+   * answer different questions: the tick size is what the chart is READ
+   * against, the label size is what fits beside a rule without a second name
+   * being pushed off the plot. In the wide box they happen to agree at 10; in
+   * the narrow box they deliberately do not (14 against 20 — see
+   * `annotationLabels.ts` for the measurement that fixes it). */
+  annotationLabelFontSize?: number;
   /** Distinguishes this rendering from the other one on the same page.
    *
    * Both variants are emitted into a single document (CSS shows one), which
@@ -117,6 +142,7 @@ export function narrowChartVariant(points: ChartPoint[], decimals: number) {
     tickFontSize: NARROW_TICK_FONT_SIZE,
     xTickLabelOffset: NARROW_X_TICK_LABEL_OFFSET,
     maxXTicks: NARROW_MAX_X_TICKS,
+    annotationLabelFontSize: NARROW_ANNOTATION_LABEL_FONT_SIZE,
     variant: "narrow" as const,
   };
 }
@@ -135,6 +161,7 @@ export function renderChartSVG(input: RenderChartSVGInput): string {
   const tickFontSize = input.tickFontSize ?? WIDE_TICK_FONT_SIZE;
   const xTickLabelOffset = input.xTickLabelOffset ?? 16;
   const maxXTicks = input.maxXTicks ?? 6;
+  const annotationLabelFontSize = input.annotationLabelFontSize ?? WIDE_ANNOTATION_LABEL_FONT_SIZE;
   // The empty default is load-bearing: it is what makes every existing test
   // id, and the committed golden fixture, byte-for-byte unchanged.
   const idSuffix = input.variant ? `-${input.variant}` : "";
@@ -203,12 +230,13 @@ export function renderChartSVG(input: RenderChartSVGInput): string {
   // No party colour, and none is possible: `config/gobiernos.yaml` and
   // `EventConfig` carry no party field (PRD §12.1), so every marker on every
   // chart is the same ink. Colour carries no information here at all.
-  const governmentMarkers = buildGovernmentMarkers(
+  const governmentMarks = buildGovernmentMarkers(
     input.governmentChanges ?? [],
     periods,
     input.frequency,
     dims,
-  )
+  );
+  const governmentMarkers = governmentMarks
     .map((marker) => {
       const x = marker.x;
       const flagHalfWidth = 5;
@@ -216,15 +244,18 @@ export function renderChartSVG(input: RenderChartSVGInput): string {
       return (
         `<g class="chart-government-marker" data-testid="chart-government-marker${idSuffix}" ` +
         `data-government-id="${escapeXml(marker.id)}">` +
-        // A `<title>` on the group, so a pointer reader can identify the rule
-        // in front of them without six presidential names being printed
-        // across a 560-unit-wide drawing. It is NOT the accessibility answer:
-        // the root `<svg>` is a single `role="img"`, which prunes its own
-        // descendants from the accessibility tree, so a screen-reader reader
-        // never reaches this string. That reader is served by the sentence
-        // `describeGovernmentChanges` adds to the chart's own description
-        // paragraph — the node this drawing already names in
-        // `aria-describedby`.
+        // A `<title>` on the group. The rule now carries its own name on the
+        // drawing (see the label layer below), so this is no longer the only
+        // way to identify it with a pointer — it stays because it adds the
+        // YEAR, which the label deliberately omits: the x axis under the mark
+        // is already a calendar and the chip below already prints it, so
+        // spending the label's scarce horizontal room on it would buy nothing.
+        //
+        // It is NOT the accessibility answer, and never was: the root `<svg>`
+        // is a single `role="img"`, which prunes its own descendants from the
+        // accessibility tree, so a screen-reader reader reaches neither this
+        // string nor one glyph of the labels. That reader is served by the
+        // sentence `describeGovernmentChanges` renders beside the drawing.
         `<title>${escapeXml(es.chart.government.markerTitle(marker.name, marker.year))}</title>` +
         `<line class="chart-government-marker__rule" x1="${x.toFixed(2)}" y1="${area.y0.toFixed(2)}" ` +
         `x2="${x.toFixed(2)}" y2="${area.y1.toFixed(2)}" stroke="var(--color-ink)" stroke-width="1" />` +
@@ -283,13 +314,14 @@ export function renderChartSVG(input: RenderChartSVGInput): string {
   //
   // Drawn UNDER the axis and the series, above the break bands, exactly like
   // the government markers: annotation never obscures the data it annotates.
-  const eventSpanRails = buildEventSpanRails(
+  const eventRails = buildEventSpanRails(
     input.eventSpans ?? [],
     periods,
     input.frequency,
     dims,
     tickFontSize,
-  )
+  );
+  const eventSpanRails = eventRails
     .map((rail) => {
       const y = rail.y;
       const foot = y + rail.serifLength;
@@ -310,10 +342,14 @@ export function renderChartSVG(input: RenderChartSVGInput): string {
         `data-event-id="${escapeXml(rail.id)}" data-annotation-group="${escapeXml(rail.group)}">` +
         // Pointer-only, exactly like the government marker's: the root `<svg>`
         // is a single `role="img"`, which prunes its own descendants from the
-        // accessibility tree. The screen-reader reader is served by the
-        // sentence `describeEventSpans` renders beside the drawing, in a
-        // polite live region — this layer is interactive, so that sentence has
-        // to re-narrate when the reader's selection changes.
+        // accessibility tree. It still earns its place beside the label layer
+        // below, on two counts: it carries the rail's own PERIOD RANGE (and,
+        // when an end was clamped, says the event runs past the window), and it
+        // is the only identification left on a drawing too narrow to print a
+        // 58-glyph event name. The screen-reader reader is served by the
+        // sentence `describeEventSpans` renders beside the drawing, in a polite
+        // live region — this layer is interactive, so that sentence has to
+        // re-narrate when the reader's selection changes.
         `<title>${escapeXml(title)}</title>` +
         `<path class="chart-event-span__rail" d="${d}" fill="none" stroke="var(--color-event-span)" ` +
         `stroke-width="${rail.strokeWidth.toFixed(2)}" stroke-linecap="butt" stroke-linejoin="miter" />` +
@@ -373,6 +409,77 @@ export function renderChartSVG(input: RenderChartSVGInput): string {
     })
     .join("");
 
+  // The on-drawing LABELS — the layer that stops a rule and a rail from being
+  // codes the reader has to decode somewhere else.
+  //
+  // WHY THEY ARE DRAWN LAST, when every mark above is drawn first. "Annotation
+  // never obscures the data it annotates" is why the bands, the rails and the
+  // rules sit under the series, and that rule is unchanged for all three. Text
+  // is the one exception, and it is a narrow one: a 2-unit accent stroke
+  // crossing a 10-unit glyph does not dim the letter, it erases the part of it
+  // the reader needs. So the label is painted over the series, and the
+  // `paint-order="stroke"` halo below — a background-coloured outline drawn
+  // BEFORE the fill — confines what the label costs the data to the glyph
+  // outlines rather than to the label's whole rectangle. The halo is
+  // `--color-bg` because that is the surface these charts sit on (measured on
+  // the built /indicador/{slug}: the figure and every ancestor up to the
+  // section are transparent, so the page background shows through); on the
+  // workbench's surface-backed showcase the two tokens differ by a shade the
+  // eye does not separate, in both themes.
+  //
+  // WHERE each label goes is `placeAnnotationLabels`' single decision — the
+  // orientation, the collision solving and the refusal to truncate all live
+  // there, with the measurements that justify them.
+  const annotationLabels = placeAnnotationLabels({
+    governments: governmentMarks.map((marker) => ({ id: marker.id, name: marker.name, x: marker.x })),
+    eventSpans: eventRails.map((rail) => ({
+      id: rail.id,
+      name: rail.name,
+      x1: rail.x1,
+      x2: rail.x2,
+      y: rail.y,
+      serifLength: rail.serifLength,
+    })),
+    area,
+    fontSize: annotationLabelFontSize,
+  });
+
+  const renderAnnotationLabel = (
+    label: PlacedAnnotationLabel,
+    kind: "government" | "event-span",
+    idAttribute: string,
+    fill: string,
+  ): string =>
+    `<text class="chart-annotation-label chart-annotation-label--${kind}" ` +
+    `data-testid="chart-${kind}-label${idSuffix}" ${idAttribute}="${escapeXml(label.id)}" ` +
+    `x="${label.anchorX.toFixed(2)}" y="${label.anchorY.toFixed(2)}" ` +
+    // `rotate(-90)` about the label's own anchor, so the name reads
+    // bottom-to-top alongside the rule it belongs to. Bottom-to-top and not the
+    // reverse because that is the direction Latin script is set vertically in
+    // every timeline that does this, and the one a reader tilting their head
+    // left can follow.
+    (label.sideways ? `transform="rotate(-90 ${label.anchorX.toFixed(2)} ${label.anchorY.toFixed(2)})" ` : "") +
+    `font-size="${annotationLabelFontSize}" text-anchor="start" fill="${fill}" ` +
+    `stroke="var(--color-bg)" stroke-width="${(annotationLabelFontSize * 0.3).toFixed(2)}" ` +
+    `stroke-linejoin="round" paint-order="stroke">${escapeXml(label.text)}</text>`;
+
+  const annotationLabelMarkup =
+    annotationLabels.eventSpans
+      // The rail's own colour, so the words and the mark they name are the same
+      // object: a reader who has learnt that rose means "an event covers these
+      // periods" reads the label without being told which rail it belongs to.
+      // Measured as TEXT (4.5:1, not the 3:1 a non-text graphic needs) against
+      // both themes and both surfaces in `lib/design-system/contrast.ts`.
+      .map((label) => renderAnnotationLabel(label, "event-span", "data-event-id", "var(--color-event-span)"))
+      .join("") +
+    annotationLabels.governments
+      // `--color-ink` for the same reason the rule itself is drawn in it: the
+      // change-of-government layer carries no colour information at all
+      // (`config/gobiernos.yaml` has no party field, PRD §12.1), so its label
+      // is simply the page's own text colour.
+      .map((label) => renderAnnotationLabel(label, "government", "data-government-id", "var(--color-ink)"))
+      .join("");
+
   const xTickMarks = xTicks
     .map(
       (t) =>
@@ -404,6 +511,7 @@ export function renderChartSVG(input: RenderChartSVGInput): string {
     axisLine +
     linePaths +
     markers +
+    annotationLabelMarkup +
     xTickMarks +
     yTickMarks +
     `</svg>`

@@ -205,41 +205,57 @@ describe("IndicatorChart — responsive geometry", () => {
 
 // ---------------------------------------------------------------------------
 // The change-of-government markers, as the STATIC (zero-JavaScript) component
-// renders them. `/indicador/{slug}` composes the island, but this component is
-// the workbench's catalog entry and the no-JS gate's subject, so the layer has
-// to be here too — and, more to the point, it has to be here in all THREE of
-// its parts. A marker nobody can name is a decoration; a legend for a marker
-// that is not drawn is a lie; a sentence naming markers the drawing does not
-// carry is worse than either.
+// renders them.
+//
+// THE RULE THIS BLOCK NOW STATES, and it inverted: nothing is drawn unless the
+// reader has selected it. `governments` is one of the two annotation groups
+// that start CLOSED, so the default drawing carries no rule, no label, no
+// legend entry and no sentence — the same treatment the event-span rails have
+// always had, applied to the layer that used to be the exception.
+//
+// This component's own honest limitation is unchanged and is what the second
+// test below records: its toggle is a CSS checkbox, which reveals and hides
+// CHIPS with zero JavaScript and cannot redraw an SVG serialised to a string at
+// build time. So the drawing here shows the default-open groups and stays
+// there. That is exactly what a reader with JavaScript disabled receives on a
+// real page too, where the island server-renders the same unselected state.
 describe("IndicatorChart — changes of government", () => {
-  it("draws one marker per change of government inside the plotted span, in BOTH variants", async () => {
+  it("draws no marker and no label until the group is selected, in EITHER variant", async () => {
     const container = await AstroContainer.create();
     const html = await container.renderToString(IndicatorChart, { props: { ...fx.indicatorChart } });
-    // The fixture carries two `governments` entries: one before the first
-    // observation (chip only) and one inside the span (chip AND marker).
-    expect((html.match(/data-testid="chart-government-marker"/g) ?? []).length).toBe(1);
-    expect((html.match(/data-testid="chart-government-marker-narrow"/g) ?? []).length).toBe(1);
-    expect(html).toContain('data-government-id="gob-ejemplo-2021"');
-    expect(html).not.toContain('data-government-id="gob-2018"');
+    // The fixture carries two `governments` entries and one of them falls
+    // squarely inside the plotted span, so this is not vacuous: the layer is
+    // withheld by the selection, not by the data.
+    expect(html).not.toContain("chart-government-marker");
+    expect(html).not.toContain("chart-government-label");
+    expect(html).not.toContain('data-government-id="gob-ejemplo-2021"');
   });
 
-  it("teaches the code with a legend entry carrying the marker's own glyph", async () => {
+  it("still offers the group's toggle and its chips, so the marks are one gesture away", async () => {
     const container = await AstroContainer.create();
     const html = await container.renderToString(IndicatorChart, { props: { ...fx.indicatorChart } });
-    expect(html).toContain('data-testid="chart-legend-government"');
-    expect(html).toContain("Cambio de gobierno");
+    expect(html).toContain('data-testid="annotation-toggle-governments"');
+    expect(html).toContain('data-testid="annotation-group-content-governments"');
   });
 
-  it("names the marked changes in the description a screen reader is pointed at", async () => {
-    // The drawing is one `role="img"`, which prunes its own descendants from
-    // the accessibility tree — so the marker's `<title>` reaches a pointer and
-    // nobody else. This sentence, inside the paragraph both drawings name in
-    // `aria-describedby`, is the whole accessibility story for this layer.
+  it("keeps the legend and the naming sentence away while nothing is marked", async () => {
+    // A legend entry for a mark that is not drawn is a lie, and a sentence
+    // naming rules the drawing does not carry is a worse one — it would sit in
+    // the paragraph both drawings point at with `aria-describedby`, telling a
+    // screen-reader reader about marks nobody can see.
     const container = await AstroContainer.create();
     const html = await container.renderToString(IndicatorChart, { props: { ...fx.indicatorChart } });
-    const description = /data-testid="chart-description"[^>]*>([\s\S]*?)<\/p>/.exec(html)?.[1] ?? "";
-    expect(description).toContain("cambios de gobierno registrados");
-    expect(description).toContain("Cambio de gobierno (ejemplo) (2021)");
+    expect(html).not.toContain('data-testid="chart-legend-government"');
+    expect(html).not.toContain("cambios de gobierno registrados");
+  });
+
+  it("keeps a polite live region ready for the sentence, mirroring the island's own markup", async () => {
+    // This component is a faithful catalog of the island's markup; nothing on a
+    // static page can populate the region, and it exists here for the same
+    // reason the event-span one already does.
+    const container = await AstroContainer.create();
+    const html = await container.renderToString(IndicatorChart, { props: { ...fx.indicatorChart } });
+    expect(html).toContain('data-testid="chart-government-note"');
   });
 
   it("has no marker, no legend entry and no sentence when no change falls inside the span", async () => {

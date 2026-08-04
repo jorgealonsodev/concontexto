@@ -110,17 +110,18 @@ const DEFAULT_OPEN: Record<AnnotationGroup, boolean> = {
   milestones: true,
 };
 
-// The changes of government this series may honestly mark. The SAME list feeds
-// the drawing and the sentence below it, so the rules a sighted reader counts
-// and the names a screen-reader reader hears can never disagree — and neither
-// can be produced without the other.
-const governmentChanges = selectGovernmentChanges(annotations, points.map((p) => p.period), frequency);
-const governmentNote = describeGovernmentChanges(governmentChanges);
-
-// The event-span projection, over the groups that are open BY DEFAULT — the
-// exact same map `ChartIsland.svelte` initialises its own toggle state from,
-// which is what keeps this component's drawing byte-identical to the island's
-// server-rendered one (`test/chart/island-ssr.test.ts`'s golden parity).
+// The annotation entries this drawing may project, over the groups that are
+// open BY DEFAULT — the exact same map `ChartIsland.svelte` initialises its own
+// toggle state from, which is what keeps this component's drawing
+// byte-identical to the island's server-rendered one
+// (`test/chart/island-ssr.test.ts`'s golden parity).
+//
+// BOTH annotation layers read it, and that is the change: the
+// change-of-government markers used to be drawn unconditionally, so a reader
+// who had never opened "gobiernos" still got its rules across their chart. They
+// are now gated on the same selection the rails have always answered — nothing
+// is drawn unless it is selected — and `governments` is one of the two groups
+// that start closed, so this component's default drawing carries none.
 //
 // STATED PLAINLY, because it is a real limitation and not an oversight: the
 // CSS-only checkbox below reveals and hides this component's annotation CHIPS
@@ -128,21 +129,29 @@ const governmentNote = describeGovernmentChanges(governmentChanges);
 // string at build time. So in this component — the workbench's static catalog
 // entry, never a reader route — the drawing shows the default-open groups and
 // stays there. The reader route is `/indicador/{slug}`, which composes the
-// island; there the same toggle re-selects the spans, redraws the rails and
-// re-narrates the sentence. This component's job is the no-JS BASELINE, and
+// island; there the same toggle re-selects both layers, redraws them and
+// re-narrates their sentences. This component's job is the no-JS BASELINE, and
 // the baseline it renders is exactly what a no-JS reader of a real page gets.
 const shownAnnotations = annotations.filter((a) => DEFAULT_OPEN[a.group]);
+
+// The changes of government this drawing may honestly mark. The SAME list feeds
+// the drawing and the sentence beside it, so the rules a sighted reader counts
+// and the names a screen-reader reader hears can never disagree — and neither
+// can be produced without the other.
+const governmentChanges = selectGovernmentChanges(shownAnnotations, points.map((p) => p.period), frequency);
+const governmentNote = describeGovernmentChanges(governmentChanges);
+
 const eventSpans = selectEventSpans(shownAnnotations, points.map((p) => p.period), frequency);
 const eventSpanNote = describeEventSpans(eventSpans);
 
 const chartInput = {
   points,
   breaks: breaks.map((b) => ({ key: b.key, date: b.date })),
-  // Unfiltered on purpose: which entries are marked is
-  // `buildGovernmentMarkers`' single decision, made inside the renderer both
+  // Both filtered, and only by group visibility — see above. Which of the
+  // entries handed in may honestly be marked, and where each label can be
+  // drawn, stays `renderChartSVG`'s single decision, made inside the renderer
   // this component and the island share.
-  governmentChanges: annotations,
-  // Filtered on purpose, and only by group visibility — see above.
+  governmentChanges: shownAnnotations,
   eventSpans: shownAnnotations,
   frequency,
   decimals,
@@ -215,16 +224,26 @@ const breakDisplay = breaks.map((b) => ({
   </div>
 
   {/*
-    ONE paragraph, two sentences. The second names the change-of-government
-    markers, and it lives here rather than in a node of its own for two
-    reasons: this paragraph is already what both drawings point at with
-    `aria-describedby` (a second node would mean a third id in that list, on
-    both variants), and the same sentence is the visible legend a sighted
-    reader needs — six presidential names do not fit on either drawing, and
-    they read here in the same left-to-right order the rules appear in.
+    The series' own pattern, and nothing else. The change-of-government
+    sentence used to be appended here; it moved to the live region below when
+    the markers became selection-gated — see `ChartIsland.svelte`'s own copy of
+    this markup for the full reasoning, which this component mirrors.
   */}
   <p id={descriptionId} class="mt-3 text-body text-ink" data-testid="chart-description">
-    {description}{governmentNote && ` ${governmentNote}`}
+    {description}
+  </p>
+
+  {/*
+    The change-of-government sentence. It is the only route a screen-reader
+    reader has to the marker layer (the drawing is a single `role="img"`, which
+    prunes its own children), and it is also what keeps a label the drawing
+    could not fit from vanishing silently — a name that cannot be drawn whole
+    and inside the plot area is refused rather than truncated, and this sentence
+    still carries it. `aria-live` here purely so this component's markup stays a
+    faithful catalog of the island's; nothing on a static page can change it.
+  */}
+  <p class="mt-1 text-caption text-ink-muted" aria-live="polite" data-testid="chart-government-note">
+    {governmentNote}
   </p>
 
   {/*

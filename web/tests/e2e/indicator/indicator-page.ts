@@ -45,6 +45,19 @@ export class IndicatorPage extends BasePage {
   /** The legend entry that teaches what a marker means. Absent — not empty —
    * when the visible window carries no change of government. */
   readonly legendGovernment: Locator;
+  /** The names painted ON the drawing beside each rule and each rail — the
+   * layer that lets a reader identify a mark without hovering it or reading a
+   * paragraph below the chart. Scoped per variant like the marks themselves,
+   * and separated by kind because the two are laid out differently (the
+   * government name is turned onto its side, the event name stays upright). */
+  readonly governmentLabels: Locator;
+  readonly governmentLabelsNarrow: Locator;
+  readonly eventSpanLabels: Locator;
+  readonly eventSpanLabelsNarrow: Locator;
+  /** The polite live region naming the marked changes of government — a
+   * screen-reader reader's only route to the marker layer, and the complete
+   * list when a label was too long to be drawn on the plot. */
+  readonly governmentNote: Locator;
   /** The editorial event spans inside the WIDE drawing — the chart's fourth
    * annotation treatment, and the only one about an interval. Scoped to one
    * variant for the same reason the government markers are: both drawings are
@@ -92,6 +105,11 @@ export class IndicatorPage extends BasePage {
     this.governmentMarkers = this.chartSection.locator('[data-testid="chart-government-marker"]');
     this.governmentMarkersNarrow = this.chartSection.locator('[data-testid="chart-government-marker-narrow"]');
     this.legendGovernment = this.chartSection.getByTestId("chart-legend-government");
+    this.governmentLabels = this.chartSection.locator('[data-testid="chart-government-label"]');
+    this.governmentLabelsNarrow = this.chartSection.locator('[data-testid="chart-government-label-narrow"]');
+    this.eventSpanLabels = this.chartSection.locator('[data-testid="chart-event-span-label"]');
+    this.eventSpanLabelsNarrow = this.chartSection.locator('[data-testid="chart-event-span-label-narrow"]');
+    this.governmentNote = this.chartSection.getByTestId("chart-government-note");
     this.eventSpans = this.chartSection.locator('[data-testid="chart-event-span"]');
     this.eventSpansNarrow = this.chartSection.locator('[data-testid="chart-event-span-narrow"]');
     this.legendEventSpan = this.chartSection.getByTestId("chart-legend-event-span");

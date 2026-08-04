@@ -133,7 +133,11 @@ describe("ChartIsland — island-parity golden test (task 8.12)", () => {
     const expected = renderChartSVG({
       points: GOLDEN_POINTS,
       breaks: GOLDEN_BREAKS.map((b) => ({ key: b.key, date: b.date })),
-      governmentChanges: GOLDEN_ANNOTATIONS,
+      // The SAME filtered list on both inputs, because both layers are now
+      // gated on the reader's group selection and `governments` is closed in
+      // this render. Passing the unfiltered `GOLDEN_ANNOTATIONS` here would be
+      // asserting parity against a drawing the island cannot produce.
+      governmentChanges: GOLDEN_SHOWN_ANNOTATIONS,
       eventSpans: GOLDEN_SHOWN_ANNOTATIONS,
       frequency: "Q",
       decimals: 1,
@@ -316,9 +320,19 @@ describe("ChartIsland — responsive geometry", () => {
 // actually composes — including for a reader with JavaScript disabled, who
 // receives this server-rendered string and nothing else.
 //
-// The RANGE half of the behaviour cannot be proven here (`onMount` is a
-// documented no-op on the server, so the SSR view is always raw/full); it is
-// proven in a real browser by `tests/e2e/indicator/indicator-pages.spec.ts`.
+// WHAT THIS BLOCK NOW ASSERTS, AND WHY IT INVERTED. The marker used to be
+// drawn on every chart unconditionally: it was the one annotation layer with a
+// visible toggle beside it that the drawing ignored. It is now gated on that
+// toggle, like the event-span rails already were — nothing is drawn unless the
+// reader selects it. `openGroups` starts `{governments: false, ...}`, and
+// `onMount` and click handlers are documented no-ops on the server, so the
+// server-rendered string is always the UNSELECTED state and absence is the
+// whole of what this file can prove.
+//
+// The SELECTED state is proven where it can be: `svg.test.ts` covers the
+// renderer's markup for a caller that passes the group, and
+// `tests/e2e/indicator/indicator-annotation-labels.spec.ts` drives the real
+// toggle in a real browser on the real pages.
 describe("ChartIsland — changes of government", () => {
   const ANNOTATIONS = [
     { id: "gobierno-aznar-1996", group: "governments" as const, name: "José María Aznar", dateStart: "1996-05-05", dateEnd: null, href: null },
@@ -348,28 +362,43 @@ describe("ChartIsland — changes of government", () => {
     return body;
   }
 
-  it("marks the investiture inside the span and refuses the one that predates it", () => {
-    // Aznar (1996) is a government this series lived under, and his chip is
-    // rendered — but no change of government happened on this chart, so no
-    // rule is drawn for him. Marking him would put a boundary at 2017-Q1.
+  it("draws no marker until the reader selects the group, even for a series that plainly overlaps one", () => {
+    // Sánchez's 2018 investiture falls squarely inside this span and IS marked
+    // the moment the group is opened. Until then the drawing carries nothing:
+    // an annotation layer that appears without being asked for is a layer the
+    // toggle beside it does not control.
     const body = renderWithGovernments();
-    expect(body).toContain('data-government-id="gobierno-sanchez-2018"');
-    expect(body).not.toContain('data-government-id="gobierno-aznar-1996"');
-    expect((body.match(/data-testid="chart-government-marker"/g) ?? []).length).toBe(1);
-    expect((body.match(/data-testid="chart-government-marker-narrow"/g) ?? []).length).toBe(1);
+    expect(body).not.toContain("chart-government-marker");
+    expect(body).not.toContain("chart-government-label");
   });
 
-  it("never marks a shock or a milestone as a change of government", () => {
+  it("offers the group's own chips and its toggle, so the marks are one gesture away", () => {
+    // Absent-until-selected must not mean unreachable: the control that draws
+    // them is server-rendered and visible, and the chips it reveals name the
+    // same governments.
     const body = renderWithGovernments();
-    expect(body).not.toContain('data-government-id="crisis-2008"');
+    expect(body).toContain('data-testid="annotation-toggle-governments"');
+    expect(body).toContain('data-testid="annotation-group-governments"');
   });
 
-  it("carries the legend entry and the naming sentence a no-JavaScript reader depends on", () => {
+  it("keeps the naming sentence out of the description while nothing is marked", () => {
+    // The sentence describes the marks. With no mark drawn it would describe
+    // something that is not on screen — and it would sit inside the paragraph
+    // both drawings point at with `aria-describedby`, telling a screen-reader
+    // reader about rules a sighted reader cannot see.
     const body = renderWithGovernments();
-    expect(body).toContain('data-testid="chart-legend-government"');
-    const description = /data-testid="chart-description"[^>]*>([\s\S]*?)<\/p>/.exec(body)?.[1] ?? "";
-    expect(description).toContain("cambios de gobierno registrados");
-    expect(description).toContain("Pedro Sánchez (2018)");
+    expect(body).not.toContain('data-testid="chart-legend-government"');
+    expect(body).not.toContain("cambios de gobierno registrados");
+  });
+
+  it("keeps a polite live region ready for that sentence before the first toggle", () => {
+    // The sentence now changes under the reader's own hand, exactly as the
+    // event-span one does, so it lives in a live region rather than in the
+    // static description — and the region has to exist BEFORE its content
+    // appears, or assistive technology routinely misses the first change.
+    const body = renderWithGovernments();
+    expect(body).toContain('data-testid="chart-government-note"');
+    expect(body).toMatch(/data-testid="chart-government-note"[^>]*aria-live="polite"|aria-live="polite"[^>]*data-testid="chart-government-note"/);
   });
 
   it("says nothing about governments for a series that overlaps no investiture", () => {

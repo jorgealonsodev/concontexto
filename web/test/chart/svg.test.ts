@@ -7,6 +7,10 @@
 import { describe, expect, it } from "vitest";
 import { narrowChartVariant, renderChartSVG } from "../../src/lib/chart/svg";
 import {
+  NARROW_ANNOTATION_LABEL_FONT_SIZE,
+  WIDE_ANNOTATION_LABEL_FONT_SIZE,
+} from "../../src/lib/chart/annotationLabels";
+import {
   GLYPH_ADVANCE_RATIO,
   NARROW_MAX_X_TICKS,
   NARROW_TICK_FONT_SIZE,
@@ -28,11 +32,18 @@ const GOLDEN_POINTS: ChartPoint[] = [
 
 const GOLDEN_BREAKS = [{ key: "covid-2020", date: "2020-04-01" }];
 
-/** One change of government INSIDE the golden span, so the committed fixture —
- * D-5's anti-divergence device — actually covers the marker markup. A feature
- * absent from the golden is a feature the static component and the island can
- * silently disagree about. Synthetic, like `covid-2020` above: the golden
- * series is not a real one either. */
+/** One change of government INSIDE the golden span. Synthetic, like
+ * `covid-2020` above: the golden series is not a real one either.
+ *
+ * NOT part of `GOLDEN_INPUT`, and that is the point rather than an oversight.
+ * The `governments` annotation group is OFF by default, and the marker layer is
+ * now gated on the reader's own selection, so the drawing the island
+ * server-renders — the one the committed fixture pins, and the one a reader
+ * with JavaScript disabled receives — carries no marker. A golden that showed
+ * one would pin a state neither consumer can reach, and `island-ssr.test.ts`'s
+ * parity assertion would fail against it. The marker markup is covered by the
+ * explicit assertions below, which pass this list in the way a reader who
+ * opened the group makes the renderer receive it. */
 const GOLDEN_GOVERNMENTS = [
   { id: "gobierno-ejemplo", group: "governments", name: "Gobierno de ejemplo", dateStart: "2019-10-01" },
 ];
@@ -57,7 +68,6 @@ const GOLDEN_EVENT_SPANS = [
 const GOLDEN_INPUT = {
   points: GOLDEN_POINTS,
   breaks: GOLDEN_BREAKS,
-  governmentChanges: GOLDEN_GOVERNMENTS,
   eventSpans: GOLDEN_EVENT_SPANS,
   frequency: "Q" as const,
   decimals: 1,
@@ -66,6 +76,11 @@ const GOLDEN_INPUT = {
   descriptionId: "golden-description",
   tableId: "golden-table",
 };
+
+/** The same drawing as a reader who has opened the `governments` group
+ * receives it. Everything about the marker layer is asserted through this
+ * input, because that is the only state in which the layer exists at all. */
+const GOVERNMENT_INPUT = { ...GOLDEN_INPUT, governmentChanges: GOLDEN_GOVERNMENTS };
 
 /** The estimated advance width of one axis label, using the SAME measured
  * glyph ratio `geometry.ts` sizes the margins from — so this test and that
@@ -177,7 +192,7 @@ describe("renderChartSVG", () => {
   // and the provisional diamond, so the marker is distinguishable with colour
   // discarded entirely.
   it("marks a change of government with a SOLID vertical rule, never a dashed one", () => {
-    const svg = renderChartSVG(GOLDEN_INPUT);
+    const svg = renderChartSVG(GOVERNMENT_INPUT);
     const marker = /<g class="chart-government-marker"[\s\S]*?<\/g>/.exec(svg)?.[0];
     expect(marker, "no government marker was rendered").toBeTruthy();
     // The reserved semantic, stated as an assertion: a dash here would teach
@@ -188,14 +203,14 @@ describe("renderChartSVG", () => {
   });
 
   it("gives the marker a triangular cap — a third glyph shape, so colour is never the sole channel", () => {
-    const svg = renderChartSVG(GOLDEN_INPUT);
+    const svg = renderChartSVG(GOVERNMENT_INPUT);
     // circle = definitive, diamond (rotated rect) = provisional, triangle
     // (closed 3-point path) = change of government. No shape is reused.
     expect(svg).toMatch(/<path class="chart-government-marker__flag" d="M[\d.]+,[\d.]+ L[\d.]+,[\d.]+ L[\d.]+,[\d.]+ Z"/);
   });
 
   it("is not the break band: one unit wide against the band's full period step", () => {
-    const svg = renderChartSVG(GOLDEN_INPUT);
+    const svg = renderChartSVG(GOVERNMENT_INPUT);
     const band = /<rect class="chart-break-band"[^>]*>/.exec(svg)?.[0];
     const bandWidth = Number(/width="([\d.]+)"/.exec(band ?? "")?.[1]);
     expect(bandWidth).toBeGreaterThan(10);
@@ -205,7 +220,7 @@ describe("renderChartSVG", () => {
   });
 
   it("spans the full plot height, so the reader can project the boundary onto the curve", () => {
-    const svg = renderChartSVG(GOLDEN_INPUT);
+    const svg = renderChartSVG(GOVERNMENT_INPUT);
     const rule = /<line class="chart-government-marker__rule"[^>]*>/.exec(svg)?.[0] ?? "";
     const y1 = Number(/y1="([\d.]+)"/.exec(rule)?.[1]);
     const y2 = Number(/y2="([\d.]+)"/.exec(rule)?.[1]);
@@ -215,7 +230,7 @@ describe("renderChartSVG", () => {
   });
 
   it("names the government in a <title>, so a pointer reader can identify the rule they see", () => {
-    const svg = renderChartSVG(GOLDEN_INPUT);
+    const svg = renderChartSVG(GOVERNMENT_INPUT);
     expect(svg).toContain("<title>Cambio de gobierno: Gobierno de ejemplo (2019)</title>");
     expect(svg).toContain('data-government-id="gobierno-ejemplo"');
   });
@@ -230,7 +245,7 @@ describe("renderChartSVG", () => {
     // the first plotted quarter. `buildGovernmentMarkers` refuses; this pins
     // that the RENDERER inherits the refusal rather than re-deriving it.
     const svg = renderChartSVG({
-      ...GOLDEN_INPUT,
+      ...GOVERNMENT_INPUT,
       governmentChanges: [
         { id: "gobierno-aznar-1996", group: "governments", name: "José María Aznar", dateStart: "1996-05-05" },
       ],
@@ -358,6 +373,74 @@ describe("renderChartSVG", () => {
     const segments = svg.match(/data-testid="chart-line-segment-\d+"/g) ?? [];
     expect(segments).toHaveLength(2);
   });
+
+  // -------------------------------------------------------------------------
+  // The on-drawing LABELS — the layer that answers "what is this rule?" without
+  // the reader hovering it or reading a paragraph below the chart.
+  //
+  // `lib/chart/annotationLabels.ts` owns the geometry and is tested there
+  // against the real worst case. These assertions cover the part only this file
+  // can see: that the text reaches the markup, that it is the registry's own
+  // words, and that it is drawn where a reader can actually read it.
+  it("prints the government's own name ON the drawing, not only in a <title> a pointer can reach", () => {
+    const svg = renderChartSVG(GOVERNMENT_INPUT);
+    expect(svg).toContain('data-testid="chart-government-label"');
+    expect(svg).toMatch(/<text class="chart-annotation-label[^"]*"[^>]*>Gobierno de ejemplo<\/text>/);
+    expect(svg).toContain('data-government-id="gobierno-ejemplo"');
+  });
+
+  it("turns the government label onto its side, which is the whole reason six names fit at all", () => {
+    // A horizontal name needs a string-length of room beside its rule; a
+    // sideways one needs a line-height. On the real page that is 108 units
+    // against 12.5, and it is the difference between labelling this layer and
+    // not labelling it.
+    const label = /<text class="chart-annotation-label chart-annotation-label--government"[^>]*>/.exec(
+      renderChartSVG(GOVERNMENT_INPUT),
+    )?.[0];
+    expect(label, "no government label was rendered").toBeTruthy();
+    expect(label).toMatch(/transform="rotate\(-90 [\d.]+ [\d.]+\)"/);
+  });
+
+  it("prints the event's own name beside its rail", () => {
+    const svg = renderChartSVG(GOLDEN_INPUT);
+    expect(svg).toContain('data-testid="chart-event-span-label"');
+    expect(svg).toMatch(/<text class="chart-annotation-label[^"]*"[^>]*>Hito de ejemplo<\/text>/);
+  });
+
+  it("keeps the rail label upright, so the two labelled layers read as differently as the marks do", () => {
+    const label = /<text class="chart-annotation-label chart-annotation-label--event-span"[^>]*>/.exec(
+      renderChartSVG(GOLDEN_INPUT),
+    )?.[0];
+    expect(label, "no event-span label was rendered").toBeTruthy();
+    expect(label).not.toContain("rotate(");
+  });
+
+  it("draws the labels OVER the data, because a name crossed out by the series is not a name", () => {
+    // The marks themselves stay under the data — that rule is asserted two
+    // tests up and is unchanged. Text is the exception, and it is a narrow one:
+    // a 2-unit accent stroke through a 10-unit glyph leaves a shape a reader
+    // has to guess at. The halo below is what keeps the cost to the data at the
+    // glyph outlines rather than at the whole label's rectangle.
+    const svg = renderChartSVG(GOVERNMENT_INPUT);
+    expect(svg.indexOf("chart-annotation-label")).toBeGreaterThan(svg.indexOf("chart-line-segment"));
+    expect(svg.indexOf("chart-annotation-label")).toBeGreaterThan(svg.indexOf("chart-marker"));
+  });
+
+  it("gives every label a background-coloured halo, so it reads wherever it crosses the series", () => {
+    const svg = renderChartSVG(GOVERNMENT_INPUT);
+    for (const [, label] of svg.matchAll(/(<text class="chart-annotation-label[^>]*>)/g)) {
+      expect(label).toContain('paint-order="stroke"');
+      expect(label).toContain('stroke="var(--color-bg)"');
+      // The halo is a SOLID outline and never a dash: the dash is the reserved
+      // provisional semantic (`test/design-system/reserved-semantics.test.ts`).
+      expect(label).not.toContain("stroke-dasharray");
+    }
+  });
+
+  it("labels nothing when the reader has selected nothing, so the layer is byte-absent", () => {
+    const svg = renderChartSVG({ ...GOLDEN_INPUT, eventSpans: [] });
+    expect(svg).not.toContain("chart-annotation-label");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -372,6 +455,7 @@ describe("renderChartSVG", () => {
 // phone needs its own box at all).
 describe("renderChartSVG — narrow-viewport variant", () => {
   const NARROW_INPUT = { ...GOLDEN_INPUT, titleId: "golden-title-narrow", ...narrowChartVariant(GOLDEN_POINTS, 1) };
+  const NARROW_GOVERNMENT_INPUT = { ...NARROW_INPUT, governmentChanges: GOLDEN_GOVERNMENTS };
 
   it("leaves the wide variant byte-identical when the new inputs are omitted", () => {
     // Belt and braces alongside the golden snapshot: passing the defaults
@@ -471,10 +555,27 @@ describe("renderChartSVG — narrow-viewport variant", () => {
     // A second variant is a second chance to lose a layer. The narrow box is
     // the drawing a real reader on a phone receives, so the marker has to
     // survive into it — solid, and still not the provisional dash.
-    const svg = renderChartSVG(NARROW_INPUT);
+    const svg = renderChartSVG(NARROW_GOVERNMENT_INPUT);
     expect(svg.match(/data-testid="chart-government-marker-narrow"/g) ?? []).toHaveLength(1);
     const marker = /<g class="chart-government-marker"[\s\S]*?<\/g>/.exec(svg)?.[0] ?? "";
     expect(marker).not.toContain("stroke-dasharray");
+  });
+
+  it("labels the marks in the phone drawing too, at its own smaller type size", () => {
+    // A second variant is a second chance to lose a layer — and the label layer
+    // is the one whose type size differs between the boxes, so it is also the
+    // one that could survive as a size nobody chose. 14 against the wide box's
+    // 10, because the narrow box's own investitures sit 9.20 units apart on
+    // /indicador/poblacion-residente and two stacked names have to fit its 344
+    // units of plot height (`annotationLabels.ts`).
+    const svg = renderChartSVG(NARROW_GOVERNMENT_INPUT);
+    expect(svg).toContain('data-testid="chart-government-label-narrow"');
+    expect(svg).toContain('data-testid="chart-event-span-label-narrow"');
+    const label = /<text class="chart-annotation-label chart-annotation-label--government"[^>]*>/.exec(svg)?.[0] ?? "";
+    expect(label).toContain(`font-size="${NARROW_ANNOTATION_LABEL_FONT_SIZE}"`);
+    expect(renderChartSVG(GOVERNMENT_INPUT)).toContain(
+      `font-size="${WIDE_ANNOTATION_LABEL_FONT_SIZE}"`,
+    );
   });
 });
 

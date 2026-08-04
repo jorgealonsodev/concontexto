@@ -428,6 +428,16 @@
     }),
   );
 
+  /** The annotation entries the reader currently has on screen — the ONE thing
+   * the shared renderer cannot know, because it is this component's own state
+   * and not a property of the series.
+   *
+   * Declared here, above both annotation layers, because BOTH of them are now
+   * gated on it: the event-span rails always were, and the change-of-government
+   * markers now are. One expression, so the two layers cannot end up answering
+   * different controls. */
+  const shownAnnotations = $derived(annotations.filter((a) => openGroups[a.group]));
+
   // The change-of-government markers follow exactly the rule the break bands
   // follow — visible when the date falls inside the window currently on screen
   // — and they get it for free: `buildGovernmentMarkers` applies that rule
@@ -455,7 +465,18 @@
   // `<select>`'s own option list: the control is a statement about the series'
   // history, while a marker is a statement about the drawing in front of the
   // reader.
-  const governmentChanges = $derived(selectGovernmentChanges(annotations, rangedPeriods, frequency));
+  //
+  // AND FED THE READER'S OWN SELECTION, which is what changed here. The
+  // markers used to be drawn on every chart unconditionally — the one
+  // annotation layer with a visible toggle beside it that the drawing ignored,
+  // so a reader who had closed "gobiernos" still had six rules across their
+  // chart. `shownAnnotations` below is the same filter the event-span rails
+  // have always used, and applying it here is what makes "nothing is drawn
+  // unless it is selected" true of the whole annotation layer rather than of
+  // three quarters of it.
+  const governmentChanges = $derived(
+    selectGovernmentChanges(shownAnnotations, rangedPeriods, frequency),
+  );
   const governmentNote = $derived(describeGovernmentChanges(governmentChanges));
 
   // ---- The event-span projection (PRD §6.1.1(b)/(c)) ----
@@ -479,19 +500,18 @@
   // raw ones, for the same reason the government markers use them — a rail is
   // a statement about the drawing in front of the reader, so narrowing the
   // range re-selects and re-clamps it with no second filter to keep in step.
-  const shownAnnotations = $derived(annotations.filter((a) => openGroups[a.group]));
   const eventSpans = $derived(selectEventSpans(shownAnnotations, rangedPeriods, frequency));
   const eventSpanNote = $derived(describeEventSpans(eventSpans));
 
   const chartInput = $derived({
     points: rangedPoints,
     breaks: visibleBreaks.map((b) => ({ key: b.key, date: b.date })),
-    // Unfiltered on purpose — see `IndicatorChart.astro`'s own call site.
-    governmentChanges: annotations,
-    // Filtered on purpose, and by the ONE thing the renderer cannot know: which
-    // annotation groups the reader is currently showing. Every other rule about
-    // these events — end date, window, clamping, stacking — belongs to
-    // `buildEventSpanRails` inside the shared renderer.
+    // BOTH annotation layers filtered by the ONE thing the renderer cannot
+    // know: which annotation groups the reader is currently showing. Every
+    // other rule about these entries — the window, the end date, the clamping,
+    // the stacking, and where each label can honestly be drawn — belongs to the
+    // shared renderer, so the static half and this one cannot disagree.
+    governmentChanges: shownAnnotations,
     eventSpans: shownAnnotations,
     frequency,
     decimals: viewDecimals,
@@ -840,13 +860,46 @@
     {/if}
   </div>
 
-  <!-- One paragraph, two sentences — the same composition, and the same
-       reasoning, as `IndicatorChart.astro`'s. The second sentence is both the
-       screen-reader reader's only route to the markers (the drawing is a
-       single `role="img"`, which prunes its own children) and the visible
-       legend that names them, which is why it is not a hidden node. -->
+  <!-- The series' own pattern, and nothing else. The change-of-government
+       sentence used to be appended here; it moved to the live region below
+       when the markers became selection-gated, for the reason stated there. -->
   <p id={descriptionId} class="mt-3 text-body text-ink" data-testid="chart-description">
-    {description}{governmentNote ? ` ${governmentNote}` : ""}
+    {description}
+  </p>
+
+  <!-- The change-of-government sentence, on exactly the terms the event-span
+       sentence below already has.
+
+       WHY IT IS STILL HERE AT ALL, now that every rule on the drawing carries
+       its own name. Two reasons, and the first is decisive: the drawing is a
+       single `role="img"`, which prunes its own descendants from the
+       accessibility tree, so a screen-reader reader cannot reach one word of
+       the labels painted on it. Removing this sentence would hand sighted
+       readers a feature and take it away from everyone else. The second is
+       that the drawing does not promise to label everything: a name that
+       cannot be drawn WHOLE and INSIDE the plot area is refused rather than
+       truncated (`lib/chart/annotationLabels.ts`), and this sentence — which
+       names every marked change in the same left-to-right order the rules
+       appear in — is what keeps such an omission disclosed instead of silent.
+
+       WHY IT MOVED OUT OF `aria-describedby`. It now states TRANSIENT
+       SELECTION STATE rather than a permanent property of the series: it
+       appears and disappears as the reader opens and closes the "gobiernos"
+       group. A description a screen reader reads once, on arrival, is the
+       wrong node for that, and a `aria-describedby` target that silently
+       changes underneath is announced to nobody. A polite live region is the
+       right one, and it is the same device this component already uses for
+       the event spans, the government range and the custom range.
+
+       Always present rather than inside an `{#if}`, so the region exists in
+       the accessibility tree BEFORE the reader's first toggle: a live region
+       created at the moment its content appears is routinely missed. -->
+  <p
+    class="mt-1 text-caption text-ink-muted"
+    aria-live="polite"
+    data-testid="chart-government-note"
+  >
+    {governmentNote}
   </p>
 
   <!-- The event-span sentence: the visible legend that names which events the

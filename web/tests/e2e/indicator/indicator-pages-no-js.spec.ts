@@ -99,18 +99,30 @@ test.describe("Indicator pages — no-JavaScript baseline", () => {
         // Only the interactive filter over it is absent.
         await expect(indicator.chartSection.getByTestId("annotation-group-governments")).toBeVisible();
 
-        // ...and neither is the on-chart marker. It is baked into the SVG
-        // string by the shared renderer, exactly as the break bands are, so
-        // there is no JavaScript-only layer that could omit it — in either
-        // drawing, and with its legend and its naming sentence intact.
-        expect(await indicator.governmentMarkers.count()).toBeGreaterThan(0);
-        expect(await indicator.governmentMarkersNarrow.count()).toBe(
-          await indicator.governmentMarkers.count(),
-        );
-        await expect(indicator.legendGovernment).toBeVisible();
-        await expect(indicator.chartSection.getByTestId("chart-description")).toContainText(
-          "cambios de gobierno registrados",
-        );
+        // WHAT A NO-JAVASCRIPT READER DOES NOT GET, stated as an assertion
+        // rather than left to be discovered.
+        //
+        // The on-chart marker is now gated on the `governments` annotation
+        // group, which starts CLOSED and cannot be opened without JavaScript —
+        // so it is never drawn here. That is a real loss against what this page
+        // used to render, and it is the honest reading of the two rules that
+        // produce it: the indicator-page spec fixes two of the three annotation
+        // groups OFF by default, and the owner's rule is that nothing is drawn
+        // unless it is selected. A reader who cannot select cannot be shown a
+        // selection they did not make, and the alternative — keeping this ONE
+        // group's marks unconditional — is exactly the inconsistency being
+        // removed: `exogenous` has behaved this way since it shipped, and the
+        // `<select>` above is absent on the same principle.
+        //
+        // Nothing about the layer is hidden from that reader, only undrawn: the
+        // group's own chips are server-rendered inside the disclosure below,
+        // which a CSS-only checkbox can open with no script at all, and the
+        // accessible data table carries every observation regardless.
+        expect(await indicator.governmentMarkers.count()).toBe(0);
+        expect(await indicator.governmentMarkersNarrow.count()).toBe(0);
+        expect(await indicator.governmentLabels.count()).toBe(0);
+        await expect(indicator.legendGovernment).toHaveCount(0);
+        await expect(indicator.governmentNote).toHaveText("");
       },
     );
   }

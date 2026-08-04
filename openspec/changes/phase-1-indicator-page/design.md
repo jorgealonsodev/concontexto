@@ -1507,8 +1507,28 @@ assumes the control is live.
       **Open** as a design question about where the partial-read defence actually belongs: nothing between
       the database read and the removal currently asserts that the read was complete, and the two things that
       look like they do are outside the call and blind to it.
-- [ ] **New (slice 17) — "a failed rebuild raises an alert immediately" is substituted, not implemented
-      (verify-report pass-5 WARNING-41).** The `pipeline-operations` scenario reads: *"GIVEN a rebuild
+- [x] **RESOLVED, slice 39 (`f973390`) — the spec's timing clause was narrowed, which is the first of the
+      two options this entry itself named.** SUPERSEDED: the body below is preserved verbatim as the
+      reasoning that produced the decision, and its closing sentence — "Neither has been done" — is FALSE
+      at HEAD. Verify-report pass 10 raised that staleness as WARNING-61; it is the sixth time this record
+      has asserted in the present tense something a landed commit had already changed, and the first time
+      on the very item that commit closed.
+
+      What settled it was not the argument recorded below but the diff. The scenario said "immediately"
+      while its own parent requirement already read "inside the publish-latency budget", so the clause
+      contradicted the requirement it belonged to. Removing it corrects an internal contradiction rather
+      than bending a requirement to fit the code — which is the distinction between a correction and an
+      accommodation, and it is decided by `git diff f973390^ f973390` showing exactly one changed hunk with
+      the normative sentence untouched.
+
+      The bound is now the budget this same delta already declares (`APP_PUBLISH_LATENCY_BUDGET`, 30
+      minutes by default), and the scenario is falsifiable in three directions, each mapped to a passing
+      test. The dropped clause — "naming the ingestion run and the build failure" — was never reachable:
+      no `workflow_run` receiver feeds the Go alerting sink, so nothing was lost by deleting it rather
+      than rewording it.
+
+- [ ] **(Superseded — see above.) New (slice 17) — "a failed rebuild raises an alert immediately" is
+      substituted, not implemented (verify-report pass-5 WARNING-41).** The `pipeline-operations` scenario reads: *"GIVEN a rebuild
       dispatched by a successful ingestion that fails, WHEN the failure is observed, THEN an alert is raised
       naming the ingestion run and the build failure."* Nothing observes a failed CI rebuild.
       `alerting.DispatchFailed` fires when the **POST** fails, which is a different event; a failed

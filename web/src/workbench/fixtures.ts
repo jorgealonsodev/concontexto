@@ -145,10 +145,31 @@ export const indicatorChart: IndicatorChartProps = {
   ],
   annotations: [
     {
+      // OUTSIDE this fixture's span (2019-Q1 onwards), and kept that way on
+      // purpose: it demonstrates the half of the marker rule that is easiest
+      // to get wrong. The chip below the chart still names this government —
+      // it genuinely governed the series — but no vertical rule is drawn for
+      // it, because the change of government happened before the first
+      // observation and a rule at the left edge would claim it happened
+      // there.
       id: "gob-2018",
       group: "governments",
       name: "Cambio de gobierno",
       dateStart: "2018-06-01",
+      dateEnd: null,
+      href: null,
+    },
+    {
+      // INSIDE the span, so the workbench actually shows the marker (the
+      // design-system spec asks each catalog component for at least one state
+      // variant, and an undrawn layer is not one). Illustrative like every
+      // other value in this file — a workbench fixture is not the editorial
+      // registry, so this carries a plainly generic name rather than a real
+      // president's beside a date that was never his.
+      id: "gob-ejemplo-2021",
+      group: "governments",
+      name: "Cambio de gobierno (ejemplo)",
+      dateStart: "2021-01-15",
       dateEnd: null,
       href: null,
     },

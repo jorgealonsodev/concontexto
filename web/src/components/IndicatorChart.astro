@@ -31,7 +31,8 @@
 import AccessibleDataTable, { type AccessibleDataTablePoint } from "./AccessibleDataTable.astro";
 import BreakBand from "./BreakBand.astro";
 import AnnotationChip from "./AnnotationChip.astro";
-import { describeSeries } from "../lib/chart/description";
+import { describeGovernmentChanges, describeSeries } from "../lib/chart/description";
+import { selectGovernmentChanges } from "../lib/chart/governmentMarkers";
 import { narrowChartVariant, renderChartSVG } from "../lib/chart/svg";
 import { periodFromCalendarDate, type Frequency } from "../lib/chart/periods";
 import { formatPeriodProse } from "../lib/format/period";
@@ -101,9 +102,20 @@ const tableId = `chart-table-${idBase}`;
 
 const description = describeSeries({ points, unit, decimals });
 
+// The changes of government this series may honestly mark. The SAME list feeds
+// the drawing and the sentence below it, so the rules a sighted reader counts
+// and the names a screen-reader reader hears can never disagree — and neither
+// can be produced without the other.
+const governmentChanges = selectGovernmentChanges(annotations, points.map((p) => p.period), frequency);
+const governmentNote = describeGovernmentChanges(governmentChanges);
+
 const chartInput = {
   points,
   breaks: breaks.map((b) => ({ key: b.key, date: b.date })),
+  // Unfiltered on purpose: which entries are marked is
+  // `buildGovernmentMarkers`' single decision, made inside the renderer both
+  // this component and the island share.
+  governmentChanges: annotations,
   frequency,
   decimals,
   unit,
@@ -180,8 +192,17 @@ const breakDisplay = breaks.map((b) => ({
     <Fragment set:html={svgMarkup} />
   </div>
 
+  {/*
+    ONE paragraph, two sentences. The second names the change-of-government
+    markers, and it lives here rather than in a node of its own for two
+    reasons: this paragraph is already what both drawings point at with
+    `aria-describedby` (a second node would mean a third id in that list, on
+    both variants), and the same sentence is the visible legend a sighted
+    reader needs — six presidential names do not fit on either drawing, and
+    they read here in the same left-to-right order the rules appear in.
+  */}
   <p id={descriptionId} class="mt-3 text-body text-ink" data-testid="chart-description">
-    {description}
+    {description}{governmentNote && ` ${governmentNote}`}
   </p>
 
   <ul class="chart-legend mt-2 flex flex-wrap gap-4 text-caption text-ink-muted" data-testid="chart-legend">
@@ -200,6 +221,25 @@ const breakDisplay = breaks.map((b) => ({
       <span aria-hidden="true" class="inline-block h-2.5 w-2.5 rotate-45 border border-dotted border-provisional bg-provisional"></span>
       {es.chart.statusLabel.P}
     </li>
+    {
+      /* The third entry teaches the third code. Without it a vertical rule is
+         a decoration a reader has to guess at; with it, it is a mark with a
+         meaning. Present only when the drawing really carries a marker — a
+         legend entry for something not on screen is the "control that does not
+         apply" the spec asks to be absent rather than shown.
+         The glyph is the marker itself in miniature (triangular flag on a
+         solid rule), so the legend and the drawing are the same object at two
+         sizes — never a swatch that merely shares a colour. */
+      governmentChanges.length > 0 && (
+        <li class="flex items-center gap-1.5" data-testid="chart-legend-government">
+          <svg aria-hidden="true" viewBox="0 0 10 14" class="h-3.5 w-2.5 shrink-0 text-ink" fill="none">
+            <path d="M0 0 L10 0 L5 4 Z" fill="currentColor" />
+            <line x1="5" y1="0" x2="5" y2="14" stroke="currentColor" stroke-width="1" />
+          </svg>
+          {es.chart.government.markerLegendLabel}
+        </li>
+      )
+    }
   </ul>
 
   {

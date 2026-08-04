@@ -32,6 +32,20 @@ const GOLDEN_POINTS: ChartPoint[] = [
   { period: "2020-Q3", value: 16.3, status: "P" },
 ];
 const GOLDEN_BREAKS = [{ key: "covid-2020", date: "2020-04-01", kind: "metodológica", noteMd: "n/a", sourceUrl: null }];
+// ...and svg.test.ts's own GOLDEN_GOVERNMENTS, in the shape the island's
+// `annotations` prop takes. The golden fixture now covers the
+// change-of-government marker, so parity is only meaningful if this side
+// feeds the island the same change.
+const GOLDEN_ANNOTATIONS = [
+  {
+    id: "gobierno-ejemplo",
+    group: "governments" as const,
+    name: "Gobierno de ejemplo",
+    dateStart: "2019-10-01",
+    dateEnd: null,
+    href: null,
+  },
+];
 
 /** One of the island's two rendered drawings, by its own test id.
  *
@@ -58,6 +72,7 @@ describe("ChartIsland — island-parity golden test (task 8.12)", () => {
         decimals: 1,
         points: GOLDEN_POINTS,
         breaks: GOLDEN_BREAKS,
+        annotations: GOLDEN_ANNOTATIONS,
         transforms: { yoy: false, qoq: false, perCapita: false },
         titleId: "golden-title",
         descriptionId: "golden-description",
@@ -86,6 +101,7 @@ describe("ChartIsland — island-parity golden test (task 8.12)", () => {
         decimals: 1,
         points: GOLDEN_POINTS,
         breaks: GOLDEN_BREAKS,
+        annotations: GOLDEN_ANNOTATIONS,
         transforms: { yoy: false, qoq: false, perCapita: false },
         titleId: "golden-title",
         descriptionId: "golden-description",
@@ -96,6 +112,7 @@ describe("ChartIsland — island-parity golden test (task 8.12)", () => {
     const expected = renderChartSVG({
       points: GOLDEN_POINTS,
       breaks: GOLDEN_BREAKS.map((b) => ({ key: b.key, date: b.date })),
+      governmentChanges: GOLDEN_ANNOTATIONS,
       frequency: "Q",
       decimals: 1,
       unit: "% población activa",
@@ -269,5 +286,85 @@ describe("ChartIsland — responsive geometry", () => {
     const ids = [...renderIsland().matchAll(/<title id="([^"]+)"/g)].map((m) => m[1]);
     expect(ids.length).toBe(2);
     expect(new Set(ids).size).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The change-of-government layer, on the half a real `/indicador/{slug}` page
+// actually composes — including for a reader with JavaScript disabled, who
+// receives this server-rendered string and nothing else.
+//
+// The RANGE half of the behaviour cannot be proven here (`onMount` is a
+// documented no-op on the server, so the SSR view is always raw/full); it is
+// proven in a real browser by `tests/e2e/indicator/indicator-pages.spec.ts`.
+describe("ChartIsland — changes of government", () => {
+  const ANNOTATIONS = [
+    { id: "gobierno-aznar-1996", group: "governments" as const, name: "José María Aznar", dateStart: "1996-05-05", dateEnd: null, href: null },
+    { id: "gobierno-sanchez-2018", group: "governments" as const, name: "Pedro Sánchez", dateStart: "2018-06-02", dateEnd: null, href: null },
+    { id: "crisis-2008", group: "exogenous" as const, name: "Crisis financiera", dateStart: "2008-01-01", dateEnd: "2013-12-31", href: null },
+  ];
+  const POINTS: ChartPoint[] = [
+    { period: "2017-Q1", value: 18.8, status: "D" },
+    { period: "2018-Q1", value: 16.7, status: "D" },
+    { period: "2019-Q1", value: 14.7, status: "D" },
+    { period: "2020-Q1", value: 14.4, status: "D" },
+  ];
+
+  function renderWithGovernments() {
+    const { body } = render(ChartIsland, {
+      props: {
+        slug: "tasa-de-paro-epa",
+        name: "Tasa de paro",
+        unit: "% población activa",
+        frequency: "Q" as const,
+        decimals: 1,
+        points: POINTS,
+        annotations: ANNOTATIONS,
+        transforms: { yoy: false, qoq: false, perCapita: false },
+      },
+    });
+    return body;
+  }
+
+  it("marks the investiture inside the span and refuses the one that predates it", () => {
+    // Aznar (1996) is a government this series lived under, and his chip is
+    // rendered — but no change of government happened on this chart, so no
+    // rule is drawn for him. Marking him would put a boundary at 2017-Q1.
+    const body = renderWithGovernments();
+    expect(body).toContain('data-government-id="gobierno-sanchez-2018"');
+    expect(body).not.toContain('data-government-id="gobierno-aznar-1996"');
+    expect((body.match(/data-testid="chart-government-marker"/g) ?? []).length).toBe(1);
+    expect((body.match(/data-testid="chart-government-marker-narrow"/g) ?? []).length).toBe(1);
+  });
+
+  it("never marks a shock or a milestone as a change of government", () => {
+    const body = renderWithGovernments();
+    expect(body).not.toContain('data-government-id="crisis-2008"');
+  });
+
+  it("carries the legend entry and the naming sentence a no-JavaScript reader depends on", () => {
+    const body = renderWithGovernments();
+    expect(body).toContain('data-testid="chart-legend-government"');
+    const description = /data-testid="chart-description"[^>]*>([\s\S]*?)<\/p>/.exec(body)?.[1] ?? "";
+    expect(description).toContain("cambios de gobierno registrados");
+    expect(description).toContain("Pedro Sánchez (2018)");
+  });
+
+  it("says nothing about governments for a series that overlaps no investiture", () => {
+    const { body } = render(ChartIsland, {
+      props: {
+        slug: "tasa-de-paro-epa",
+        name: "Tasa de paro",
+        unit: "% población activa",
+        frequency: "Q" as const,
+        decimals: 1,
+        points: POINTS,
+        annotations: ANNOTATIONS.filter((a) => a.group !== "governments"),
+        transforms: { yoy: false, qoq: false, perCapita: false },
+      },
+    });
+    expect(body).not.toContain("chart-government-marker");
+    expect(body).not.toContain('data-testid="chart-legend-government"');
+    expect(body).not.toContain("cambios de gobierno registrados");
   });
 });

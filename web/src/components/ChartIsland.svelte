@@ -29,7 +29,8 @@
     type ObservationStatus,
   } from "../lib/chart/geometry";
   import { narrowChartVariant, renderChartSVG } from "../lib/chart/svg";
-  import { describeSeries } from "../lib/chart/description";
+  import { describeGovernmentChanges, describeSeries } from "../lib/chart/description";
+  import { selectGovernmentChanges } from "../lib/chart/governmentMarkers";
   import { periodFromCalendarDate, periodOrdinalIndex, type Frequency } from "../lib/chart/periods";
   import { computeIntraPeriodRate, computeYoY } from "../lib/transform/yoy";
   import { computePerCapita } from "../lib/transform/perCapita";
@@ -426,9 +427,41 @@
     }),
   );
 
+  // The change-of-government markers follow exactly the rule the break bands
+  // follow — visible when the date falls inside the window currently on screen
+  // — and they get it for free: `buildGovernmentMarkers` applies that rule
+  // itself against whatever periods it is handed, and what it is handed here is
+  // `rangedPoints`. So narrowing the chart (preset, custom range, or a
+  // government term) re-selects the markers with no second filter to keep in
+  // step.
+  //
+  // Under the GOVERNMENT filter that leaves AT MOST one marker, on the left
+  // edge: attribution is half-open, so the selected term begins at its own
+  // investiture and the successor's falls outside the window. That edge marker
+  // is the point rather than an artefact — it is what shows the reader where
+  // the window they chose came from.
+  //
+  // At most, not exactly, and the difference is measured rather than assumed:
+  // on /indicador/poblacion-residente, whose historical cadence is semiannual,
+  // Rajoy's 2011-Q4 investiture falls in a gap and the term's first OBSERVED
+  // period is 2012-Q1. No marker is drawn, because the change of government
+  // genuinely did not happen inside the span on screen — the status line above
+  // says "se muestra de T1 2012", and a rule on that first point would claim a
+  // boundary a quarter later than the real one. /indicador/tasa-de-paro-epa,
+  // contiguous quarterly, keeps its marker at the very left edge.
+  //
+  // Fed the RANGED points and not the raw ones, unlike the government
+  // `<select>`'s own option list: the control is a statement about the series'
+  // history, while a marker is a statement about the drawing in front of the
+  // reader.
+  const governmentChanges = $derived(selectGovernmentChanges(annotations, rangedPeriods, frequency));
+  const governmentNote = $derived(describeGovernmentChanges(governmentChanges));
+
   const chartInput = $derived({
     points: rangedPoints,
     breaks: visibleBreaks.map((b) => ({ key: b.key, date: b.date })),
+    // Unfiltered on purpose — see `IndicatorChart.astro`'s own call site.
+    governmentChanges: annotations,
     frequency,
     decimals: viewDecimals,
     unit: viewUnit,
@@ -776,7 +809,14 @@
     {/if}
   </div>
 
-  <p id={descriptionId} class="mt-3 text-body text-ink" data-testid="chart-description">{description}</p>
+  <!-- One paragraph, two sentences — the same composition, and the same
+       reasoning, as `IndicatorChart.astro`'s. The second sentence is both the
+       screen-reader reader's only route to the markers (the drawing is a
+       single `role="img"`, which prunes its own children) and the visible
+       legend that names them, which is why it is not a hidden node. -->
+  <p id={descriptionId} class="mt-3 text-body text-ink" data-testid="chart-description">
+    {description}{governmentNote ? ` ${governmentNote}` : ""}
+  </p>
 
   {#if effectiveTransform !== "raw"}
     <p class="mt-1 text-caption text-ink-muted" data-testid="chart-derivation-note">
@@ -802,6 +842,21 @@
       <span aria-hidden="true" class="inline-block h-2.5 w-2.5 rotate-45 border border-dotted border-provisional bg-provisional"></span>
       {es.chart.statusLabel.P}
     </li>
+    <!-- The third entry, present only while the drawing really carries a
+         marker. Hand-mirrored from `IndicatorChart.astro`'s legend for the
+         same reason the break band below is: the Astro/Svelte boundary makes
+         the island re-render this list rather than hydrate it.
+         `test/chart/indicator-chart.container.test.ts` and
+         `test/chart/island-ssr.test.ts` each assert their own side. -->
+    {#if governmentChanges.length > 0}
+      <li class="flex items-center gap-1.5" data-testid="chart-legend-government">
+        <svg aria-hidden="true" viewBox="0 0 10 14" class="h-3.5 w-2.5 shrink-0 text-ink" fill="none">
+          <path d="M0 0 L10 0 L5 4 Z" fill="currentColor" />
+          <line x1="5" y1="0" x2="5" y2="14" stroke="currentColor" stroke-width="1" />
+        </svg>
+        {es.chart.government.markerLegendLabel}
+      </li>
+    {/if}
   </ul>
 
   <div class="chart-island-controls mt-4 flex flex-col gap-3">

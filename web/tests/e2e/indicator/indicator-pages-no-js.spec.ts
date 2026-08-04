@@ -98,6 +98,19 @@ test.describe("Indicator pages — no-JavaScript baseline", () => {
         // reader: the editorial annotation layer is static markup and stays.
         // Only the interactive filter over it is absent.
         await expect(indicator.chartSection.getByTestId("annotation-group-governments")).toBeVisible();
+
+        // ...and neither is the on-chart marker. It is baked into the SVG
+        // string by the shared renderer, exactly as the break bands are, so
+        // there is no JavaScript-only layer that could omit it — in either
+        // drawing, and with its legend and its naming sentence intact.
+        expect(await indicator.governmentMarkers.count()).toBeGreaterThan(0);
+        expect(await indicator.governmentMarkersNarrow.count()).toBe(
+          await indicator.governmentMarkers.count(),
+        );
+        await expect(indicator.legendGovernment).toBeVisible();
+        await expect(indicator.chartSection.getByTestId("chart-description")).toContainText(
+          "cambios de gobierno registrados",
+        );
       },
     );
   }

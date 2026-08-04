@@ -202,3 +202,58 @@ describe("IndicatorChart — responsive geometry", () => {
     expect((html.match(/data-testid="chart-break-band-narrow"/g) ?? []).length).toBe(1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// The change-of-government markers, as the STATIC (zero-JavaScript) component
+// renders them. `/indicador/{slug}` composes the island, but this component is
+// the workbench's catalog entry and the no-JS gate's subject, so the layer has
+// to be here too — and, more to the point, it has to be here in all THREE of
+// its parts. A marker nobody can name is a decoration; a legend for a marker
+// that is not drawn is a lie; a sentence naming markers the drawing does not
+// carry is worse than either.
+describe("IndicatorChart — changes of government", () => {
+  it("draws one marker per change of government inside the plotted span, in BOTH variants", async () => {
+    const container = await AstroContainer.create();
+    const html = await container.renderToString(IndicatorChart, { props: { ...fx.indicatorChart } });
+    // The fixture carries two `governments` entries: one before the first
+    // observation (chip only) and one inside the span (chip AND marker).
+    expect((html.match(/data-testid="chart-government-marker"/g) ?? []).length).toBe(1);
+    expect((html.match(/data-testid="chart-government-marker-narrow"/g) ?? []).length).toBe(1);
+    expect(html).toContain('data-government-id="gob-ejemplo-2021"');
+    expect(html).not.toContain('data-government-id="gob-2018"');
+  });
+
+  it("teaches the code with a legend entry carrying the marker's own glyph", async () => {
+    const container = await AstroContainer.create();
+    const html = await container.renderToString(IndicatorChart, { props: { ...fx.indicatorChart } });
+    expect(html).toContain('data-testid="chart-legend-government"');
+    expect(html).toContain("Cambio de gobierno");
+  });
+
+  it("names the marked changes in the description a screen reader is pointed at", async () => {
+    // The drawing is one `role="img"`, which prunes its own descendants from
+    // the accessibility tree — so the marker's `<title>` reaches a pointer and
+    // nobody else. This sentence, inside the paragraph both drawings name in
+    // `aria-describedby`, is the whole accessibility story for this layer.
+    const container = await AstroContainer.create();
+    const html = await container.renderToString(IndicatorChart, { props: { ...fx.indicatorChart } });
+    const description = /data-testid="chart-description"[^>]*>([\s\S]*?)<\/p>/.exec(html)?.[1] ?? "";
+    expect(description).toContain("cambios de gobierno registrados");
+    expect(description).toContain("Cambio de gobierno (ejemplo) (2021)");
+  });
+
+  it("has no marker, no legend entry and no sentence when no change falls inside the span", async () => {
+    // Absent, not empty — the same discipline the annotation groups follow. A
+    // series predating every recorded government (poblacion-residente's first
+    // decade is the real case) simply says nothing about governments.
+    const container = await AstroContainer.create();
+    const noGovernments = {
+      ...fx.indicatorChart,
+      annotations: fx.indicatorChart.annotations!.filter((a) => a.group !== "governments"),
+    };
+    const html = await container.renderToString(IndicatorChart, { props: noGovernments });
+    expect(html).not.toContain("chart-government-marker");
+    expect(html).not.toContain('data-testid="chart-legend-government"');
+    expect(html).not.toContain("cambios de gobierno registrados");
+  });
+});

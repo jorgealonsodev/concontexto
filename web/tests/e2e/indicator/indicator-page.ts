@@ -36,6 +36,15 @@ export class IndicatorPage extends BasePage {
   readonly governmentRange: Locator;
   readonly governmentSelect: Locator;
   readonly governmentStatus: Locator;
+  /** The change-of-government markers inside the WIDE drawing — the chart's
+   * third vertical treatment, beside the provisional dash and the break band.
+   * Scoped to one variant because both are in the document at once (CSS shows
+   * one), and an unscoped locator would count every marker twice. */
+  readonly governmentMarkers: Locator;
+  readonly governmentMarkersNarrow: Locator;
+  /** The legend entry that teaches what a marker means. Absent — not empty —
+   * when the visible window carries no change of government. */
+  readonly legendGovernment: Locator;
   readonly yoyVariation: Locator;
   /** The link back to `/` (milestone 1.2). Rendered by `IndicatorPage.astro`,
    * so all six routes carry it. */
@@ -68,6 +77,9 @@ export class IndicatorPage extends BasePage {
     this.governmentRange = this.chartSection.getByTestId("chart-government-range");
     this.governmentSelect = this.chartSection.getByTestId("government-select");
     this.governmentStatus = this.chartSection.getByTestId("government-range-status");
+    this.governmentMarkers = this.chartSection.locator('[data-testid="chart-government-marker"]');
+    this.governmentMarkersNarrow = this.chartSection.locator('[data-testid="chart-government-marker-narrow"]');
+    this.legendGovernment = this.chartSection.getByTestId("chart-legend-government");
     this.yoyVariation = page.getByTestId("page-yoy-variation");
     this.backToHome = page.getByTestId("back-to-home");
     this.header = page.getByTestId("page-header");

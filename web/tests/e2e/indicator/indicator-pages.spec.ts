@@ -199,6 +199,112 @@ for (const slug of SLUGS) {
       },
     );
 
+    // The change-of-government markers, on the real built pages (PRD
+    // §6.1.1(a)'s `governments` group, drawn ON the chart).
+    //
+    // Three things a narrower test would miss, and all three are ways the
+    // marker could be a lie rather than an aid:
+    //   1. it is SOLID — the dashed stroke is the reserved provisional
+    //      semantic and must not be borrowed here;
+    //   2. both drawings carry it, so a phone reader is not shown a different
+    //      chart from a desktop reader;
+    //   3. the drawing and the generated sentence agree, because that sentence
+    //      is the only route a screen-reader reader has to this layer (the
+    //      drawing is one `role="img"`, which prunes its own children).
+    test(
+      "draws a solid change-of-government marker in both drawings, and the description names exactly what is drawn",
+      { tag: ["@indicator-page", "@government-marker"] },
+      async ({ page }) => {
+        const indicator = new IndicatorPage(page, slug);
+        await indicator.goto();
+        await indicator.waitForChartHydrated();
+
+        const wide = await indicator.governmentMarkers.count();
+        const narrow = await indicator.governmentMarkersNarrow.count();
+        // Every one of the six series spans 2018, so every one of them must
+        // carry at least the sitting government's investiture. A page with no
+        // marker at all would mean the layer silently did not ship.
+        expect(wide, `${slug}: no change-of-government marker was drawn`).toBeGreaterThan(0);
+        expect(narrow, `${slug}: the narrow drawing lost the marker the wide one has`).toBe(wide);
+
+        // SOLID. `getAttribute` rather than a CSS check on purpose: the dash
+        // would be a presentational attribute in the markup, exactly where the
+        // provisional line puts its own.
+        const dashes = await indicator.governmentMarkers
+          .locator(".chart-government-marker__rule")
+          .evaluateAll((nodes) => nodes.map((n) => n.getAttribute("stroke-dasharray")));
+        expect(dashes.every((d) => d === null), `${slug}: a marker borrowed the provisional dash`).toBe(true);
+
+        // The legend teaches the code, and the sentence names the events.
+        await expect(indicator.legendGovernment).toBeVisible();
+        const description = indicator.chartSection.getByTestId("chart-description");
+        await expect(description).toContainText("cambios de gobierno registrados");
+
+        // Agreement between the drawing and the words: one marker per name in
+        // the sentence. The sentence lists "Nombre (AAAA)" items, so the years
+        // in parentheses are countable.
+        const text = (await description.textContent()) ?? "";
+        const listed = text.slice(text.indexOf("cambios de gobierno registrados")).match(/\(\d{4}\)/g) ?? [];
+        expect(listed.length, `${slug}: the description names ${listed.length} changes but the chart draws ${wide}`).toBe(wide);
+      },
+    );
+
+    // The range interaction, which is the question this layer had to answer
+    // for itself: what should a marker do when the reader narrows the chart?
+    //
+    // The answer implemented is the break bands' own rule — a marker exists
+    // while its date falls inside the window ON SCREEN — and this proves the
+    // two consequences of it. Narrowing to one government's term can leave at
+    // most that term's own opening boundary (attribution is half-open, so the
+    // successor's investiture is outside the window); and it leaves NONE when
+    // the investiture itself falls in a gap in the series' cadence just before
+    // the first observation the term selects, because the change genuinely did
+    // not happen inside the span that is drawn.
+    test(
+      "narrowing to one government leaves at most that term's own opening marker, and the sentence follows it",
+      { tag: ["@indicator-page", "@government-marker"] },
+      async ({ page }) => {
+        const indicator = new IndicatorPage(page, slug);
+        await indicator.goto();
+        await indicator.waitForChartHydrated();
+        await indicator.governmentSelect.waitFor();
+
+        const fullMarkers = await indicator.governmentMarkers.count();
+        const optionValues = await indicator.governmentSelect
+          .locator("option")
+          .evaluateAll((nodes) => nodes.map((n) => (n as HTMLOptionElement).value));
+        const sitting = optionValues[optionValues.length - 1];
+        await indicator.governmentSelect.selectOption(sitting);
+        await expect(indicator.governmentStatus).toContainText("Gobierno de");
+
+        const narrowedMarkers = await indicator.governmentMarkers.count();
+        expect(narrowedMarkers, `${slug}: narrowing to one term did not reduce the markers`).toBeLessThanOrEqual(
+          Math.min(1, fullMarkers),
+        );
+
+        // Whatever survived, the words and the drawing still agree — the
+        // invariant that makes the sentence a description rather than a
+        // caption written once and left behind.
+        const description = indicator.chartSection.getByTestId("chart-description");
+        if (narrowedMarkers === 0) {
+          await expect(description).not.toContainText("cambios de gobierno registrados");
+          await expect(indicator.legendGovernment).toHaveCount(0);
+        } else {
+          await expect(description).toContainText("cambios de gobierno registrados");
+          await expect(indicator.legendGovernment).toBeVisible();
+          // ...and it sits on the term's own first observation, which is the
+          // plot area's left edge — the same x the axis line starts at.
+          const [markerX, axisX] = await indicator.chartSection.evaluate(() => {
+            const svg = document.querySelector('[data-testid="indicator-chart-svg"]') as SVGSVGElement;
+            const rule = svg.querySelector(".chart-government-marker__rule") as SVGLineElement;
+            const axis = svg.querySelector(".chart-axis") as SVGLineElement;
+            return [Number(rule.getAttribute("x1")), Number(axis.getAttribute("x1"))];
+          });
+          expect(markerX, `${slug}: the surviving marker is not on the term's first observation`).toBeCloseTo(axisX, 1);
+        }
+      },
+    );
+
     // The government range (indicator-page spec, "Annotation layers per PRD
     // §6.1.1(a)" — the `governments` event group; series-transformations
     // spec, "The selected preset MUST be encoded in the permalink").

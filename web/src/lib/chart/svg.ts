@@ -30,7 +30,13 @@ import {
   type ChartDimensions,
   type ChartPoint,
 } from "./geometry";
+import { buildGovernmentMarkers, type GovernmentChangeAnnotation } from "./governmentMarkers";
 import type { Frequency } from "./periods";
+// The marker's `<title>` is read by a person, so its words live where every
+// other reader-facing string does. (The `<title>` two elements above — "
+// Evolución de la serie" — predates this module's i18n import and is left
+// where it is rather than moved as a side effect of this change.)
+import { es } from "../../i18n/es";
 
 export interface ChartBreakInput {
   key: string;
@@ -40,6 +46,12 @@ export interface ChartBreakInput {
 export interface RenderChartSVGInput {
   points: ChartPoint[];
   breaks: ChartBreakInput[];
+  /** The editorial registry's `governments` entries, unfiltered — which of
+   * them may honestly be marked is `buildGovernmentMarkers`' decision, made
+   * once, inside the renderer both consumers share. Omitted (or empty), the
+   * drawing carries no marker and is byte-identical to what it was before
+   * this layer existed. */
+  governmentChanges?: GovernmentChangeAnnotation[];
   frequency: Frequency;
   decimals: number;
   unit: string;
@@ -131,6 +143,86 @@ export function renderChartSVG(input: RenderChartSVGInput): string {
     )
     .join("");
 
+  // The change-of-government marker — the chart's THIRD vertical/line
+  // treatment, and the one that had to be designed AROUND two codes already
+  // spoken for. What a reader is meant to learn from each:
+  //
+  //   dotted grey ALONG THE DATA PATH   "this observation is provisional; the
+  //                                      source may still revise it"
+  //                                      (RESERVED — theme.css's own header)
+  //   wide translucent VERTICAL BAND    "the series changed methodology here;
+  //                                      the two sides are not directly
+  //                                      comparable"
+  //   thin SOLID vertical rule + flag   "a different government took office
+  //                                      here" (this)
+  //
+  // Three separations, none of them relying on colour alone:
+  //
+  //   AGAINST THE PROVISIONAL DASH — solid, never dashed, and drawn ACROSS the
+  //   plot rather than along the data path. The dash is a statement about one
+  //   observation's status; this is a statement about the calendar, and
+  //   reusing the dash would teach one reader two contradictory meanings for
+  //   one code. `test/design-system/reserved-semantics.test.ts` enforces it.
+  //   The colour is `--color-ink`, not the reserved provisional grey — which
+  //   also settles the near-collision that ruled out `--color-ink-muted`
+  //   here: read theme.css's two declared values side by side and they are the
+  //   same grey to a reader's eye, so a solid rule in the axis grey would have
+  //   collided with the reserved provisional semantic in everything but name.
+  //   (The hexes are deliberately NOT quoted in this comment: the reserved-
+  //   semantics guard scans every source file for the reserved values, and
+  //   Tailwind's own candidate scanner does not distinguish code from prose.)
+  //
+  //   AGAINST THE BREAK BAND — a `<line>` has no width at all, against a band
+  //   one full period step wide; solid ink against a 0.35-opacity purple wash;
+  //   an instant against an interval. The band shades a region because a
+  //   rupture affects the data on both sides of it; the marker names a
+  //   boundary because a change of government does not alter a single figure.
+  //
+  //   AGAINST THE DATA — the flag is a TRIANGLE, a third glyph shape beside
+  //   the definitive circle and the provisional diamond. No shape is reused,
+  //   so the whole drawing stays readable with colour discarded entirely
+  //   (PRD §12.5, ADR-8: colour is never the sole channel).
+  //
+  // Drawn UNDER the axis and the series, above the break bands: annotation
+  // never obscures the data it annotates.
+  //
+  // No party colour, and none is possible: `config/gobiernos.yaml` and
+  // `EventConfig` carry no party field (PRD §12.1), so every marker on every
+  // chart is the same ink. Colour carries no information here at all.
+  const governmentMarkers = buildGovernmentMarkers(
+    input.governmentChanges ?? [],
+    periods,
+    input.frequency,
+    dims,
+  )
+    .map((marker) => {
+      const x = marker.x;
+      const flagHalfWidth = 5;
+      const flagHeight = 7;
+      return (
+        `<g class="chart-government-marker" data-testid="chart-government-marker${idSuffix}" ` +
+        `data-government-id="${escapeXml(marker.id)}">` +
+        // A `<title>` on the group, so a pointer reader can identify the rule
+        // in front of them without six presidential names being printed
+        // across a 560-unit-wide drawing. It is NOT the accessibility answer:
+        // the root `<svg>` is a single `role="img"`, which prunes its own
+        // descendants from the accessibility tree, so a screen-reader reader
+        // never reaches this string. That reader is served by the sentence
+        // `describeGovernmentChanges` adds to the chart's own description
+        // paragraph — the node this drawing already names in
+        // `aria-describedby`.
+        `<title>${escapeXml(es.chart.government.markerTitle(marker.name, marker.year))}</title>` +
+        `<line class="chart-government-marker__rule" x1="${x.toFixed(2)}" y1="${area.y0.toFixed(2)}" ` +
+        `x2="${x.toFixed(2)}" y2="${area.y1.toFixed(2)}" stroke="var(--color-ink)" stroke-width="1" />` +
+        `<path class="chart-government-marker__flag" ` +
+        `d="M${(x - flagHalfWidth).toFixed(2)},${area.y0.toFixed(2)} ` +
+        `L${(x + flagHalfWidth).toFixed(2)},${area.y0.toFixed(2)} ` +
+        `L${x.toFixed(2)},${(area.y0 + flagHeight).toFixed(2)} Z" fill="var(--color-ink)" />` +
+        `</g>`
+      );
+    })
+    .join("");
+
   // Line: each individual EDGE (the segment between two consecutive
   // plotted points) is coloured/dashed on its own, based on whether the
   // point it arrives AT is provisional — not the whole contiguous run. A
@@ -208,6 +300,7 @@ export function renderChartSVG(input: RenderChartSVGInput): string {
     `aria-describedby="${input.descriptionId} ${input.tableId}" xmlns="http://www.w3.org/2000/svg">` +
     `<title id="${input.titleId}">Evolución de la serie (${escapeXml(input.unit)})</title>` +
     bandRects +
+    governmentMarkers +
     axisLine +
     linePaths +
     markers +

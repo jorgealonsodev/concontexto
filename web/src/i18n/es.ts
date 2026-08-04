@@ -119,6 +119,44 @@ export const es = {
       openEndNote:
         "El registro editorial no recoge la fecha de fin de este gobierno: se muestra hasta el último dato " +
         "disponible de la serie.",
+      /** ── The on-chart marker's own copy (ALL NEW reader-facing strings,
+       * flagged for editorial sign-off like every other string in this
+       * module). ────────────────────────────────────────────────────────────
+       *
+       * `markerTitle` is the marker's `<title>`: a pointer reader hovering one
+       * of the vertical rules learns which change of government it is without
+       * six names being printed across the drawing (they do not fit — the
+       * narrow box is 560 units wide and two of the six investitures are
+       * fourteen months apart). The YEAR and not the full date, deliberately,
+       * because that is exactly how `AnnotationChip` already labels a
+       * government: one event, one label, in both places it appears.
+       *
+       * `markerLegendLabel` is what teaches the code. An unexplained vertical
+       * rule is a decoration; the legend entry beside "Definitivo" and
+       * "Provisional" is what makes it a mark with a meaning.
+       *
+       * `changesNote` is the same information as prose, appended to the
+       * chart's generated description — the paragraph the SVG already points
+       * at with `aria-describedby`. The markers themselves are invisible to a
+       * screen reader (the drawing is a single `role="img"`, which prunes its
+       * own children from the accessibility tree), so without this sentence
+       * the feature would exist for sighted readers only.
+       *
+       * "REGISTRADOS en el periodo representado" is doing real work: it says
+       * these are the changes the editorial registry records inside the span
+       * on screen, and stops short of claiming there were no others. That
+       * matters for `poblacion-residente`, whose first decade (1971-1980)
+       * carries no marker because the only government of that period,
+       * `gobierno-suarez-1976`, is `date_status: unconfirmed` and is never
+       * projected. A sentence claiming completeness would turn that honest
+       * silence into a false assertion. */
+      markerTitle: (name: string, year: string) => `Cambio de gobierno: ${name} (${year})`,
+      markerLegendLabel: "Cambio de gobierno",
+      changesNote: (list: string) => `Se marcan los cambios de gobierno registrados en el periodo representado: ${list}.`,
+      /** One marked change, as it reads inside `changesNote`'s list. */
+      changeListItem: (name: string, year: string) => `${name} (${year})`,
+      /** Spanish joins the last item of a list with "y", not with a comma. */
+      listConjunction: "y",
     },
     transforms: {
       raw: "Serie original",

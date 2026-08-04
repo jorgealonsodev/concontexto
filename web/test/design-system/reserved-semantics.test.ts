@@ -14,6 +14,8 @@ import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { THEME_CSS_PATH } from "./compile-theme";
+import { narrowChartVariant, renderChartSVG } from "../../src/lib/chart/svg";
+import type { ChartPoint } from "../../src/lib/chart/geometry";
 
 function walk(dir: string, exts: string[], out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
@@ -120,4 +122,73 @@ describe("reserved semantics usage (slice 6): every real component usage is excl
     const content = readFileSync(path.join(COMPONENTS_DIR, "FreshnessSemaphore.astro"), "utf-8");
     expect(content).toContain("Pendiente de actualización por la fuente");
   });
+});
+
+// ---------------------------------------------------------------------------
+// The DASH half of the reserved semantic, asserted on what is actually drawn.
+//
+// The tests above police the reserved COLOURS by scanning source text. Nothing
+// policed the reserved STROKE PATTERN — and theme.css's header reserves both
+// ("dotted grey always means provisional data"). That gap became load-bearing
+// the moment the chart gained a third vertical/line treatment for changes of
+// government: "línea punteada" is the obvious way to draw one, and it is
+// exactly the thing that must not happen, because one reader would then hold
+// two contradictory meanings for one visual code.
+//
+// So this is asserted against `renderChartSVG`'s real output rather than
+// against its source: any element that carries a dash must also carry the
+// provisional colour, in both variants. Make the government marker dashed and
+// these fail.
+describe("reserved semantics: a dash in the chart means provisional data and nothing else", () => {
+  const POINTS: ChartPoint[] = [
+    { period: "2019-Q1", value: 10.2, status: "D" },
+    { period: "2019-Q2", value: 10.5, status: "D" },
+    { period: "2019-Q3", value: 10.1, status: "D" },
+    { period: "2019-Q4", value: 9.8, status: "P" },
+  ];
+  const INPUT = {
+    points: POINTS,
+    breaks: [{ key: "covid-2020", date: "2019-06-01" }],
+    governmentChanges: [
+      { id: "gobierno-ejemplo", group: "governments", name: "Gobierno de ejemplo", dateStart: "2019-07-01" },
+    ],
+    frequency: "Q" as const,
+    decimals: 1,
+    unit: "% población activa",
+    titleId: "t",
+    descriptionId: "d",
+    tableId: "tb",
+  };
+
+  /** Every drawn element (self-closing tag) that carries a dash pattern. */
+  function dashedElements(svg: string): string[] {
+    return (svg.match(/<[a-z]+[^>]*stroke-dasharray[^>]*>/g) ?? []) as string[];
+  }
+
+  for (const [variantName, input] of [
+    ["wide", INPUT],
+    ["narrow", { ...INPUT, titleId: "t-narrow", ...narrowChartVariant(POINTS, 1) }],
+  ] as const) {
+    it(`every dashed element in the ${variantName} drawing is a provisional one`, () => {
+      const svg = renderChartSVG(input);
+      const dashed = dashedElements(svg);
+      // Not vacuous: the fixture ends on a provisional observation, so there
+      // IS a legitimate dash to find.
+      expect(dashed.length).toBeGreaterThan(0);
+      for (const element of dashed) {
+        expect(element, `a dashed element that is not provisional: ${element}`).toContain(
+          "var(--color-provisional)",
+        );
+      }
+    });
+
+    it(`the ${variantName} change-of-government marker is solid and never borrows the provisional encoding`, () => {
+      const svg = renderChartSVG(input);
+      const marker = /<g class="chart-government-marker"[\s\S]*?<\/g>/.exec(svg)?.[0];
+      expect(marker, "no government marker was rendered, so this guard would pass vacuously").toBeTruthy();
+      expect(marker).not.toContain("stroke-dasharray");
+      expect(marker).not.toContain("var(--color-provisional)");
+      expect(marker).not.toContain("var(--color-break-band)");
+    });
+  }
 });

@@ -28,9 +28,19 @@ const GOLDEN_POINTS: ChartPoint[] = [
 
 const GOLDEN_BREAKS = [{ key: "covid-2020", date: "2020-04-01" }];
 
+/** One change of government INSIDE the golden span, so the committed fixture —
+ * D-5's anti-divergence device — actually covers the marker markup. A feature
+ * absent from the golden is a feature the static component and the island can
+ * silently disagree about. Synthetic, like `covid-2020` above: the golden
+ * series is not a real one either. */
+const GOLDEN_GOVERNMENTS = [
+  { id: "gobierno-ejemplo", group: "governments", name: "Gobierno de ejemplo", dateStart: "2019-10-01" },
+];
+
 const GOLDEN_INPUT = {
   points: GOLDEN_POINTS,
   breaks: GOLDEN_BREAKS,
+  governmentChanges: GOLDEN_GOVERNMENTS,
   frequency: "Q" as const,
   decimals: 1,
   unit: "% población activa",
@@ -132,6 +142,82 @@ describe("renderChartSVG", () => {
     expect(svg).toContain('aria-labelledby="golden-title"');
     expect(svg).toContain('aria-describedby="golden-description golden-table"');
     expect(svg).toContain('role="img"');
+  });
+
+  // -------------------------------------------------------------------------
+  // The government-change marker — the chart's THIRD vertical/line treatment,
+  // and the one that had to be designed around two codes already spoken for:
+  //
+  //   dotted grey ALONG THE DATA PATH  = this observation is provisional
+  //                                      (RESERVED, theme.css's own header)
+  //   wide translucent VERTICAL BAND   = a methodological rupture here
+  //   thin solid VERTICAL RULE + flag  = a change of government here (new)
+  //
+  // The assertions below are what keep the third from drifting into either of
+  // the first two: solid (never dashed), one unit wide (never a band), and
+  // capped by a triangle — a third glyph shape beside the definitive circle
+  // and the provisional diamond, so the marker is distinguishable with colour
+  // discarded entirely.
+  it("marks a change of government with a SOLID vertical rule, never a dashed one", () => {
+    const svg = renderChartSVG(GOLDEN_INPUT);
+    const marker = /<g class="chart-government-marker"[\s\S]*?<\/g>/.exec(svg)?.[0];
+    expect(marker, "no government marker was rendered").toBeTruthy();
+    // The reserved semantic, stated as an assertion: a dash here would teach
+    // one reader two contradictory meanings for one visual code.
+    expect(marker).not.toContain("stroke-dasharray");
+    expect(marker).not.toContain("var(--color-provisional)");
+    expect(marker).toContain('stroke-width="1"');
+  });
+
+  it("gives the marker a triangular cap — a third glyph shape, so colour is never the sole channel", () => {
+    const svg = renderChartSVG(GOLDEN_INPUT);
+    // circle = definitive, diamond (rotated rect) = provisional, triangle
+    // (closed 3-point path) = change of government. No shape is reused.
+    expect(svg).toMatch(/<path class="chart-government-marker__flag" d="M[\d.]+,[\d.]+ L[\d.]+,[\d.]+ L[\d.]+,[\d.]+ Z"/);
+  });
+
+  it("is not the break band: one unit wide against the band's full period step", () => {
+    const svg = renderChartSVG(GOLDEN_INPUT);
+    const band = /<rect class="chart-break-band"[^>]*>/.exec(svg)?.[0];
+    const bandWidth = Number(/width="([\d.]+)"/.exec(band ?? "")?.[1]);
+    expect(bandWidth).toBeGreaterThan(10);
+    // The marker is a `<line>`, which has no width at all — the two cannot be
+    // confused for one another even before colour is considered.
+    expect(svg).toContain('<line class="chart-government-marker__rule"');
+  });
+
+  it("spans the full plot height, so the reader can project the boundary onto the curve", () => {
+    const svg = renderChartSVG(GOLDEN_INPUT);
+    const rule = /<line class="chart-government-marker__rule"[^>]*>/.exec(svg)?.[0] ?? "";
+    const y1 = Number(/y1="([\d.]+)"/.exec(rule)?.[1]);
+    const y2 = Number(/y2="([\d.]+)"/.exec(rule)?.[1]);
+    const band = /<rect class="chart-break-band"[^>]*>/.exec(svg)?.[0] ?? "";
+    expect(y1).toBeCloseTo(Number(/ y="([\d.]+)"/.exec(band)?.[1]), 2);
+    expect(y2 - y1).toBeCloseTo(Number(/height="([\d.]+)"/.exec(band)?.[1]), 2);
+  });
+
+  it("names the government in a <title>, so a pointer reader can identify the rule they see", () => {
+    const svg = renderChartSVG(GOLDEN_INPUT);
+    expect(svg).toContain("<title>Cambio de gobierno: Gobierno de ejemplo (2019)</title>");
+    expect(svg).toContain('data-government-id="gobierno-ejemplo"');
+  });
+
+  it("draws no marker at all for a series carrying no change of government", () => {
+    const svg = renderChartSVG({ ...GOLDEN_INPUT, governmentChanges: [] });
+    expect(svg).not.toContain("chart-government-marker");
+  });
+
+  it("never marks an investiture outside the plotted span (the marker would be a false claim)", () => {
+    // Aznar over a 2019-2020 series: `nearestPeriodIndex` would snap 1996 onto
+    // the first plotted quarter. `buildGovernmentMarkers` refuses; this pins
+    // that the RENDERER inherits the refusal rather than re-deriving it.
+    const svg = renderChartSVG({
+      ...GOLDEN_INPUT,
+      governmentChanges: [
+        { id: "gobierno-aznar-1996", group: "governments", name: "José María Aznar", dateStart: "1996-05-05" },
+      ],
+    });
+    expect(svg).not.toContain("chart-government-marker");
   });
 
   it("never draws a line across a null-valued gap", () => {
@@ -237,6 +323,16 @@ describe("renderChartSVG — narrow-viewport variant", () => {
     const svg = renderChartSVG(NARROW_INPUT);
     expect(svg.match(/data-testid="chart-break-band-narrow"/g) ?? []).toHaveLength(1);
     expect(svg).toContain('data-break-key="covid-2020"');
+  });
+
+  it("still marks the change of government, so a phone reader gets the third treatment too", () => {
+    // A second variant is a second chance to lose a layer. The narrow box is
+    // the drawing a real reader on a phone receives, so the marker has to
+    // survive into it — solid, and still not the provisional dash.
+    const svg = renderChartSVG(NARROW_INPUT);
+    expect(svg.match(/data-testid="chart-government-marker-narrow"/g) ?? []).toHaveLength(1);
+    const marker = /<g class="chart-government-marker"[\s\S]*?<\/g>/.exec(svg)?.[0] ?? "";
+    expect(marker).not.toContain("stroke-dasharray");
   });
 });
 

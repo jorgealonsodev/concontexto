@@ -8,6 +8,7 @@ import { es } from "../../i18n/es";
 import { formatNumber } from "../format/number";
 import { formatPeriodProse } from "../format/period";
 import type { ChartPoint } from "./geometry";
+import type { GovernmentChange } from "./governmentMarkers";
 
 export interface DescribeSeriesInput {
   points: ChartPoint[];
@@ -110,4 +111,44 @@ export function describeSeries(input: DescribeSeriesInput): string {
     formatValue(end.value, decimals, unit),
     formatPeriod(end.period),
   );
+}
+
+/**
+ * The change-of-government markers, in one Spanish sentence — or the empty
+ * string when the visible window marks none.
+ *
+ * WHY THIS EXISTS AT ALL. The markers are drawn inside a single `role="img"`
+ * SVG. That role prunes its own descendants from the accessibility tree, so
+ * each marker's `<title>` is reachable by a pointer and by nothing else. A
+ * visual annotation a screen-reader reader cannot reach is a half-built
+ * feature, so the same information is stated here and appended to the chart's
+ * description paragraph — the exact node the drawing already names in
+ * `aria-describedby`.
+ *
+ * WHY IT IS ALSO THE VISIBLE LEGEND. Six presidential names cannot be printed
+ * on the drawing: the wide box is 960 units and the narrow one 560, and two of
+ * the six investitures are fourteen months apart — their labels would overlap
+ * before the third was drawn. So the names live in prose, in chronological
+ * order, which is the same left-to-right order the rules appear in. One
+ * sentence serves both readers rather than a visible list plus a hidden
+ * duplicate that could drift from it.
+ *
+ * WHAT IT DELIBERATELY DOES NOT CLAIM. `es.chart.government.changesNote` says
+ * these are the changes REGISTERED inside the period on screen. It does not
+ * say they were the only ones: `poblacion-residente` starts in 1971 and its
+ * first decade carries no marker, because the only government of that stretch
+ * (`gobierno-suarez-1976`) is `date_status: unconfirmed` and is never
+ * projected. Wording that implied completeness would convert that honest
+ * silence into a false assertion.
+ */
+export function describeGovernmentChanges(changes: readonly GovernmentChange[]): string {
+  if (changes.length === 0) return "";
+  const items = changes.map((change) => es.chart.government.changeListItem(change.name, change.year));
+  // Spanish joins the final item with "y", never with a comma. One item is
+  // its own list; two or more take the conjunction before the last.
+  const list =
+    items.length === 1
+      ? items[0]
+      : `${items.slice(0, -1).join(", ")} ${es.chart.government.listConjunction} ${items[items.length - 1]}`;
+  return es.chart.government.changesNote(list);
 }

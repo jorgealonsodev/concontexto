@@ -117,4 +117,13 @@ export const DECLARED_PAIRINGS: readonly ContrastPairing[] = [
   { name: "provisional (grey) as a dotted chart stroke on page background", fg: "provisional", bg: "bg", level: CONTRAST_LEVEL.GRAPHIC },
   { name: "tooltip text on tooltip background", fg: "tooltip-ink", bg: "tooltip-bg", level: CONTRAST_LEVEL.BODY_TEXT },
   { name: "break-band fill on page background", fg: "break-band", bg: "bg", level: CONTRAST_LEVEL.GRAPHIC },
+  // The change-of-government marker. No new token: it is drawn in `--color-ink`
+  // — the annotation-layer colour, deliberately NOT the axis grey, which is
+  // near-identical to the reserved provisional grey and would have collided
+  // with that semantic in everything but name. `ink` is already measured as
+  // TEXT above; these two entries measure the usage this chart really makes of
+  // it, as a non-text graphic (WCAG 1.4.11), in both themes and against both
+  // surfaces a chart can sit on.
+  { name: "government-change marker rule on page background", fg: "ink", bg: "bg", level: CONTRAST_LEVEL.GRAPHIC },
+  { name: "government-change marker rule on surface", fg: "ink", bg: "surface", level: CONTRAST_LEVEL.GRAPHIC },
 ];

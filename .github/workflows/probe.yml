@@ -23,16 +23,41 @@ jobs:
   probe:
     name: Synthetic daily probe (live)
     runs-on: ubuntu-latest
-    # Remediation batch (verify-report WARNING W6): before this batch,
-    # adapters/{ine,eurostat}.NewClient(baseURL, nil) fell back to
-    # http.DefaultClient (Timeout: 0), and this suite passes
+    # Remediation batch (verify-report WARNING W6), corrected by
+    # odd/tasks/probe-transport-vs-churn.md (verified 2026-09-17): before
+    # W6, adapters/{ine,eurostat}.NewClient(baseURL, nil) fell back to
+    # http.DefaultClient (Timeout: 0), and this suite passed
     # context.Background() (no deadline) -- an unresponsive source could
     # hang the job for the runner's full default 360-minute budget rather
-    # than failing (a real attempt this session hung until killed at
-    # 180s). Each adapter now carries its own bounded default Timeout
-    # (30s per request, adapters/{ine,eurostat}/client.go), but this
-    # job-level ceiling is a second, independent bound in case a future
-    # adapter change regresses that default.
+    # than failing (a real attempt that session hung until killed at
+    # 180s). W6's fix gave each adapter its own bounded default Timeout
+    # (30s per request, adapters/{ine,eurostat}/client.go) and documented
+    # this job-level 15-minute ceiling as "a second, independent bound in
+    # case a future adapter change regresses that default" -- but that
+    # claim was never actually true: `go test` itself defaults `-timeout`
+    # to 10 minutes, and nothing in this workflow overrode it, so the
+    # BINARY's own 10-minute panic-timeout was always the bound that
+    # would fire first, three minutes ahead of this 15-minute job
+    # ceiling, on this file's pre-fix retry math (defaultMaxAttempts=5 x
+    # 30s timeout + backoff = ~155s per dead target; 6 dead INE targets
+    # from a runner INE blocks was ~15.5 minutes, well past 10). That is
+    # exactly what happened: `go test` panicked at 10 minutes and killed
+    # the run before the 15-minute job ceiling ever got a chance to act,
+    # which is how a target-level hang turned into a whole-job panic
+    # instead of a clean per-target failure.
+    #
+    # The probe step below now passes an EXPLICIT `-timeout 8m`, so the
+    # real ordering in force is: `go test`'s own timeout (8m, inside the
+    # binary, triggers a clean failure with a stack dump) fires before
+    # this job's `timeout-minutes: 15` (outside the binary, triggers a
+    # hard runner kill with no Go output at all) -- the inner bound is
+    # the one meant to engage; the outer one is the true last-resort
+    # backstop it was always meant to be, now actually positioned after
+    # it. 8m is generous: this file's own probeMaxAttempts=2 and
+    # probeHTTPTimeout=10s bound a single dead target to ~20.5s
+    # (app/internal/probe/live_test.go), so even every configured INE
+    # target being unreachable from this runner finishes in roughly two
+    # minutes, not fifteen.
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -45,5 +70,11 @@ jobs:
       # (app/internal/probe/live_test.go) -- every other package's tests
       # are unaffected by the tag and are not this workflow's job (ci.yml
       # already covers them on every push/PR).
+      #
+      # -timeout 8m is the explicit inner bound the comment above
+      # timeout-minutes describes: strictly below the 15-minute job
+      # ceiling, and comfortably above this suite's own worst case (every
+      # target unreachable, ~20.5s each per live_test.go's
+      # probeMaxAttempts/probeHTTPTimeout, well under two minutes total).
       - name: Synthetic probe against every configured endpoint
-        run: go test -tags live ./app/internal/probe/... -v
+        run: go test -tags live -timeout 8m ./app/internal/probe/... -v
